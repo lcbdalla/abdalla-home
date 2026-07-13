@@ -1,0 +1,61 @@
+name: Deploy no GitHub Pages
+
+# Publica automaticamente a cada commit enviado para a branch main.
+# Tambem pode ser disparado manualmente na aba "Actions" do GitHub.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permissoes que o GitHub Pages exige para publicar.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Garante que so um deploy roda por vez (cancela build antigo se vier outro).
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar o Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Gerar o site (build)
+        # As variaveis vem dos GitHub Secrets do repositorio, nunca do codigo.
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
+        run: npm run build
+
+      - name: Configurar o Pages
+        uses: actions/configure-pages@v5
+
+      - name: Enviar a pasta dist como artefato
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
