@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
-  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound
+  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -28,6 +28,13 @@ const CATEGORIAS = [
 ];
 const SUBCOMBUSTIVEL = ["Gasolina", "Diesel", "Gás"];
 const UNIDADES = ["un", "kg", "g", "L", "mL", "cx", "pct", "saco", "m", "par", "lata", "dz", "fardo", "rolo", "frasco", "tubo", "barra"];
+
+// Setores para agrupar a equipe e as tarefas (um colega do mesmo setor cobre o outro).
+const SETORES = [
+  { id: "Casa", cor: "#2b7a8c" },
+  { id: "Área externa", cor: "#c8862a" },
+];
+const setorCor = (s) => (SETORES.find((x) => x.id === s)?.cor) || "#726b5e";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const hojeISO = () => new Date().toISOString().slice(0, 10);
@@ -103,10 +110,29 @@ function isConcluida(t, iso = hojeISO()) {
   return !!(t.conclusoes && t.conclusoes[iso]);
 }
 
+// ---------- Ajudantes do Painel (dashboard) ----------
+const duracaoMin = (t) => {
+  if (!t.horaInicio || !t.horaFim) return 0;
+  const [h1, m1] = t.horaInicio.split(":").map(Number);
+  const [h2, m2] = t.horaFim.split(":").map(Number);
+  const d = (h2 * 60 + m2) - (h1 * 60 + m1);
+  return d > 0 ? d : 0;
+};
+const isoLocal = (ms) => { const x = new Date(ms); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`; };
+const inicioSemana = (d) => { const x = new Date(d); const dow = (x.getDay() + 6) % 7; x.setDate(x.getDate() - dow); x.setHours(0, 0, 0, 0); return x; };
+const fmtDM = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+const fmtHoras = (min) => { const h = Math.round(min) / 60; return `${h.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}h`; };
+// Quantas vezes uma tarefa recorrente cai no intervalo [inicio, fim] (datas ISO).
+function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
+  let n = 0; const d = new Date(inicioISO + "T12:00:00"); const fim = new Date(fimISO + "T12:00:00");
+  while (d <= fim) { if (aplicaHoje(t, isoLocal(d))) n++; d.setDate(d.getDate() + 1); }
+  return n;
+}
+
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", ativo: r.ativo !== false });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -120,8 +146,8 @@ function buildTarefas(ts, itens, concl) {
     responsavelId: r.responsavel_id, criadoPorId: r.criado_por_id,
     tipo: r.tipo, freq: r.freq || "diaria", dias: r.dias || [], intervaloSemanas: r.intervalo_semanas || 1,
     data: r.data || "", dataInicio: r.data_inicio || "", horaInicio: timeHM(r.hora_inicio), horaFim: timeHM(r.hora_fim),
-    imagemUrl: r.imagem_url || null, ehCompra: !!r.eh_compra, status: r.status || "pendente",
-    concluidaEm: toMs(r.concluida_em), fotoConclusaoUrl: r.foto_conclusao_url || null,
+    imagemUrl: r.imagem_url || null, ehCompra: !!r.eh_compra, status: r.status || "pendente", setor: r.setor || "", estoqueAplicado: !!r.estoque_aplicado,
+    concluidaEm: toMs(r.concluida_em), fotoConclusaoUrl: r.foto_conclusao_url || null, concluidaPorId: r.concluida_por_id || null,
     conclusoes: conBy[r.id] || {},
     compra: { itens: itensBy[r.id] || [] },
   })).sort((a, b) => String(b.dataInicio || b.data || "").localeCompare(String(a.dataInicio || a.data || "")));
@@ -144,6 +170,7 @@ function tarefaRow(d) {
     hora_fim: d.horaFim || null,
     imagem_url: d.imagemUrl || null,
     eh_compra: !!d.ehCompra,
+    setor: d.setor || null,
   };
 }
 
@@ -356,6 +383,11 @@ export default function App() {
     check(); const iv = setInterval(check, 30000); return () => clearInterval(iv);
   }, [carregado, tasks, euId, avisos]);
 
+  // Se deixar de ser admin (ex.: rebaixado em tempo real), sai das abas restritas.
+  useEffect(() => {
+    if (!souAdmin && (aba === "painel" || aba === "equipe")) setAba("tarefas");
+  }, [souAdmin, aba]);
+
   const pedirNotificacao = () => {
     if (typeof Notification === "undefined") { showToast("Notificações não disponíveis aqui"); return; }
     Notification.requestPermission().then((p) => showToast(p === "granted" ? "Lembretes ativados!" : "Lembretes não ativados"));
@@ -389,14 +421,21 @@ export default function App() {
   async function concluirTarefa(t, fotoUrl) {
     const iso = hojeISO();
     if (t.tipo === "unica") {
-      await supabase.from("tarefas").update({ status: "concluida", concluida_em: new Date().toISOString(), foto_conclusao_url: fotoUrl || t.fotoConclusaoUrl || null }).eq("id", t.id);
+      await supabase.from("tarefas").update({ status: "concluida", concluida_em: new Date().toISOString(), foto_conclusao_url: fotoUrl || t.fotoConclusaoUrl || null, concluida_por_id: euId }).eq("id", t.id);
     } else {
       await supabase.from("conclusoes").upsert({ tarefa_id: t.id, data: iso, user_id: euId, foto_url: fotoUrl || null }, { onConflict: "tarefa_id,data" });
     }
     const itensC = t.ehCompra ? itensDaCompra(t) : [];
     if (itensC.length) {
-      await aplicarMovimentos(itensC.map((it) => ({ produtoId: it.produtoId, quantidade: it.quantidade })), "entrada", "compra");
-      showToast(itensC.length === 1 ? "Compra concluída • item no estoque" : `Compra concluída • ${itensC.length} itens no estoque`);
+      // Só entra no estoque na PRIMEIRA conclusão desta ordem de compra.
+      const { data: atual } = await supabase.from("tarefas").select("estoque_aplicado").eq("id", t.id).maybeSingle();
+      if (!atual?.estoque_aplicado) {
+        await aplicarMovimentos(itensC.map((it) => ({ produtoId: it.produtoId, quantidade: it.quantidade })), "entrada", "compra");
+        await supabase.from("tarefas").update({ estoque_aplicado: true }).eq("id", t.id);
+        showToast(itensC.length === 1 ? "Compra concluída • item no estoque" : `Compra concluída • ${itensC.length} itens no estoque`);
+      } else {
+        showToast("Compra concluída (já estava no estoque)");
+      }
     } else showToast("Tarefa concluída ✓");
     setAvisos((p) => p.filter((a) => a.id !== t.id));
     reloadTarefas();
@@ -404,7 +443,7 @@ export default function App() {
 
   async function reabrir(t) {
     const iso = hojeISO();
-    if (t.tipo === "unica") await supabase.from("tarefas").update({ status: "pendente", concluida_em: null }).eq("id", t.id);
+    if (t.tipo === "unica") await supabase.from("tarefas").update({ status: "pendente", concluida_em: null, concluida_por_id: null }).eq("id", t.id);
     else await supabase.from("conclusoes").delete().eq("tarefa_id", t.id).eq("data", iso);
     reloadTarefas();
   }
@@ -491,7 +530,7 @@ export default function App() {
     { id: "agenda", nome: "Agenda", icon: CalendarDays },
     { id: "compras", nome: "Compras", icon: ShoppingCart },
     { id: "estoque", nome: "Estoque", icon: Package },
-    { id: "equipe", nome: "Equipe", icon: Users },
+    ...(souAdmin ? [{ id: "painel", nome: "Painel", icon: BarChart3 }, { id: "equipe", nome: "Equipe", icon: Users }] : []),
   ];
 
   return (
@@ -506,7 +545,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2">
               <button onClick={pedirNotificacao} title="Ativar lembretes" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Bell size={18} /></button>
-              <button onClick={() => setInfoAberto(true)} title="Sobre a propriedade" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Info size={18} /></button>
+              {souAdmin && <button onClick={() => setInfoAberto(true)} title="Sobre a propriedade" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Info size={18} /></button>}
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2" style={{ background: "#ffffff1a", borderRadius: 12, padding: "8px 12px" }}>
@@ -528,11 +567,12 @@ export default function App() {
         )}
 
         <main className="px-3 pt-3">
-          {aba === "tarefas" && <TarefasView {...{ tasks, users, euId, filtro, setFiltro, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onReabrir: reabrir, onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onTrocar: trocarResponsavel }} />}
-          {aba === "agenda" && <AgendaView {...{ tasks, users }} />}
+          {aba === "tarefas" && <TarefasView {...{ tasks, users, euId, souAdmin, meuSetor: eu?.setor || "", filtro, setFiltro, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onReabrir: reabrir, onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onTrocar: trocarResponsavel }} />}
+          {aba === "agenda" && <AgendaView {...{ tasks, users, souAdmin, meuSetor: eu?.setor || "", euId }} />}
           {aba === "compras" && <ComprasView {...{ tasks, produtos, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onReabrir: reabrir }} />}
           {aba === "estoque" && <EstoqueView {...{ produtos, estoque, movs, users, onAjustar: ajustarEstoque, onAbrirProdutos: () => setProdutosAberto(true), onMovimento: (mv) => setModal({ tipo: "movimento", mov: mv }), onSaidaRapida: saidaRapida }} />}
-          {aba === "equipe" && <EquipeView {...{ users, souAdmin, euId, showToast, onRecarregar: reloadPerfis }} />}
+          {aba === "painel" && souAdmin && <PainelView {...{ tasks, users }} />}
+          {aba === "equipe" && souAdmin && <EquipeView {...{ users, souAdmin, euId, showToast, onRecarregar: reloadPerfis }} />}
         </main>
 
         {(aba === "tarefas" || aba === "compras" || aba === "agenda") && (
@@ -625,15 +665,21 @@ function AcessoRemovido({ onSair }) {
 }
 
 /* ============================= TAREFAS ============================= */
-function TarefasView({ tasks, users, euId, filtro, setFiltro, onConcluir, onReabrir, onEditar, onExcluir, onTrocar }) {
+function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro, onConcluir, onReabrir, onEditar, onExcluir, onTrocar }) {
   let lista = tasks.filter((t) => !t.ehCompra);
+  // Colaborador só enxerga o próprio setor (e o que estiver no nome dele).
+  if (!souAdmin) lista = lista.filter((t) => (meuSetor && t.setor === meuSetor) || t.responsavelId === euId);
   if (filtro === "minhas") lista = lista.filter((t) => t.responsavelId === euId);
+  else if (filtro.startsWith("setor:")) { const s = filtro.slice(6); lista = lista.filter((t) => t.setor === s); }
   const pendentes = lista.filter((t) => !isConcluida(t));
   const feitas = lista.filter((t) => isConcluida(t));
+  const filtros = souAdmin
+    ? [{ id: "todas", n: "Todas" }, { id: "minhas", n: "Minhas" }, ...SETORES.map((s) => ({ id: "setor:" + s.id, n: s.id }))]
+    : [{ id: "todas", n: "Todas" }, { id: "minhas", n: "Minhas" }];
   return (
     <div>
-      <div className="flex gap-2 mb-3">
-        {[{ id: "todas", n: "Todas" }, { id: "minhas", n: "Minhas" }].map((f) => (
+      <div className="flex flex-wrap gap-2 mb-3">
+        {filtros.map((f) => (
           <button key={f.id} onClick={() => setFiltro(f.id)} style={{ background: filtro === f.id ? C.pasto : C.card, color: filtro === f.id ? "#fff" : C.cinza, border: `1px solid ${filtro === f.id ? C.pasto : C.linha}`, borderRadius: 999, padding: "6px 16px", fontWeight: 600, fontSize: 13 }}>{f.n}</button>
         ))}
       </div>
@@ -644,8 +690,13 @@ function TarefasView({ tasks, users, euId, filtro, setFiltro, onConcluir, onReab
   );
 }
 function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar }) {
-  const feito = isConcluida(t);
+  const iso = hojeISO();
+  const feito = isConcluida(t, iso);
   const [abrirResp, setAbrirResp] = useState(false);
+  // Quem realizou (por dia nas recorrentes; direto nas únicas).
+  const concluinteId = t.tipo === "unica" ? t.concluidaPorId : (t.conclusoes && t.conclusoes[iso] ? t.conclusoes[iso].userId : null);
+  const concluinte = feito && concluinteId ? nomeUser(users, concluinteId) : null;
+  const coberto = !!concluinte && concluinteId !== t.responsavelId;
   return (
     <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, opacity: feito ? 0.72 : 1 }} className="p-3 mb-2.5">
       <div className="flex gap-3">
@@ -654,18 +705,26 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
           <div style={{ textDecoration: feito ? "line-through" : "none", fontWeight: 600, fontSize: 15.5, lineHeight: 1.25 }}>{t.titulo}</div>
           {t.descricao && <div style={{ color: C.cinza }} className="text-sm mt-0.5">{t.descricao}</div>}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
+            {t.setor && <Chip icon={Users} texto={t.setor} cor={setorCor(t.setor)} />}
             {t.tipo === "recorrente" && <Chip icon={Repeat} texto={textoRecorrencia(t)} cor={C.lago} />}
             {(t.horaInicio || t.horaFim) && <Chip icon={Clock} texto={`${t.horaInicio || "?"}${t.horaFim ? "–" + t.horaFim : ""}`} cor={C.ambar} />}
             {t.tipo === "unica" && t.data && <Chip icon={CalendarDays} texto={fmtData(t.data)} cor={C.cinza} />}
           </div>
           {t.imagemUrl && <img src={t.imagemUrl} alt="" style={{ marginTop: 8, borderRadius: 10, maxHeight: 130, width: "100%", objectFit: "cover" }} />}
-          <div className="mt-2 relative">
-            <button onClick={() => setAbrirResp((v) => !v)} style={{ background: C.pastoClaro, color: C.pastoEsc, borderRadius: 999, padding: "4px 11px", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><User size={13} /> {nomeUser(users, t.responsavelId)} <RefreshCw size={11} /></button>
-            {abrirResp && (
-              <div style={{ position: "absolute", top: 34, left: 0, background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 6px 18px #0002", zIndex: 20, minWidth: 180, overflow: "hidden" }}>
-                <div style={{ padding: "8px 12px", fontSize: 11, color: C.cinza, borderBottom: `1px solid ${C.linha}` }}>Passar para:</div>
-                {users.filter((u) => u.ativo !== false).map((u) => <button key={u.id} onClick={() => { onTrocar(t, u.id); setAbrirResp(false); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", fontSize: 14, background: t.responsavelId === u.id ? C.pastoClaro : "#fff" }}>{u.nome}</button>)}
-              </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <button onClick={() => setAbrirResp((v) => !v)} title="Responsável (de quem é a tarefa)" style={{ background: C.pastoClaro, color: C.pastoEsc, borderRadius: 999, padding: "4px 11px", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><User size={13} /> {nomeUser(users, t.responsavelId)} <RefreshCw size={11} /></button>
+              {abrirResp && (
+                <div style={{ position: "absolute", top: 34, left: 0, background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 6px 18px #0002", zIndex: 20, minWidth: 180, overflow: "hidden" }}>
+                  <div style={{ padding: "8px 12px", fontSize: 11, color: C.cinza, borderBottom: `1px solid ${C.linha}` }}>Passar para:</div>
+                  {users.filter((u) => u.ativo !== false).map((u) => <button key={u.id} onClick={() => { onTrocar(t, u.id); setAbrirResp(false); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", fontSize: 14, background: t.responsavelId === u.id ? C.pastoClaro : "#fff" }}>{u.nome}</button>)}
+                </div>
+              )}
+            </div>
+            {concluinte && (
+              <span title="Quem realizou a tarefa" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: coberto ? C.ambar : C.pasto, color: "#fff", borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 600 }}>
+                <Check size={12} strokeWidth={3} /> Feito por {concluinte}
+              </span>
             )}
           </div>
         </div>
@@ -679,9 +738,12 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
 }
 
 /* ============================= AGENDA ============================= */
-function AgendaView({ tasks, users }) {
+function AgendaView({ tasks, users, souAdmin, meuSetor, euId }) {
   const hoje = hojeISO();
-  const doDia = tasks.filter((t) => !t.ehCompra && aplicaHoje(t, hoje)).sort((a, b) => (a.horaInicio || "99:99").localeCompare(b.horaInicio || "99:99"));
+  const doDia = tasks
+    .filter((t) => !t.ehCompra && aplicaHoje(t, hoje))
+    .filter((t) => souAdmin || (meuSetor && t.setor === meuSetor) || t.responsavelId === euId)
+    .sort((a, b) => (a.horaInicio || "99:99").localeCompare(b.horaInicio || "99:99"));
   const dataBr = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   return (
     <div>
@@ -803,23 +865,31 @@ function EstoqueView({ produtos, estoque, movs, users, onAjustar, onAbrirProduto
 
 /* ============================= EQUIPE ============================= */
 function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
-  const [nome, setNome] = useState(""); const [email, setEmail] = useState(""); const [senha, setSenha] = useState(""); const [telefone, setTelefone] = useState(""); const [papel, setPapel] = useState("colaborador");
+  const [nome, setNome] = useState(""); const [email, setEmail] = useState(""); const [senha, setSenha] = useState(""); const [telefone, setTelefone] = useState(""); const [papel, setPapel] = useState("colaborador"); const [setor, setSetor] = useState("Casa");
   const [criando, setCriando] = useState(false);
 
   const add = async () => {
     if (!nome.trim() || !email.trim() || senha.length < 6) { showToast("Preencha nome, e-mail e senha (mín. 6)"); return; }
     setCriando(true);
     const { data, error } = await supabase.functions.invoke("criar-usuario", {
-      body: { nome: nome.trim(), email: email.trim(), senha, telefone: telefone.trim(), papel },
+      body: { nome: nome.trim(), email: email.trim(), senha, telefone: telefone.trim(), papel, setor: papel === "admin" ? "" : setor },
     });
     setCriando(false);
     if (error || data?.error) { showToast(data?.error || "Erro ao criar usuário"); return; }
-    setNome(""); setEmail(""); setSenha(""); setTelefone(""); setPapel("colaborador");
+    setNome(""); setEmail(""); setSenha(""); setTelefone(""); setPapel("colaborador"); setSetor("Casa");
     showToast("Pessoa adicionada");
     onRecarregar();
   };
-  const editar = async (id, campo, valor) => { await supabase.from("perfis").update({ [campo]: valor }).eq("id", id); onRecarregar(); };
-  const alternarPapel = async (u) => { await supabase.from("perfis").update({ papel: u.papel === "admin" ? "colaborador" : "admin" }).eq("id", u.id); onRecarregar(); };
+  const editar = async (id, campo, valor) => {
+    const { error } = await supabase.from("perfis").update({ [campo]: valor }).eq("id", id);
+    if (error) { showToast("Erro ao salvar: " + error.message); return; }
+    onRecarregar();
+  };
+  const alternarPapel = async (u) => {
+    const { error } = await supabase.from("perfis").update({ papel: u.papel === "admin" ? "colaborador" : "admin" }).eq("id", u.id);
+    if (error) { showToast("Erro ao salvar: " + error.message); return; }
+    onRecarregar();
+  };
   const definirAtivo = (u, ativo) => {
     Dialog.confirm({ titulo: ativo ? "Reativar acesso" : "Remover acesso", mensagem: ativo ? "Liberar novamente o acesso de " + u.nome + "?" : "Remover o acesso de " + u.nome + "? A pessoa deixará de entrar no app.", okLabel: ativo ? "Reativar" : "Remover", perigo: !ativo }).then(async (ok) => {
       if (!ok) return;
@@ -839,7 +909,7 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
             <div className="flex items-center gap-2">
               <button onClick={() => souAdmin && alternarPapel(u)} title="Trocar função" disabled={!souAdmin} style={{ background: u.papel === "admin" ? C.ambarClaro : C.pastoClaro, borderRadius: 9, padding: 7 }}>{u.papel === "admin" ? <Star size={17} style={{ color: C.ambar }} /> : <User size={17} style={{ color: C.pasto }} />}</button>
               {souAdmin ? (
-                <input value={u.nome} onChange={(e) => editar(u.id, "nome", e.target.value)} style={{ flex: 1, border: "none", background: "transparent", fontWeight: 600, fontSize: 15, outline: "none" }} />
+                <input key={"n" + u.id + u.nome} defaultValue={u.nome} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== u.nome) editar(u.id, "nome", v); }} placeholder="Nome da pessoa" style={{ flex: 1, border: "none", background: "transparent", fontWeight: 600, fontSize: 15, outline: "none" }} />
               ) : (
                 <div style={{ flex: 1, fontWeight: 600, fontSize: 15 }}>{u.nome}</div>
               )}
@@ -853,11 +923,22 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
             <div className="flex items-center gap-2 mt-1" style={{ paddingLeft: 40 }}>
               <Smartphone size={13} style={{ color: C.cinzaClaro }} />
               {souAdmin ? (
-                <input value={u.telefone || ""} onChange={(e) => editar(u.id, "telefone", e.target.value)} placeholder="Telefone (ex.: 63 99999-0000)" style={{ flex: 1, border: "none", background: "transparent", fontSize: 13, color: C.cinza, outline: "none" }} />
+                <input key={"t" + u.id + (u.telefone || "")} defaultValue={u.telefone || ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (u.telefone || "")) editar(u.id, "telefone", v); }} placeholder="Telefone (ex.: 63 99999-0000)" style={{ flex: 1, border: "none", background: "transparent", fontSize: 13, color: C.cinza, outline: "none" }} />
               ) : (
                 <div style={{ flex: 1, fontSize: 13, color: C.cinza }}>{u.telefone || "—"}</div>
               )}
               {u.id === euId && <span style={{ background: C.pastoClaro, color: C.pastoEsc, fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: "2px 8px" }}>VOCÊ</span>}
+            </div>
+            <div className="flex items-center gap-2 mt-1" style={{ paddingLeft: 40 }}>
+              <Users size={13} style={{ color: C.cinzaClaro }} />
+              {souAdmin ? (
+                <select value={u.setor || ""} onChange={(e) => editar(u.id, "setor", e.target.value)} style={{ flex: 1, border: "none", background: "transparent", fontSize: 13, color: u.setor ? setorCor(u.setor) : C.cinzaClaro, fontWeight: u.setor ? 600 : 400, outline: "none" }}>
+                  <option value="">Sem setor</option>
+                  {SETORES.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
+                </select>
+              ) : (
+                <div style={{ flex: 1, fontSize: 13, color: u.setor ? setorCor(u.setor) : C.cinzaClaro, fontWeight: u.setor ? 600 : 400 }}>{u.setor || "Sem setor"}</div>
+              )}
             </div>
           </div>
         );
@@ -869,13 +950,120 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
           <input placeholder="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={inpSt} className="mb-2" />
           <input placeholder="Senha (mín. 6 caracteres)" type="text" value={senha} onChange={(e) => setSenha(e.target.value)} style={inpSt} className="mb-2" />
           <input placeholder="Telefone" value={telefone} onChange={(e) => setTelefone(e.target.value)} style={inpSt} className="mb-2" />
-          <div className="flex gap-2">
+          <div className="flex gap-2 mb-2">
             <select value={papel} onChange={(e) => setPapel(e.target.value)} style={{ ...inpSt, flex: 1 }}><option value="colaborador">Colaborador</option><option value="admin">Administrador</option></select>
-            <button onClick={add} disabled={criando} style={{ background: criando ? C.cinzaClaro : C.pasto, color: "#fff", borderRadius: 10, padding: "0 18px", fontWeight: 700, whiteSpace: "nowrap" }}>{criando ? "Criando…" : "Adicionar"}</button>
+            {papel !== "admin" && <select value={setor} onChange={(e) => setSetor(e.target.value)} style={{ ...inpSt, flex: 1 }}>{SETORES.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}</select>}
           </div>
+          <button onClick={add} disabled={criando} style={{ width: "100%", background: criando ? C.cinzaClaro : C.pasto, color: "#fff", borderRadius: 10, padding: 12, fontWeight: 700 }}>{criando ? "Criando…" : "Adicionar"}</button>
           <div style={{ color: C.cinzaClaro, fontSize: 11.5 }} className="mt-2 flex items-center gap-1"><Info size={12} /> A pessoa entra no app com esse e-mail e senha.</div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ============================= PAINEL ============================= */
+function PainelView({ tasks, users }) {
+  const [modo, setModo] = useState("mes");
+  const [anchor, setAnchor] = useState(() => new Date());
+
+  // Período selecionado (mês ou semana), como datas ISO para comparar.
+  let inicio, fim, label;
+  if (modo === "mes") {
+    const y = anchor.getFullYear(), m = anchor.getMonth();
+    inicio = isoLocal(new Date(y, m, 1));
+    fim = isoLocal(new Date(y, m + 1, 0));
+    label = anchor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  } else {
+    const seg = inicioSemana(anchor);
+    const dom = new Date(seg); dom.setDate(dom.getDate() + 6);
+    inicio = isoLocal(seg); fim = isoLocal(dom);
+    label = `${fmtDM(seg)} – ${fmtDM(dom)}`;
+  }
+  const navegar = (dir) => { const d = new Date(anchor); if (modo === "mes") d.setMonth(d.getMonth() + dir); else d.setDate(d.getDate() + dir * 7); setAnchor(d); };
+
+  // Por colaborador: META (tarefas destinadas a ele, feitas ou não) e REALIZADO (feitas por ele).
+  const stats = {};
+  const ensure = (id) => stats[id] || (stats[id] = { metaCount: 0, metaMin: 0, feitoCount: 0, feitoMin: 0 });
+  let totalTarefas = 0, totalMin = 0;
+  tasks.forEach((t) => {
+    if (t.ehCompra) return; // compras não entram no painel de trabalho
+    const dur = duracaoMin(t);
+    // META — contada pelo responsável, pelas ocorrências agendadas no período.
+    if (t.responsavelId) {
+      if (t.tipo === "unica") {
+        if (t.data && t.data >= inicio && t.data <= fim) { const s = ensure(t.responsavelId); s.metaCount++; s.metaMin += dur; }
+      } else {
+        const oc = ocorrenciasNoPeriodo(t, inicio, fim);
+        if (oc) { const s = ensure(t.responsavelId); s.metaCount += oc; s.metaMin += dur * oc; }
+      }
+    }
+    // REALIZADO — contado por quem de fato concluiu.
+    if (t.tipo === "unica") {
+      if (t.status === "concluida" && t.concluidaEm) {
+        const iso = isoLocal(t.concluidaEm);
+        if (iso >= inicio && iso <= fim) { const who = t.concluidaPorId || t.responsavelId; if (who) { const s = ensure(who); s.feitoCount++; s.feitoMin += dur; totalTarefas++; totalMin += dur; } }
+      }
+    } else {
+      Object.entries(t.conclusoes || {}).forEach(([iso, c]) => {
+        if (iso >= inicio && iso <= fim) { const who = c.userId || t.responsavelId; if (who) { const s = ensure(who); s.feitoCount++; s.feitoMin += dur; totalTarefas++; totalMin += dur; } }
+      });
+    }
+  });
+  const linhas = Object.entries(stats).map(([who, v]) => ({ who, nome: nomeUser(users, who), ...v })).sort((a, b) => b.feitoCount - a.feitoCount || b.metaCount - a.metaCount);
+  const escala = Math.max(1, ...linhas.map((l) => Math.max(l.metaCount, l.feitoCount)));
+
+  return (
+    <div>
+      <div style={{ background: C.pastoClaro, borderRadius: 14 }} className="p-3 mb-3">
+        <div style={{ color: C.pastoEsc }} className="text-xs font-semibold uppercase mb-2">Painel de trabalho</div>
+        <div className="flex gap-2 mb-3">
+          {[{ id: "mes", n: "Por mês" }, { id: "semana", n: "Por semana" }].map((o) => (
+            <button key={o.id} onClick={() => setModo(o.id)} style={{ flex: 1, padding: "8px", borderRadius: 10, fontWeight: 600, fontSize: 13.5, background: modo === o.id ? C.pasto : C.card, color: modo === o.id ? "#fff" : C.cinza, border: `1px solid ${modo === o.id ? C.pasto : C.linha}` }}>{o.n}</button>
+          ))}
+        </div>
+        <div className="flex items-center justify-between">
+          <button onClick={() => navegar(-1)} style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><ChevronLeft size={18} /></button>
+          <div className="font-bold capitalize" style={{ color: C.pastoEsc }}>{label}</div>
+          <button onClick={() => navegar(1)} style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><ChevronRight size={18} /></button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-3">
+        <div style={{ flex: 1, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3">
+          <div className="flex items-center gap-1" style={{ color: C.cinza, fontSize: 12 }}><ListTodo size={13} /> Tarefas concluídas</div>
+          <div className="font-bold" style={{ fontSize: 26, color: C.pasto }}>{totalTarefas}</div>
+        </div>
+        <div style={{ flex: 1, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3">
+          <div className="flex items-center gap-1" style={{ color: C.cinza, fontSize: 12 }}><Clock size={13} /> Horas de trabalho</div>
+          <div className="font-bold" style={{ fontSize: 26, color: C.lago }}>{fmtHoras(totalMin)}</div>
+        </div>
+      </div>
+
+      <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16 }} className="p-3 mb-3">
+        <div className="font-bold mb-1">Por colaborador</div>
+        <div className="flex items-center gap-3 mb-2" style={{ fontSize: 11.5, color: C.cinza }}>
+          <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: C.pasto, display: "inline-block" }} /> Realizado</span>
+          <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: C.cinzaClaro, display: "inline-block" }} /> Meta (destinadas)</span>
+        </div>
+        {linhas.length === 0 && <div style={{ color: C.cinzaClaro }} className="text-sm py-3 text-center">Nenhuma tarefa neste período.</div>}
+        {linhas.map((l) => (
+          <div key={l.who} className="py-2" style={{ borderTop: `1px solid ${C.bg}` }}>
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-medium text-sm">{l.nome}</div>
+              <div style={{ fontSize: 12.5 }}>
+                <b style={{ color: C.pasto }}>{l.feitoCount}</b><span style={{ color: C.cinzaClaro }}>/{l.metaCount}</span> <span style={{ color: C.cinzaClaro }}>tar.</span> · <b style={{ color: C.pasto }}>{fmtHoras(l.feitoMin)}</b><span style={{ color: C.cinzaClaro }}>/{fmtHoras(l.metaMin)}</span>
+              </div>
+            </div>
+            <div style={{ position: "relative", height: 8, background: C.bg, borderRadius: 999, overflow: "hidden" }}>
+              <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${(l.metaCount / escala) * 100}%`, background: C.cinzaClaro, borderRadius: 999 }} />
+              <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${(l.feitoCount / escala) * 100}%`, background: C.pasto, borderRadius: 999 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1 px-1 pb-2"><Info size={12} /> Verde = feito por quem concluiu; cinza = meta (tarefas destinadas). Horas contam tarefas com início e fim. Compras não entram.</div>
     </div>
   );
 }
@@ -966,7 +1154,7 @@ function ProdutosModal({ produtos, onCadastrar, onRemover, onRenomear, onFechar 
 /* ============================= MODAL: TAREFA ============================= */
 function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarProduto, showToast, onFechar, onSalvar }) {
   const souAdmin = eu?.papel === "admin";
-  const [f, setF] = useState(() => task || { titulo: "", descricao: "", responsavelId: eu?.id, tipo: "unica", freq: "diaria", dias: [], intervaloSemanas: 1, data: hojeISO(), dataInicio: hojeISO(), horaInicio: "", horaFim: "", imagemUrl: null, ehCompra: !!ehCompraInicial, compra: { itens: [] } });
+  const [f, setF] = useState(() => task || { titulo: "", descricao: "", responsavelId: eu?.id, setor: eu?.setor || "", tipo: "unica", freq: "diaria", dias: [], intervaloSemanas: 1, data: hojeISO(), dataInicio: hojeISO(), horaInicio: "", horaFim: "", imagemUrl: null, ehCompra: !!ehCompraInicial, compra: { itens: [] } });
   const [imgPreview, setImgPreview] = useState(task?.imagemUrl || null); const [salvandoImg, setSalvandoImg] = useState(false);
   const [novoProd, setNovoProd] = useState(false);
   const [np, setNp] = useState({ nome: "", categoria: "Supermercado", subcategoria: "", unidade: "un" });
@@ -989,11 +1177,13 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
   const abrirCadastroTexto = (texto) => { setNp((p) => ({ ...p, nome: texto })); setNovoProd(true); };
   const salvarNovoProduto = async () => { if (!np.nome.trim()) return; const criado = await onCadastrarProduto({ nome: np.nome.trim(), categoria: np.categoria, subcategoria: np.categoria === "Combustível" ? np.subcategoria : "", unidade: np.unidade }); if (criado) { setAddProdId(criado.id); setAddKey((k) => k + 1); } setNovoProd(false); setNp({ nome: "", categoria: "Supermercado", subcategoria: "", unidade: "un" }); };
 
+  // O setor da tarefa vem do responsável; só é escolhido à mão quando não dá pra deduzir.
+  const respSetor = users.find((u) => u.id === f.responsavelId)?.setor || "";
   const semDiaSelecionado = f.tipo === "recorrente" && f.freq === "semanal" && (f.dias || []).length === 0;
   const podeSalvar = (f.ehCompra ? itens.length > 0 : !!f.titulo.trim()) && !semDiaSelecionado;
   const submit = () => {
     if (!podeSalvar) return;
-    const dados = { ...f };
+    const dados = { ...f, setor: respSetor || f.setor || "" };
     if (f.ehCompra) {
       dados.compra = { itens };
       if (!dados.titulo.trim()) dados.titulo = "Compras";
@@ -1007,6 +1197,17 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
       <Campo label={f.ehCompra ? "O que precisa ser feito? (opcional)" : "O que precisa ser feito?"}><input autoFocus placeholder={f.ehCompra ? "Opcional — padrão: Compras" : "Ex.: Cortar a grama do gramado"} value={f.titulo} onChange={(e) => set("titulo", e.target.value)} style={inpSt} /></Campo>
       <Campo label="Detalhes (opcional)"><textarea placeholder="Alguma observação…" value={f.descricao} onChange={(e) => set("descricao", e.target.value)} style={{ ...inpSt, minHeight: 62, resize: "vertical" }} /></Campo>
       <Campo label="Responsável"><select value={f.responsavelId || ""} onChange={(e) => set("responsavelId", e.target.value)} style={inpSt}><option value="">Sem responsável</option>{users.filter((u) => u.ativo !== false).map((u) => <option key={u.id} value={u.id}>{u.nome}{u.papel === "admin" ? " (administrador)" : ""}</option>)}</select></Campo>
+      {respSetor ? (
+        <div className="mb-3">
+          <div style={lblSt}>Setor</div>
+          <div className="flex items-center gap-2">
+            <Chip icon={Users} texto={respSetor} cor={setorCor(respSetor)} />
+            <span style={{ color: C.cinzaClaro, fontSize: 12 }}>vem do responsável · quem faltar, o setor cobre</span>
+          </div>
+        </div>
+      ) : (
+        <Campo label="Setor (o responsável não tem setor — defina se quiser agrupar)"><select value={f.setor || ""} onChange={(e) => set("setor", e.target.value)} style={inpSt}><option value="">Sem setor</option>{SETORES.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}</select></Campo>
+      )}
 
       <div className="flex items-center justify-between mb-3" style={{ background: C.ambarClaro, borderRadius: 12, padding: "10px 12px" }}>
         <div className="flex items-center gap-2"><ShoppingCart size={17} style={{ color: C.ambar }} /><span className="font-semibold text-sm">É uma compra?</span></div>

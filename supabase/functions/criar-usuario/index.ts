@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
   const senha = String(body?.senha || "");
   const telefone = String(body?.telefone || "").trim();
   const papel = body?.papel === "admin" ? "admin" : "colaborador";
+  const setor = papel === "admin" ? "" : String(body?.setor || "").trim();
   if (!nome || !email || senha.length < 6) return json({ error: "Nome, e-mail e senha (mín. 6) são obrigatórios." }, 400);
 
   // 4) Cria o usuário no Auth (já confirmado, para poder entrar de imediato).
@@ -74,6 +75,7 @@ Deno.serve(async (req) => {
     nome,
     papel,
     telefone,
+    setor: setor || null,
     ativo: true,
   });
   if (perfilErr) {
