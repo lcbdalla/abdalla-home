@@ -72,15 +72,16 @@ Deno.serve(async (req) => {
     return json({ error: jaExiste ? "Esse e-mail já tem cadastro no app." : "Falha ao criar usuário: " + (createErr?.message || "") }, 400);
   }
 
-  // 5) Cria o perfil correspondente (mesmo id do Auth).
-  const { error: perfilErr } = await admin.from("perfis").insert({
+  // 5) Grava o perfil (mesmo id do Auth). Upsert porque um gatilho do banco já cria
+  //    o perfil automaticamente quando o usuário nasce no Auth.
+  const { error: perfilErr } = await admin.from("perfis").upsert({
     id: novo.user.id,
     nome,
     papel,
     telefone,
     setor: setor || null,
     ativo: true,
-  });
+  }, { onConflict: "id" });
   if (perfilErr) {
     // Desfaz o usuário do Auth se o perfil falhar, para não deixar conta órfã.
     await admin.auth.admin.deleteUser(novo.user.id);
