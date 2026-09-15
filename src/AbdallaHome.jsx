@@ -973,7 +973,7 @@ function NovaPessoaSheet({ showToast, onCriado, onFechar }) {
 
   if (criado) {
     const primeiro = criado.nome.split(" ")[0];
-    const link = window.location.origin + import.meta.env.BASE_URL;
+    const link = new URL(import.meta.env.BASE_URL, window.location.href).href;
     const msg = `Olá, ${primeiro}! Este é o seu acesso ao app do Rancho Abdalla:\n\n${link}\n\nE-mail: ${criado.email}\nSenha: ${criado.senha}`;
     const fone = criado.telefone.replace(/\D/g, "");
     const whats = "https://wa.me/" + (fone ? (fone.length <= 11 ? "55" + fone : fone) : "") + "?text=" + encodeURIComponent(msg);
