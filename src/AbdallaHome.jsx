@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
-  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight
+  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -622,7 +622,7 @@ function LoginScreen() {
     if (!email.trim() || !senha) return;
     setEntrando(true); setErro("");
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha });
-    if (error) setErro("E-mail ou senha incorretos.");
+    if (error) setErro(/invalid login/i.test(error.message) ? "E-mail ou senha incorretos." : "Não foi possível entrar: " + error.message);
     setEntrando(false);
   };
   return (
@@ -865,21 +865,7 @@ function EstoqueView({ produtos, estoque, movs, users, onAjustar, onAbrirProduto
 
 /* ============================= EQUIPE ============================= */
 function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
-  const [nome, setNome] = useState(""); const [email, setEmail] = useState(""); const [senha, setSenha] = useState(""); const [telefone, setTelefone] = useState(""); const [papel, setPapel] = useState("colaborador"); const [setor, setSetor] = useState("Casa");
-  const [criando, setCriando] = useState(false);
-
-  const add = async () => {
-    if (!nome.trim() || !email.trim() || senha.length < 6) { showToast("Preencha nome, e-mail e senha (mín. 6)"); return; }
-    setCriando(true);
-    const { data, error } = await supabase.functions.invoke("criar-usuario", {
-      body: { nome: nome.trim(), email: email.trim(), senha, telefone: telefone.trim(), papel, setor: papel === "admin" ? "" : setor },
-    });
-    setCriando(false);
-    if (error || data?.error) { showToast(data?.error || "Erro ao criar usuário"); return; }
-    setNome(""); setEmail(""); setSenha(""); setTelefone(""); setPapel("colaborador"); setSetor("Casa");
-    showToast("Pessoa adicionada");
-    onRecarregar();
-  };
+  const [novo, setNovo] = useState(false);
   const editar = async (id, campo, valor) => {
     const { error } = await supabase.from("perfis").update({ [campo]: valor }).eq("id", id);
     if (error) { showToast("Erro ao salvar: " + error.message); return; }
@@ -901,7 +887,8 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
 
   return (
     <div>
-      <div style={{ background: C.lagoClaro, borderRadius: 14 }} className="p-3 mb-3"><div style={{ color: C.lago }} className="text-xs font-semibold uppercase">Equipe do rancho</div><div style={{ color: C.terra }} className="text-sm mt-0.5">Administradores criam e organizam. Colaboradores executam e pedem compras. {souAdmin ? "Cadastre o e-mail e a senha de cada pessoa." : "Somente administradores podem alterar a equipe."}</div></div>
+      <div style={{ background: C.lagoClaro, borderRadius: 14 }} className="p-3 mb-3"><div style={{ color: C.lago }} className="text-xs font-semibold uppercase">Equipe do rancho</div><div style={{ color: C.terra }} className="text-sm mt-0.5">Administradores criam e organizam. Colaboradores executam e pedem compras. {souAdmin ? "Para dar acesso a alguém, toque em Adicionar pessoa." : "Somente administradores podem alterar a equipe."}</div></div>
+      {souAdmin && <button onClick={() => setNovo(true)} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}><UserPlus size={19} /> Adicionar pessoa</button>}
       {users.map((u) => {
         const inativo = u.ativo === false;
         return (
@@ -943,22 +930,109 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
           </div>
         );
       })}
-      {souAdmin && (
-        <div style={{ background: C.card, border: `1px dashed ${C.cinzaClaro}`, borderRadius: 14 }} className="p-3 mt-3">
-          <div className="font-semibold text-sm mb-2">Adicionar pessoa</div>
-          <input placeholder="Nome" value={nome} onChange={(e) => setNome(e.target.value)} style={inpSt} className="mb-2" />
-          <input placeholder="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={inpSt} className="mb-2" />
-          <input placeholder="Senha (mín. 6 caracteres)" type="text" value={senha} onChange={(e) => setSenha(e.target.value)} style={inpSt} className="mb-2" />
-          <input placeholder="Telefone" value={telefone} onChange={(e) => setTelefone(e.target.value)} style={inpSt} className="mb-2" />
-          <div className="flex gap-2 mb-2">
-            <select value={papel} onChange={(e) => setPapel(e.target.value)} style={{ ...inpSt, flex: 1 }}><option value="colaborador">Colaborador</option><option value="admin">Administrador</option></select>
-            {papel !== "admin" && <select value={setor} onChange={(e) => setSetor(e.target.value)} style={{ ...inpSt, flex: 1 }}>{SETORES.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}</select>}
-          </div>
-          <button onClick={add} disabled={criando} style={{ width: "100%", background: criando ? C.cinzaClaro : C.pasto, color: "#fff", borderRadius: 10, padding: 12, fontWeight: 700 }}>{criando ? "Criando…" : "Adicionar"}</button>
-          <div style={{ color: C.cinzaClaro, fontSize: 11.5 }} className="mt-2 flex items-center gap-1"><Info size={12} /> A pessoa entra no app com esse e-mail e senha.</div>
-        </div>
-      )}
+      {novo && <NovaPessoaSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setNovo(false)} />}
     </div>
+  );
+}
+
+// Senha fácil de ditar/digitar: palavra do rancho + 4 números.
+// ponytail: senha simples (~80 mil combinações) para usuários leigos; o login do Supabase limita tentativas.
+const PALAVRAS_SENHA = ["lago", "pasto", "serra", "ipe", "vento", "sol", "rio", "boi"];
+const gerarSenha = () => { const r = crypto.getRandomValues(new Uint32Array(2)); return PALAVRAS_SENHA[r[0] % PALAVRAS_SENHA.length] + String(r[1] % 10000).padStart(4, "0"); };
+
+// Tira a mensagem real de dentro do erro da Edge Function (o supabase-js esconde o corpo da resposta).
+async function erroDaFuncao(error, data) {
+  if (data?.error) return data.error;
+  try { const corpo = await error?.context?.json(); if (corpo?.error) return corpo.error; } catch { /* sem corpo */ }
+  if (error?.context?.status === 404) return "O cadastro ainda não foi ativado no servidor (função quick-service).";
+  return "Não foi possível criar o acesso" + (error?.message ? ": " + error.message : ".");
+}
+
+function NovaPessoaSheet({ showToast, onCriado, onFechar }) {
+  const [f, setF] = useState(() => ({ nome: "", telefone: "", email: "", senha: gerarSenha(), papel: "colaborador", setor: SETORES[0].id }));
+  const [erro, setErro] = useState("");
+  const [criando, setCriando] = useState(false);
+  const [criado, setCriado] = useState(null);
+  const set = (k, v) => { setF((x) => ({ ...x, [k]: v })); setErro(""); };
+
+  const criar = async () => {
+    const nome = f.nome.trim(), email = f.email.trim().toLowerCase(), telefone = f.telefone.trim();
+    if (!nome) return setErro("Escreva o nome da pessoa.");
+    if (!/^\S+@\S+\.\S+$/.test(email)) return setErro("Confira o e-mail — parece incompleto.");
+    if (f.senha.length < 6) return setErro("A senha precisa ter pelo menos 6 caracteres.");
+    setCriando(true);
+    // A função "criar-usuario" foi criada pelo painel e ficou com o endereço "quick-service".
+    const { data, error } = await supabase.functions.invoke("quick-service", {
+      body: { nome, email, senha: f.senha, telefone, papel: f.papel, setor: f.papel === "admin" ? "" : f.setor },
+    });
+    if (error || data?.error) { setErro(await erroDaFuncao(error, data)); setCriando(false); return; }
+    setCriando(false);
+    setCriado({ nome, email, senha: f.senha, telefone });
+    onCriado();
+  };
+
+  if (criado) {
+    const primeiro = criado.nome.split(" ")[0];
+    const link = window.location.origin + import.meta.env.BASE_URL;
+    const msg = `Olá, ${primeiro}! Este é o seu acesso ao app do Rancho Abdalla:\n\n${link}\n\nE-mail: ${criado.email}\nSenha: ${criado.senha}`;
+    const fone = criado.telefone.replace(/\D/g, "");
+    const whats = "https://wa.me/" + (fone ? (fone.length <= 11 ? "55" + fone : fone) : "") + "?text=" + encodeURIComponent(msg);
+    const copiar = async () => { try { await navigator.clipboard.writeText(msg); showToast("Dados copiados"); } catch { showToast("Não foi possível copiar"); } };
+    const linha = (l, v) => (<div className="flex justify-between gap-3 py-2" style={{ borderTop: `1px solid ${C.bg}` }}><span style={{ color: C.cinza }}>{l}</span><span className="font-bold" style={{ wordBreak: "break-all", textAlign: "right" }}>{v}</span></div>);
+    return (
+      <Sheet titulo="Pessoa adicionada" onFechar={onFechar}>
+        <div className="text-center py-2">
+          <CheckCircle2 size={48} style={{ color: C.pasto, display: "inline" }} />
+          <div className="font-bold text-lg mt-2">{primeiro} já pode entrar no app</div>
+          <div style={{ color: C.cinza }} className="text-sm mt-1">Envie os dados de acesso abaixo.</div>
+        </div>
+        <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, fontSize: 14 }} className="px-3 py-1 my-3">
+          {linha("E-mail", criado.email)}
+          {linha("Senha", criado.senha)}
+        </div>
+        <a href={whats} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16, textDecoration: "none", boxSizing: "border-box" }}><MessageCircle size={19} /> Enviar pelo WhatsApp</a>
+        <button onClick={copiar} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.card, color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, padding: 13, fontWeight: 600 }}><Copy size={17} /> Copiar dados</button>
+        <button onClick={onFechar} style={{ width: "100%", color: C.cinza, padding: 12, fontWeight: 600 }}>Concluir</button>
+      </Sheet>
+    );
+  }
+
+  const opcao = (on, onClick, titulo, texto, key) => (
+    <button key={key} type="button" onClick={onClick} style={{ flex: 1, textAlign: "left", padding: 12, borderRadius: 12, background: on ? C.pastoClaro : C.card, border: `2px solid ${on ? C.pasto : C.linha}` }}>
+      <div className="font-bold text-sm" style={{ color: on ? C.pastoEsc : C.terra }}>{titulo}</div>
+      {texto && <div style={{ color: C.cinza, fontSize: 12, marginTop: 2, lineHeight: 1.3 }}>{texto}</div>}
+    </button>
+  );
+
+  return (
+    <Sheet titulo="Adicionar pessoa" onFechar={onFechar}>
+      <Campo label="Nome"><input autoFocus value={f.nome} onChange={(e) => set("nome", e.target.value)} placeholder="Ex.: João da Silva" style={inpSt} /></Campo>
+      <Campo label="WhatsApp (opcional)"><input type="tel" inputMode="tel" value={f.telefone} onChange={(e) => set("telefone", e.target.value)} placeholder="Ex.: 63 99999-0000" style={inpSt} /></Campo>
+      <Campo label="Função">
+        <div className="flex gap-2">
+          {opcao(f.papel === "colaborador", () => set("papel", "colaborador"), "Colaborador", "Faz as tarefas e pede compras", "c")}
+          {opcao(f.papel === "admin", () => set("papel", "admin"), "Administrador", "Cria e organiza tudo", "a")}
+        </div>
+      </Campo>
+      {f.papel !== "admin" && (
+        <Campo label="Setor">
+          <div className="flex gap-2">{SETORES.map((s) => opcao(f.setor === s.id, () => set("setor", s.id), s.id, null, s.id))}</div>
+        </Campo>
+      )}
+      <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3 mb-3">
+        <div className="font-semibold text-sm mb-3 flex items-center gap-2"><KeyRound size={16} style={{ color: C.ambar }} /> Dados para entrar no app</div>
+        <Campo label="E-mail da pessoa"><input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="Ex.: joao@gmail.com" style={inpSt} /></Campo>
+        <Campo label="Senha">
+          <div className="flex gap-2">
+            <input value={f.senha} onChange={(e) => set("senha", e.target.value)} autoCapitalize="none" autoCorrect="off" style={{ ...inpSt, flex: 1, fontWeight: 600, letterSpacing: 0.5 }} />
+            <button type="button" onClick={() => set("senha", gerarSenha())} title="Gerar outra senha" style={{ background: C.bg, border: `1px solid ${C.linha}`, borderRadius: 10, padding: "0 13px", color: C.cinza }}><Shuffle size={18} /></button>
+          </div>
+        </Campo>
+        <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1"><Info size={12} /> Já deixamos uma senha fácil pronta. No próximo passo você envia pelo WhatsApp.</div>
+      </div>
+      {erro && <div style={{ background: C.vermelhoClaro, color: C.vermelho, borderRadius: 10, fontSize: 14 }} className="p-3 mb-3">{erro}</div>}
+      <button onClick={criar} disabled={criando} style={{ width: "100%", background: criando ? C.cinzaClaro : C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>{criando ? "Criando acesso…" : "Criar acesso"}</button>
+    </Sheet>
   );
 }
 

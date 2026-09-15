@@ -8,16 +8,16 @@
 //   2. Confirma que o chamador tem perfil admin e ativo=true.
 //   3. So entao cria o usuario com a chave service_role.
 //
-// Deploy:  supabase functions deploy criar-usuario
-// (as variaveis SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY ja existem no ambiente
-//  das Edge Functions; nao precisa configurar nada a mais.)
+// Deploy: painel do Supabase > Edge Functions > "criar-usuario" (endereço: quick-service) > colar
+// este arquivo. (SUPABASE_URL e a chave secreta ja existem no ambiente das Edge
+// Functions; nao precisa configurar nada a mais.)
 // -----------------------------------------------------------------------------
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-region",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -29,17 +29,17 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Método não permitido" }, 405);
 
   const url = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  // Chave secreta: formato novo (SUPABASE_SECRET_KEYS) ou o legado (SUPABASE_SERVICE_ROLE_KEY).
+  let serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  try { serviceKey = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}").default || serviceKey; } catch { /* usa o legado */ }
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
   // 1) Identifica quem chamou a partir do token enviado pelo app.
-  const authHeader = req.headers.get("Authorization") || "";
-  const comoChamador = createClient(url, anonKey, { global: { headers: { Authorization: authHeader } } });
-  const { data: userData, error: userErr } = await comoChamador.auth.getUser();
-  if (userErr || !userData?.user) return json({ error: "Não autenticado" }, 401);
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  const { data: userData, error: userErr } = await admin.auth.getUser(token);
+  if (userErr || !userData?.user) return json({ error: "Sua sessão expirou. Saia e entre de novo no app." }, 401);
 
   // 2) Confere se o chamador é admin e está ativo.
-  const admin = createClient(url, serviceKey);
   const { data: perfilChamador } = await admin
     .from("perfis")
     .select("papel, ativo")
@@ -67,7 +67,10 @@ Deno.serve(async (req) => {
     email_confirm: true,
     user_metadata: { nome },
   });
-  if (createErr || !novo?.user) return json({ error: createErr?.message || "Falha ao criar usuário" }, 400);
+  if (createErr || !novo?.user) {
+    const jaExiste = /already|registered|exists/i.test(createErr?.message || "");
+    return json({ error: jaExiste ? "Esse e-mail já tem cadastro no app." : "Falha ao criar usuário: " + (createErr?.message || "") }, 400);
+  }
 
   // 5) Cria o perfil correspondente (mesmo id do Auth).
   const { error: perfilErr } = await admin.from("perfis").insert({
