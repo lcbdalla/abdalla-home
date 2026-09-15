@@ -36,6 +36,15 @@ const SETORES = [
 ];
 const setorCor = (s) => (SETORES.find((x) => x.id === s)?.cor) || "#726b5e";
 
+// Chave pública do web push (VAPID). É pública por definição — pode ficar no código.
+// A chave privada correspondente fica só como segredo no Supabase (nunca no repositório).
+const VAPID_PUBLIC = "BHJJ9Z4wQeZHuWbocTCz1jtm30KDpAEhifbV0oCC4FIdpZMw4JY_2x9TEUjkeJZhSLhVt975qSeT7l3cs_t_RXw";
+const urlBase64ToUint8Array = (base64) => {
+  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+  const raw = atob((base64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+};
+
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const hojeISO = () => new Date().toISOString().slice(0, 10);
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -388,9 +397,29 @@ export default function App() {
     if (!souAdmin && (aba === "painel" || aba === "equipe")) setAba("tarefas");
   }, [souAdmin, aba]);
 
-  const pedirNotificacao = () => {
-    if (typeof Notification === "undefined") { showToast("Notificações não disponíveis aqui"); return; }
-    Notification.requestPermission().then((p) => showToast(p === "granted" ? "Lembretes ativados!" : "Lembretes não ativados"));
+  // Ativa os lembretes: pede permissão e inscreve ESTE aparelho para receber avisos
+  // mesmo com o app fechado (web push). A inscrição fica salva em "push_subs".
+  const pedirNotificacao = async () => {
+    if (typeof Notification === "undefined") { showToast("Notificações não disponíveis neste navegador"); return; }
+    // iPhone só entrega push quando o app está instalado na tela inicial.
+    const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (iOS && window.navigator.standalone === false) { showToast("No iPhone, primeiro instale o app na tela inicial (Safari → Compartilhar → Adicionar à Tela de Início) e abra por lá."); return; }
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { showToast(perm === "denied" ? "As notificações estão bloqueadas nas configurações do navegador." : "Lembretes não ativados"); return; }
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) { showToast("Lembretes ativados só com o app aberto (este navegador não suporta avisos com o app fechado)."); return; }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) });
+      const j = sub.toJSON();
+      const { error } = await supabase.from("push_subs").upsert(
+        { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_id: euId },
+        { onConflict: "endpoint" }
+      );
+      if (error) { showToast("Ativou aqui, mas não deu para salvar no servidor: " + error.message); return; }
+      showToast("Lembretes ativados neste celular!");
+    } catch (e) {
+      showToast("Não foi possível ativar os lembretes: " + (e?.message || e));
+    }
   };
 
   // ---------- Mutações (gravam no Supabase; o realtime propaga aos outros) ----------
