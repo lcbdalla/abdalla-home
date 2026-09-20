@@ -658,7 +658,7 @@ export default function App() {
         )}
 
         <main className="px-3 pt-3">
-          {aba === "tarefas" && <TarefasView {...{ tasks, users, euId, souAdmin, meuSetor: eu?.setor || "", filtro, setFiltro, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onReabrir: reabrir, onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onTrocar: trocarResponsavel }} />}
+          {aba === "tarefas" && <TarefasView {...{ tasks, users, euId, souAdmin, meuSetor: eu?.setor || "", filtro, setFiltro, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onReabrir: reabrir, onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onTrocar: trocarResponsavel, onAbrir: (t) => setModal({ tipo: "detalhe", task: t }) }} />}
           {aba === "agenda" && <AgendaView {...{ tasks, users, souAdmin, meuSetor: eu?.setor || "", euId }} />}
           {aba === "compras" && <ComprasView {...{ tasks, produtos, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onReabrir: reabrir }} />}
           {aba === "estoque" && <EstoqueView {...{ produtos, estoque, movs, users, onAjustar: ajustarEstoque, onAbrirProdutos: () => setProdutosAberto(true), onMovimento: (mv) => setModal({ tipo: "movimento", mov: mv }), onSaidaRapida: saidaRapida }} />}
@@ -686,6 +686,7 @@ export default function App() {
         </nav>
 
         {modal?.tipo === "tarefa" && <TarefaModal {...{ task: modal.task, users, eu, produtos, ehCompraInicial: modal.ehCompra, onCadastrarProduto: cadastrarProduto, showToast, onFechar: () => setModal(null), onSalvar: salvarTarefa }} />}
+        {modal?.tipo === "detalhe" && <DetalheTarefaModal {...{ t: modal.task, users, onFechar: () => setModal(null), onEditar: (t) => setModal({ tipo: "tarefa", task: t }) }} />}
         {modal?.tipo === "concluir" && <ConcluirModal {...{ task: modal.task, produtos, showToast, onFechar: () => setModal(null), onConfirmar: (fotoUrl) => { concluirTarefa(modal.task, fotoUrl); setModal(null); } }} />}
         {infoAberto && <InfoModal onFechar={() => setInfoAberto(false)} />}
         {produtosAberto && <ProdutosModal {...{ produtos, onCadastrar: cadastrarProduto, onRemover: removerProduto, onRenomear: renomearProduto, onFechar: () => setProdutosAberto(false) }} />}
@@ -765,7 +766,7 @@ function AcessoRemovido({ onSair }) {
 }
 
 /* ============================= TAREFAS ============================= */
-function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro, onConcluir, onReabrir, onEditar, onExcluir, onTrocar }) {
+function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }) {
   let lista = tasks.filter((t) => !t.ehCompra);
   // Colaborador só enxerga o próprio setor (e o que estiver no nome dele).
   if (!souAdmin) lista = lista.filter((t) => (meuSetor && t.setor === meuSetor) || t.responsavelId === euId);
@@ -784,12 +785,12 @@ function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro
         ))}
       </div>
       {lista.length === 0 && <Vazio icon={ListTodo} titulo="Nenhuma tarefa ainda" texto="Toque em “Nova tarefa” para começar a organizar o rancho." />}
-      {pendentes.map((t) => <CardTarefa key={t.id} {...{ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar }} />)}
-      {feitas.length > 0 && (<div className="mt-4"><div style={{ color: C.cinza }} className="text-xs font-semibold mb-2 uppercase">Concluídas hoje</div>{feitas.map((t) => <CardTarefa key={t.id} {...{ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar }} />)}</div>)}
+      {pendentes.map((t) => <CardTarefa key={t.id} {...{ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }} />)}
+      {feitas.length > 0 && (<div className="mt-4"><div style={{ color: C.cinza }} className="text-xs font-semibold mb-2 uppercase">Concluídas hoje</div>{feitas.map((t) => <CardTarefa key={t.id} {...{ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }} />)}</div>)}
     </div>
   );
 }
-function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar }) {
+function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }) {
   const iso = hojeISO();
   const feito = isConcluida(t, iso);
   const [abrirResp, setAbrirResp] = useState(false);
@@ -803,8 +804,10 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
       <div className="flex gap-3">
         <button onClick={() => (feito ? onReabrir(t) : onConcluir(t))} style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 999, border: `2px solid ${feito ? C.pasto : C.cinzaClaro}`, background: feito ? C.pasto : "transparent", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>{feito && <Check size={18} color="#fff" strokeWidth={3} />}</button>
         <div className="flex-1 min-w-0">
-          <div style={{ textDecoration: feito ? "line-through" : "none", fontWeight: 600, fontSize: 15.5, lineHeight: 1.25 }}>{t.titulo}</div>
-          {t.descricao && <div style={{ color: C.cinza }} className="text-sm mt-0.5">{t.descricao}</div>}
+          <button onClick={() => onAbrir && onAbrir(t)} style={{ display: "block", width: "100%", textAlign: "left" }}>
+            <div style={{ textDecoration: feito ? "line-through" : "none", fontWeight: 600, fontSize: 15.5, lineHeight: 1.25 }}>{t.titulo}</div>
+            {t.descricao && <div style={{ color: C.cinza }} className="text-sm mt-0.5">{t.descricao}</div>}
+          </button>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
             {t.setor && <Chip icon={Users} texto={t.setor} cor={setorCor(t.setor)} />}
             {t.tipo === "recorrente" && <Chip icon={Repeat} texto={textoRecorrencia(t)} cor={C.lago} />}
@@ -1605,6 +1608,51 @@ function MovimentoModal({ tipo, produtos, estoque, onAplicar, onFechar }) {
 }
 
 /* ============================= MODAL: CONCLUIR ============================= */
+// Detalhes da tarefa (abre ao tocar no título). Só leitura, com botão para editar.
+function DetalheTarefaModal({ t, users, onFechar, onEditar }) {
+  const [zoom, setZoom] = useState(false);
+  const iso = hojeISO();
+  const feito = isConcluida(t, iso);
+  const concluinteId = t.tipo === "unica" ? t.concluidaPorId : (t.conclusoes && t.conclusoes[iso] ? t.conclusoes[iso].userId : null);
+  const fotoFeito = t.tipo === "unica" ? t.fotoConclusaoUrl : (t.conclusoes && t.conclusoes[iso] ? t.conclusoes[iso].fotoUrl : null);
+  const Linha = ({ icon: Ic, label, valor }) => (
+    <div className="flex items-start gap-2 py-2.5" style={{ borderTop: `1px solid ${C.bg}` }}>
+      <Ic size={16} style={{ color: C.cinzaClaro, marginTop: 2, flexShrink: 0 }} />
+      <div className="flex-1"><div style={{ fontSize: 11.5, color: C.cinza }}>{label}</div><div style={{ fontSize: 14.5, color: C.terra, fontWeight: 600 }}>{valor}</div></div>
+    </div>
+  );
+  return (
+    <Sheet titulo="Detalhes da tarefa" onFechar={onFechar}>
+      <div className="font-bold text-lg" style={{ color: C.terra }}>{t.titulo}</div>
+      {t.descricao && <div style={{ color: C.cinza }} className="text-sm mt-1">{t.descricao}</div>}
+      {t.imagemUrl && (
+        <button onClick={() => setZoom(true)} style={{ display: "block", width: "100%", marginTop: 12, borderRadius: 12, overflow: "hidden", border: `1px solid ${C.linha}`, position: "relative" }}>
+          <img src={t.imagemUrl} alt="Foto de referência da tarefa" style={{ display: "block", width: "100%", maxHeight: 240, objectFit: "cover" }} />
+          <span style={{ position: "absolute", right: 8, bottom: 8, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}><Search size={12} /> Ampliar</span>
+        </button>
+      )}
+      <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="px-3 py-0.5 mt-3">
+        <Linha icon={User} label="Responsável" valor={nomeUser(users, t.responsavelId)} />
+        <Linha icon={Users} label="Setor" valor={t.setor || "—"} />
+        <Linha icon={t.tipo === "recorrente" ? Repeat : CalendarDays} label="Quando" valor={t.tipo === "recorrente" ? textoRecorrencia(t) : (t.data ? fmtData(t.data) : "—")} />
+        <Linha icon={Clock} label="Horário" valor={(t.horaInicio || t.horaFim) ? `${t.horaInicio || "?"}${t.horaFim ? " – " + t.horaFim : ""}` : "—"} />
+        <Linha icon={Check} label="Situação" valor={feito ? (concluinteId ? "Feito por " + nomeUser(users, concluinteId) : "Concluída") : "Pendente"} />
+      </div>
+      {fotoFeito && (<>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: C.cinza }} className="mt-3 mb-1">Foto da conclusão</div>
+        <img src={fotoFeito} alt="Foto da conclusão" style={{ width: "100%", borderRadius: 12, border: `1px solid ${C.linha}`, maxHeight: 240, objectFit: "cover" }} />
+      </>)}
+      <button onClick={() => { onFechar(); onEditar(t); }} className="flex items-center justify-center gap-2" style={{ width: "100%", marginTop: 16, background: C.pasto, color: "#fff", borderRadius: 12, padding: 13, fontWeight: 700 }}><Pencil size={17} /> Editar tarefa</button>
+      {zoom && t.imagemUrl && (
+        <div onClick={() => setZoom(false)} style={{ position: "fixed", inset: 0, background: "#000000e8", zIndex: 96, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <img src={t.imagemUrl} alt="Foto de referência da tarefa" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 12 }} />
+          <button onClick={() => setZoom(false)} title="Fechar" style={{ position: "fixed", top: 16, right: 16, background: "#ffffff26", color: "#fff", borderRadius: 999, padding: 10, display: "flex" }}><X size={22} /></button>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
 function ConcluirModal({ task, produtos, showToast, onFechar, onConfirmar }) {
   const [foto, setFoto] = useState(null); const [url, setUrl] = useState(null); const [salvando, setSalvando] = useState(false);
   const fileRef = useRef();
