@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
-  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2
+  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -276,6 +276,7 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
   const [infoAberto, setInfoAberto] = useState(false);
+  const [menuAberto, setMenuAberto] = useState(false);
   const [produtosAberto, setProdutosAberto] = useState(false);
   const [avisos, setAvisos] = useState([]);
 
@@ -587,9 +588,19 @@ export default function App() {
               <div><div className="font-bold text-lg leading-tight">Abdalla Home</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">Rancho Abdalla</div></div>
             </div>
             <div className="flex items-center gap-2">
-              {!estaInstalado() && <button onClick={() => _installOpen.fn && _installOpen.fn()} title="Instalar o app na tela inicial" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><ArrowDownToLine size={18} /></button>}
               <button onClick={pedirNotificacao} title="Ativar lembretes" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Bell size={18} /></button>
-              {souAdmin && <button onClick={() => setInfoAberto(true)} title="Sobre a propriedade" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Info size={18} /></button>}
+              {(!estaInstalado() || souAdmin) && (
+                <div className="relative">
+                  <button onClick={() => setMenuAberto((v) => !v)} title="Mais opções" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><MoreVertical size={18} /></button>
+                  {menuAberto && (<>
+                    <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 44 }} />
+                    <div style={{ position: "absolute", top: 42, right: 0, background: "#fff", color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 22px #0003", zIndex: 45, minWidth: 200, overflow: "hidden" }}>
+                      {!estaInstalado() && <button onClick={() => { setMenuAberto(false); _installOpen.fn && _installOpen.fn(); }} className="flex items-center gap-2" style={{ width: "100%", textAlign: "left", padding: "12px 14px", fontSize: 14, fontWeight: 600 }}><ArrowDownToLine size={16} style={{ color: C.pasto }} /> Instalar app</button>}
+                      {souAdmin && <button onClick={() => { setMenuAberto(false); setInfoAberto(true); }} className="flex items-center gap-2" style={{ width: "100%", textAlign: "left", padding: "12px 14px", fontSize: 14, fontWeight: 600, borderTop: !estaInstalado() ? `1px solid ${C.linha}` : "none" }}><Info size={16} style={{ color: C.lago }} /> Sobre a propriedade</button>}
+                    </div>
+                  </>)}
+                </div>
+              )}
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2" style={{ background: "#ffffff1a", borderRadius: 12, padding: "8px 12px" }}>
