@@ -59,6 +59,10 @@ const estaInstalado = () => {
   return window.navigator.standalone === true; // iPhone
 };
 
+/* global __BUILD_ID__ */
+// Número desta versão do app (injetado no build). Serve para detectar atualização.
+const APP_BUILD = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "dev";
+
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const hojeISO = () => new Date().toISOString().slice(0, 10);
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -277,6 +281,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [infoAberto, setInfoAberto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
+  const [temAtualizacao, setTemAtualizacao] = useState(false);
   const [produtosAberto, setProdutosAberto] = useState(false);
   const [avisos, setAvisos] = useState([]);
 
@@ -414,6 +419,35 @@ export default function App() {
 
   // Ativa os lembretes: pede permissão e inscreve ESTE aparelho para receber avisos
   // mesmo com o app fechado (web push). A inscrição fica salva em "push_subs".
+  // ---------- Aviso de nova versão ----------
+  // Confere o version.json publicado; se o número for diferente do que está
+  // rodando, mostra a barra "Atualizar" (ao entrar, ao voltar ao app e de tempos
+  // em tempos). Não roda em desenvolvimento (sem version.json).
+  useEffect(() => {
+    if (APP_BUILD === "dev") return;
+    let vivo = true;
+    const conferir = async () => {
+      try {
+        const r = await fetch(import.meta.env.BASE_URL + "version.json?ts=" + Date.now(), { cache: "no-store" });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (vivo && j?.id && j.id !== APP_BUILD) setTemAtualizacao(true);
+      } catch { /* sem rede: tenta na próxima */ }
+    };
+    conferir();
+    const iv = setInterval(conferir, 5 * 60 * 1000);
+    const aoVoltar = () => { if (document.visibilityState === "visible") conferir(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => { vivo = false; clearInterval(iv); document.removeEventListener("visibilitychange", aoVoltar); };
+  }, []);
+
+  const atualizarAgora = async () => {
+    try { if ("caches" in window) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } } catch { /* ok */ }
+    try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); } catch { /* ok */ }
+    // Recarrega furando o cache do navegador (URL única).
+    window.location.href = import.meta.env.BASE_URL + "?v=" + Date.now();
+  };
+
   const pedirNotificacao = async () => {
     if (typeof Notification === "undefined") { showToast("Notificações não disponíveis neste navegador"); return; }
     // iPhone só entrega push quando o app está instalado na tela inicial.
@@ -656,6 +690,14 @@ export default function App() {
         {modal?.tipo === "movimento" && <MovimentoModal {...{ tipo: modal.mov, produtos, estoque, onFechar: () => setModal(null), onAplicar: (lista) => { aplicarMovimentos(lista, modal.mov, "manual"); showToast((modal.mov === "saida" ? "Saída" : "Entrada") + " registrada (" + lista.length + (lista.length === 1 ? " item" : " itens") + ")"); setModal(null); } }} />}
 
         {toast && <div style={{ position: "fixed", bottom: 96, left: "50%", transform: "translateX(-50%)", background: C.terra, color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 14, fontWeight: 600, zIndex: 60, boxShadow: "0 4px 14px #0003", whiteSpace: "nowrap" }}>{toast}</div>}
+        {temAtualizacao && (
+          <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 74, width: "calc(100% - 24px)", maxWidth: 436, background: C.pastoEsc, color: "#fff", borderRadius: 14, padding: "10px 12px", zIndex: 65, boxShadow: "0 8px 22px #0004", display: "flex", alignItems: "center", gap: 10 }}>
+            <RefreshCw size={18} style={{ flexShrink: 0 }} />
+            <div className="flex-1" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2 }}>Nova versão disponível</div>
+            <button onClick={() => setTemAtualizacao(false)} title="Agora não" style={{ color: "#ffffffcc", padding: 4 }}><X size={18} /></button>
+            <button onClick={atualizarAgora} style={{ background: "#fff", color: C.pastoEsc, borderRadius: 10, padding: "8px 16px", fontWeight: 700, fontSize: 14 }}>Atualizar</button>
+          </div>
+        )}
         <InstalarPrompt />
         <DialogHost />
       </div>
