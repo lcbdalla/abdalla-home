@@ -49,6 +49,7 @@ const urlBase64ToUint8Array = (base64) => {
 // pelo evento "beforeinstallprompt"; guardamos esse convite para usar num botão.
 let _installEvt = null;
 const _installSubs = new Set();
+const _installOpen = { fn: null }; // o botão "Instalar app" do cabeçalho chama isto
 if (typeof window !== "undefined") {
   window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); _installEvt = e; _installSubs.forEach((fn) => fn()); });
   window.addEventListener("appinstalled", () => { _installEvt = null; try { localStorage.setItem("instalarDispensado", "1"); } catch { /* sem storage */ } _installSubs.forEach((fn) => fn()); });
@@ -586,6 +587,7 @@ export default function App() {
               <div><div className="font-bold text-lg leading-tight">Abdalla Home</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">Rancho Abdalla</div></div>
             </div>
             <div className="flex items-center gap-2">
+              {!estaInstalado() && <button onClick={() => _installOpen.fn && _installOpen.fn()} title="Instalar o app na tela inicial" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><ArrowDownToLine size={18} /></button>}
               <button onClick={pedirNotificacao} title="Ativar lembretes" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Bell size={18} /></button>
               {souAdmin && <button onClick={() => setInfoAberto(true)} title="Sobre a propriedade" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Info size={18} /></button>}
             </div>
@@ -1094,15 +1096,21 @@ function NovaPessoaSheet({ showToast, onCriado, onFechar }) {
 // Popup que convida a instalar o app na tela inicial (some quando já instalado).
 function InstalarPrompt() {
   const [visivel, setVisivel] = useState(false);
-  const [ajudaIOS, setAjudaIOS] = useState(false);
+  const [ajuda, setAjuda] = useState(false);
   const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 
+  // Deixa o botão do cabeçalho reabrir este convite quando quiser.
+  useEffect(() => {
+    _installOpen.fn = () => { setAjuda(false); setVisivel(true); };
+    return () => { _installOpen.fn = null; };
+  }, []);
+
+  // Aparece sozinho ao entrar, se ainda não instalou e não pediu para não mostrar.
   useEffect(() => {
     if (estaInstalado()) return;
     let dispensado = false;
     try { dispensado = localStorage.getItem("instalarDispensado") === "1"; } catch { /* ok */ }
     if (dispensado) return;
-    // Mostra no iPhone (instalação manual) ou quando o Android já ofereceu o convite.
     const talvezMostrar = () => { if (!estaInstalado() && (iOS || _installEvt)) setVisivel(true); };
     _installSubs.add(talvezMostrar);
     const t = setTimeout(talvezMostrar, 800);
@@ -1120,8 +1128,8 @@ function InstalarPrompt() {
       if (escolha?.outcome === "accepted") setVisivel(false);
       return;
     }
-    if (iOS) { setAjudaIOS(true); return; }
-    setVisivel(false);
+    // Sem convite automático: mostra o passo a passo (iPhone ou outros navegadores).
+    setAjuda(true);
   };
 
   const Passo = ({ n, children }) => (
@@ -1138,19 +1146,25 @@ function InstalarPrompt() {
           <div style={{ background: C.pastoEsc, borderRadius: 14, width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><MapPin size={26} color="#fff" /></div>
           <div><div className="font-bold text-lg leading-tight" style={{ color: C.terra }}>Instalar o Abdalla Home</div><div style={{ color: C.cinza, fontSize: 13 }}>Fica na tela do celular como um app.</div></div>
         </div>
-        {ajudaIOS ? (
+        {ajuda ? (
           <div style={{ background: C.bg, borderRadius: 14 }} className="p-3 mt-2 mb-3">
-            <Passo n={1}>Toque no botão <b>Compartilhar</b> do Safari (o quadradinho com a seta pra cima, na barra de baixo).</Passo>
-            <Passo n={2}>Role e toque em <b>Adicionar à Tela de Início</b>.</Passo>
-            <Passo n={3}>Toque em <b>Adicionar</b>. Pronto!</Passo>
+            {iOS ? (<>
+              <Passo n={1}>Toque no botão <b>Compartilhar</b> do Safari (o quadradinho com a seta pra cima, na barra de baixo).</Passo>
+              <Passo n={2}>Role e toque em <b>Adicionar à Tela de Início</b>.</Passo>
+              <Passo n={3}>Toque em <b>Adicionar</b>. Pronto!</Passo>
+            </>) : (<>
+              <Passo n={1}>Toque no menu do navegador (os <b>três pontinhos ⋮</b> no canto de cima).</Passo>
+              <Passo n={2}>Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).</Passo>
+              <Passo n={3}>Confirme. Pronto!</Passo>
+            </>)}
           </div>
         ) : (
           <div style={{ color: C.cinza, fontSize: 14 }} className="mb-3 mt-1">Abre rapidinho, sem digitar endereço, e recebe os lembretes de tarefa.</div>
         )}
         <div className="flex gap-2">
-          <button onClick={dispensar} style={{ flex: 1, padding: 13, borderRadius: 12, fontWeight: 600, color: C.cinza, background: C.bg }}>Agora não</button>
-          {!ajudaIOS && <button onClick={instalar} className="flex items-center justify-center gap-2" style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}><ArrowDownToLine size={18} /> {iOS ? "Como instalar" : "Instalar"}</button>}
-          {ajudaIOS && <button onClick={dispensar} style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}>Entendi</button>}
+          <button onClick={dispensar} style={{ flex: 1, padding: 13, borderRadius: 12, fontWeight: 600, color: C.cinza, background: C.bg }}>{ajuda ? "Fechar" : "Agora não"}</button>
+          {!ajuda && <button onClick={instalar} className="flex items-center justify-center gap-2" style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}><ArrowDownToLine size={18} /> {iOS ? "Como instalar" : "Instalar"}</button>}
+          {ajuda && <button onClick={dispensar} style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}>Entendi</button>}
         </div>
       </div>
     </div>
