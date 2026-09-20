@@ -623,24 +623,26 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2">
               <button onClick={pedirNotificacao} title="Ativar lembretes" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Bell size={18} /></button>
-              {(!estaInstalado() || souAdmin) && (
-                <div className="relative">
-                  <button onClick={() => setMenuAberto((v) => !v)} title="Mais opções" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><MoreVertical size={18} /></button>
-                  {menuAberto && (<>
-                    <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 44 }} />
-                    <div style={{ position: "absolute", top: 42, right: 0, background: "#fff", color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 22px #0003", zIndex: 45, minWidth: 200, overflow: "hidden" }}>
-                      {!estaInstalado() && <button onClick={() => { setMenuAberto(false); _installOpen.fn && _installOpen.fn(); }} className="flex items-center gap-2" style={{ width: "100%", textAlign: "left", padding: "12px 14px", fontSize: 14, fontWeight: 600 }}><ArrowDownToLine size={16} style={{ color: C.pasto }} /> Instalar app</button>}
-                      {souAdmin && <button onClick={() => { setMenuAberto(false); setInfoAberto(true); }} className="flex items-center gap-2" style={{ width: "100%", textAlign: "left", padding: "12px 14px", fontSize: 14, fontWeight: 600, borderTop: !estaInstalado() ? `1px solid ${C.linha}` : "none" }}><Info size={16} style={{ color: C.lago }} /> Sobre a propriedade</button>}
-                    </div>
-                  </>)}
-                </div>
-              )}
+              <div className="relative">
+                <button onClick={() => setMenuAberto((v) => !v)} title="Mais opções" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><MoreVertical size={18} /></button>
+                {menuAberto && (<>
+                  <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 44 }} />
+                  <div style={{ position: "absolute", top: 42, right: 0, background: "#fff", color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 22px #0003", zIndex: 45, minWidth: 210, overflow: "hidden" }}>
+                    {[
+                      ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => { setMenuAberto(false); _installOpen.fn && _installOpen.fn(); } }] : []),
+                      ...(souAdmin ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: () => { setMenuAberto(false); setInfoAberto(true); } }] : []),
+                      { key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { setMenuAberto(false); if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) sair(); } },
+                    ].map((it, i) => { const Ic = it.icon; return (
+                      <button key={it.key} onClick={it.on} className="flex items-center gap-2" style={{ width: "100%", textAlign: "left", padding: "12px 14px", fontSize: 14, fontWeight: 600, color: it.cor === C.vermelho ? C.vermelho : C.terra, borderTop: i ? `1px solid ${C.linha}` : "none" }}><Ic size={16} style={{ color: it.cor }} /> {it.txt}</button>
+                    ); })}
+                  </div>
+                </>)}
+              </div>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2" style={{ background: "#ffffff1a", borderRadius: 12, padding: "8px 12px" }}>
             {souAdmin ? <Star size={16} /> : <User size={16} />}
             <div className="flex-1"><div className="text-xs" style={{ color: "#ffffffbb" }}>Conectado como</div><div className="font-bold leading-tight">{eu.nome} <span style={{ color: "#ffffffbb", fontWeight: 500, fontSize: 12 }}>· {papelLabel(eu.papel)}</span></div></div>
-            <button onClick={async () => { if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) sair(); }} title="Sair" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><LogOut size={16} /></button>
           </div>
         </header>
 
