@@ -5,7 +5,14 @@
 // ponytail: sem modo offline; adicionar cache aqui se precisar abrir sem internet.
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
-self.addEventListener("fetch", () => {});
+// Sempre busca a PÁGINA fresca da rede (sem cache), para o app nunca abrir uma
+// versão velha depois de uma publicação. Os arquivos de código têm nome único
+// por versão, então podem seguir o cache normal do navegador.
+self.addEventListener("fetch", (e) => {
+  if (e.request.mode === "navigate") {
+    e.respondWith(fetch(e.request, { cache: "no-store" }).catch(() => fetch(e.request)));
+  }
+});
 
 self.addEventListener("push", (e) => {
   let d = {};
