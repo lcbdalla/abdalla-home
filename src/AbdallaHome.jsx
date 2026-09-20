@@ -173,7 +173,7 @@ function buildTarefas(ts, itens, concl) {
     responsavelId: r.responsavel_id, criadoPorId: r.criado_por_id,
     tipo: r.tipo, freq: r.freq || "diaria", dias: r.dias || [], intervaloSemanas: r.intervalo_semanas || 1,
     data: r.data || "", dataInicio: r.data_inicio || "", horaInicio: timeHM(r.hora_inicio), horaFim: timeHM(r.hora_fim),
-    imagemUrl: r.imagem_url || null, ehCompra: !!r.eh_compra, status: r.status || "pendente", setor: r.setor || "", estoqueAplicado: !!r.estoque_aplicado,
+    imagemUrl: r.imagem_url || null, ehCompra: !!r.eh_compra, status: r.status || "pendente", setor: r.setor || "", estoqueAplicado: !!r.estoque_aplicado, darEntrada: r.dar_entrada !== false,
     concluidaEm: toMs(r.concluida_em), fotoConclusaoUrl: r.foto_conclusao_url || null, concluidaPorId: r.concluida_por_id || null,
     conclusoes: conBy[r.id] || {},
     compra: { itens: itensBy[r.id] || [] },
@@ -197,6 +197,7 @@ function tarefaRow(d) {
     hora_fim: d.horaFim || null,
     imagem_url: d.imagemUrl || null,
     eh_compra: !!d.ehCompra,
+    dar_entrada: d.ehCompra ? (d.darEntrada !== false) : true,
     setor: d.setor || null,
   };
 }
@@ -504,7 +505,7 @@ export default function App() {
       await supabase.from("conclusoes").upsert({ tarefa_id: t.id, data: iso, user_id: euId, foto_url: fotoUrl || null }, { onConflict: "tarefa_id,data" });
     }
     const itensC = t.ehCompra ? itensDaCompra(t) : [];
-    if (itensC.length) {
+    if (itensC.length && t.darEntrada !== false) {
       // Só entra no estoque na PRIMEIRA conclusão desta ordem de compra.
       const { data: atual } = await supabase.from("tarefas").select("estoque_aplicado").eq("id", t.id).maybeSingle();
       if (!atual?.estoque_aplicado) {
@@ -514,6 +515,8 @@ export default function App() {
       } else {
         showToast("Compra concluída (já estava no estoque)");
       }
+    } else if (t.ehCompra) {
+      showToast(itensC.length && t.darEntrada === false ? "Compra concluída (sem entrada no estoque)" : "Compra concluída ✓");
     } else showToast("Tarefa concluída ✓");
     setAvisos((p) => p.filter((a) => a.id !== t.id));
     reloadTarefas();
@@ -897,7 +900,7 @@ function ComprasView({ tasks, produtos, onConcluir, onEditar, onExcluir, onReabr
           <div key={t.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3 mb-2.5 flex items-start gap-3">
             <button onClick={() => onConcluir(t)} style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 999, border: `2px solid ${C.cinzaClaro}`, marginTop: 2 }} />
             <div className="flex-1 min-w-0">
-              <div className="font-semibold" style={{ fontSize: 15 }}>{t.titulo}</div>
+              <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold" style={{ fontSize: 15 }}>{t.titulo}</span>{t.darEntrada === false && <Chip icon={Package} texto="Sem estoque" cor={C.cinza} />}</div>
               <div className="flex flex-col gap-1 mt-1.5">
                 {itens.map((it, i) => { const p = prodDe(it.produtoId); return (<div key={i} className="flex items-center gap-2 text-sm"><span style={{ width: 6, height: 6, borderRadius: 999, background: C.ambar, flexShrink: 0 }} /><span className="flex-1 min-w-0 truncate">{p ? p.nome : "Produto"}{p?.subcategoria ? " · " + p.subcategoria : ""}</span><b style={{ color: C.pastoEsc, whiteSpace: "nowrap" }}>{it.quantidade} {p?.unidade || ""}</b></div>); })}
               </div>
@@ -1421,7 +1424,7 @@ function ProdutosModal({ produtos, onCadastrar, onRemover, onRenomear, onFechar 
 /* ============================= MODAL: TAREFA ============================= */
 function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarProduto, showToast, onFechar, onSalvar }) {
   const souAdmin = eu?.papel === "admin";
-  const [f, setF] = useState(() => task || { titulo: "", descricao: "", responsavelId: eu?.id, setor: eu?.setor || "", tipo: "unica", freq: "diaria", dias: [], intervaloSemanas: 1, data: hojeISO(), dataInicio: hojeISO(), horaInicio: "", horaFim: "", imagemUrl: null, ehCompra: !!ehCompraInicial, compra: { itens: [] } });
+  const [f, setF] = useState(() => task || { titulo: "", descricao: "", responsavelId: eu?.id, setor: eu?.setor || "", tipo: "unica", freq: "diaria", dias: [], intervaloSemanas: 1, data: hojeISO(), dataInicio: hojeISO(), horaInicio: "", horaFim: "", imagemUrl: null, ehCompra: !!ehCompraInicial, darEntrada: true, compra: { itens: [] } });
   const [imgPreview, setImgPreview] = useState(task?.imagemUrl || null); const [salvandoImg, setSalvandoImg] = useState(false);
   const [novoProd, setNovoProd] = useState(false);
   const [np, setNp] = useState({ nome: "", categoria: "Supermercado", subcategoria: "", unidade: "un" });
@@ -1515,7 +1518,13 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
               </div>
             ); })}
           </div>
-          <div style={{ color: C.cinza, fontSize: 12 }} className="flex items-center gap-1 mt-2"><Info size={12} /> Ao concluir a compra, todos os itens entram no estoque.</div>
+          <div style={{ borderTop: `1px dashed ${C.cinzaClaro}`, marginTop: 12, paddingTop: 10 }} className="flex items-center gap-3">
+            <div className="flex-1">
+              <div style={{ fontWeight: 600, fontSize: 14, color: C.terra }}>Dar entrada no estoque ao concluir</div>
+              <div style={{ color: C.cinza, fontSize: 12 }}>{f.darEntrada !== false ? "Os itens entram no estoque quando a compra for concluída." : "Compra só de registro — não mexe no estoque."}</div>
+            </div>
+            <Toggle on={f.darEntrada !== false} onToggle={() => set("darEntrada", !(f.darEntrada !== false))} />
+          </div>
         </div>
       )}
 
