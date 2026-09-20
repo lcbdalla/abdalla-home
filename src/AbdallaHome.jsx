@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
-  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical
+  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -1429,6 +1429,7 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
   const [addQtd, setAddQtd] = useState("");
   const [addKey, setAddKey] = useState(0);
   const fileRef = useRef();
+  const camRef = useRef();
 
   useEffect(() => { if (!souAdmin && f.tipo !== "unica") setF((p) => ({ ...p, tipo: "unica" })); }, [souAdmin]);
 
@@ -1556,7 +1557,15 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
       <Campo label="Horário (opcional — gera lembrete 15 min antes)"><div className="flex gap-2 items-center"><input type="time" value={f.horaInicio} onChange={(e) => set("horaInicio", e.target.value)} style={{ ...inpSt, flex: 1 }} /><span style={{ color: C.cinza }}>até</span><input type="time" value={f.horaFim} onChange={(e) => set("horaFim", e.target.value)} style={{ ...inpSt, flex: 1 }} /></div></Campo>
 
       <Campo label="Foto de referência (opcional)">
-        {imgPreview ? (<div style={{ position: "relative" }}><img src={imgPreview} alt="" style={{ borderRadius: 12, width: "100%", maxHeight: 180, objectFit: "cover" }} /><button onClick={() => { setImgPreview(null); set("imagemUrl", null); }} style={{ position: "absolute", top: 8, right: 8, background: "#000a", color: "#fff", borderRadius: 999, padding: 6 }}><X size={16} /></button></div>) : (<button onClick={() => fileRef.current?.click()} style={{ width: "100%", border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 600 }}><Camera size={18} /> {salvandoImg ? "Enviando…" : "Adicionar foto"}</button>)}
+        {imgPreview ? (<div style={{ position: "relative" }}><img src={imgPreview} alt="" style={{ borderRadius: 12, width: "100%", maxHeight: 180, objectFit: "cover" }} /><button onClick={() => { setImgPreview(null); set("imagemUrl", null); }} style={{ position: "absolute", top: 8, right: 8, background: "#000a", color: "#fff", borderRadius: 999, padding: 6 }}><X size={16} /></button></div>) : (salvandoImg ? (
+          <div style={{ width: "100%", border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, textAlign: "center", fontWeight: 600 }}>Enviando…</div>
+        ) : (
+          <div className="flex gap-2">
+            <button onClick={() => camRef.current?.click()} style={{ flex: 1, border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 600 }}><Camera size={18} /> Tirar foto</button>
+            <button onClick={() => fileRef.current?.click()} style={{ flex: 1, border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 600 }}><Images size={18} /> Da galeria</button>
+          </div>
+        ))}
+        <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={escolherImg} style={{ display: "none" }} />
         <input ref={fileRef} type="file" accept="image/*" onChange={escolherImg} style={{ display: "none" }} />
       </Campo>
 
@@ -1656,13 +1665,22 @@ function DetalheTarefaModal({ t, users, onFechar, onEditar }) {
 function ConcluirModal({ task, produtos, showToast, onFechar, onConfirmar }) {
   const [foto, setFoto] = useState(null); const [url, setUrl] = useState(null); const [salvando, setSalvando] = useState(false);
   const fileRef = useRef();
+  const camRef = useRef();
   const itensC = itensDaCompra(task);
   const escolher = async (e) => { const file = e.target.files?.[0]; if (!file) return; setSalvando(true); try { const u = await uploadFoto(file); setFoto(u); setUrl(u); } catch (err) { showToast?.("Erro ao enviar foto"); } setSalvando(false); };
   return (
     <Sheet titulo="Concluir tarefa" onFechar={onFechar}>
       <div style={{ background: C.pastoClaro, borderRadius: 12 }} className="p-3 mb-3"><div className="font-semibold">{task.titulo}</div>{task.ehCompra && itensC.length > 0 && <div style={{ color: C.pastoEsc }} className="text-sm mt-1.5">Entrará no estoque:{itensC.map((it, i) => { const p = produtos.find((x) => x.id === it.produtoId); return (<div key={i}>• {it.quantidade} {p?.unidade || ""} de {p?.nome || "produto"}</div>); })}</div>}</div>
       <div style={{ color: C.cinza }} className="text-sm mb-3">Quer anexar uma foto? É opcional.</div>
-      {foto ? (<div style={{ position: "relative", marginBottom: 12 }}><img src={foto} alt="" style={{ borderRadius: 12, width: "100%", maxHeight: 200, objectFit: "cover" }} /><button onClick={() => { setFoto(null); setUrl(null); }} style={{ position: "absolute", top: 8, right: 8, background: "#000a", color: "#fff", borderRadius: 999, padding: 6 }}><X size={16} /></button></div>) : (<button onClick={() => fileRef.current?.click()} style={{ width: "100%", border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 600, marginBottom: 12 }}><Camera size={18} /> {salvando ? "Enviando…" : "Adicionar foto (opcional)"}</button>)}
+      {foto ? (<div style={{ position: "relative", marginBottom: 12 }}><img src={foto} alt="" style={{ borderRadius: 12, width: "100%", maxHeight: 200, objectFit: "cover" }} /><button onClick={() => { setFoto(null); setUrl(null); }} style={{ position: "absolute", top: 8, right: 8, background: "#000a", color: "#fff", borderRadius: 999, padding: 6 }}><X size={16} /></button></div>) : (salvando ? (
+        <div style={{ width: "100%", border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, textAlign: "center", fontWeight: 600, marginBottom: 12 }}>Enviando…</div>
+      ) : (
+        <div className="flex gap-2" style={{ marginBottom: 12 }}>
+          <button onClick={() => camRef.current?.click()} style={{ flex: 1, border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 600 }}><Camera size={18} /> Tirar foto</button>
+          <button onClick={() => fileRef.current?.click()} style={{ flex: 1, border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 600 }}><Images size={18} /> Da galeria</button>
+        </div>
+      ))}
+      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={escolher} style={{ display: "none" }} />
       <input ref={fileRef} type="file" accept="image/*" onChange={escolher} style={{ display: "none" }} />
       <button onClick={() => onConfirmar(url)} style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 15, fontWeight: 700, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><Check size={20} strokeWidth={3} /> Marcar como concluída</button>
     </Sheet>
