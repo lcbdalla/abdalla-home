@@ -1249,12 +1249,14 @@ function PainelView({ tasks, users }) {
   // Por colaborador: META (tarefas destinadas a ele, feitas ou não) e REALIZADO (feitas por ele).
   const stats = {};
   const ensure = (id) => stats[id] || (stats[id] = { metaCount: 0, metaMin: 0, feitoCount: 0, feitoMin: 0 });
+  // O painel avalia só colaboradores; administradores não entram na conta.
+  const colabIds = new Set(users.filter((u) => u.papel !== "admin").map((u) => u.id));
   let totalTarefas = 0, totalMin = 0;
   tasks.forEach((t) => {
     if (t.ehCompra) return; // compras não entram no painel de trabalho
     const dur = duracaoMin(t);
     // META — contada pelo responsável, pelas ocorrências agendadas no período.
-    if (t.responsavelId) {
+    if (t.responsavelId && colabIds.has(t.responsavelId)) {
       if (t.tipo === "unica") {
         if (t.data && t.data >= inicio && t.data <= fim) { const s = ensure(t.responsavelId); s.metaCount++; s.metaMin += dur; }
       } else {
@@ -1266,11 +1268,11 @@ function PainelView({ tasks, users }) {
     if (t.tipo === "unica") {
       if (t.status === "concluida" && t.concluidaEm) {
         const iso = isoLocal(t.concluidaEm);
-        if (iso >= inicio && iso <= fim) { const who = t.concluidaPorId || t.responsavelId; if (who) { const s = ensure(who); s.feitoCount++; s.feitoMin += dur; totalTarefas++; totalMin += dur; } }
+        if (iso >= inicio && iso <= fim) { const who = t.concluidaPorId || t.responsavelId; if (who && colabIds.has(who)) { const s = ensure(who); s.feitoCount++; s.feitoMin += dur; totalTarefas++; totalMin += dur; } }
       }
     } else {
       Object.entries(t.conclusoes || {}).forEach(([iso, c]) => {
-        if (iso >= inicio && iso <= fim) { const who = c.userId || t.responsavelId; if (who) { const s = ensure(who); s.feitoCount++; s.feitoMin += dur; totalTarefas++; totalMin += dur; } }
+        if (iso >= inicio && iso <= fim) { const who = c.userId || t.responsavelId; if (who && colabIds.has(who)) { const s = ensure(who); s.feitoCount++; s.feitoMin += dur; totalTarefas++; totalMin += dur; } }
       });
     }
   });
