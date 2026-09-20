@@ -173,7 +173,7 @@ function buildTarefas(ts, itens, concl) {
     responsavelId: r.responsavel_id, criadoPorId: r.criado_por_id,
     tipo: r.tipo, freq: r.freq || "diaria", dias: r.dias || [], intervaloSemanas: r.intervalo_semanas || 1,
     data: r.data || "", dataInicio: r.data_inicio || "", horaInicio: timeHM(r.hora_inicio), horaFim: timeHM(r.hora_fim),
-    imagemUrl: r.imagem_url || null, ehCompra: !!r.eh_compra, status: r.status || "pendente", setor: r.setor || "", estoqueAplicado: !!r.estoque_aplicado, darEntrada: r.dar_entrada !== false,
+    imagemUrl: r.imagem_url || (Array.isArray(r.imagens) ? r.imagens[0] : null) || null, imagens: (Array.isArray(r.imagens) && r.imagens.length) ? r.imagens : (r.imagem_url ? [r.imagem_url] : []), ehCompra: !!r.eh_compra, status: r.status || "pendente", setor: r.setor || "", estoqueAplicado: !!r.estoque_aplicado, darEntrada: r.dar_entrada !== false,
     concluidaEm: toMs(r.concluida_em), fotoConclusaoUrl: r.foto_conclusao_url || null, concluidaPorId: r.concluida_por_id || null,
     conclusoes: conBy[r.id] || {},
     compra: { itens: itensBy[r.id] || [] },
@@ -195,7 +195,8 @@ function tarefaRow(d) {
     data_inicio: recorrente ? (d.dataInicio || null) : null,
     hora_inicio: d.horaInicio || null,
     hora_fim: d.horaFim || null,
-    imagem_url: d.imagemUrl || null,
+    imagens: Array.isArray(d.imagens) ? d.imagens : (d.imagemUrl ? [d.imagemUrl] : []),
+    imagem_url: (Array.isArray(d.imagens) && d.imagens[0]) || d.imagemUrl || null,
     eh_compra: !!d.ehCompra,
     dar_entrada: d.ehCompra ? (d.darEntrada !== false) : true,
     setor: d.setor || null,
@@ -663,7 +664,7 @@ export default function App() {
         <main className="px-3 pt-3">
           {aba === "tarefas" && <TarefasView {...{ tasks, users, euId, souAdmin, meuSetor: eu?.setor || "", filtro, setFiltro, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onReabrir: reabrir, onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onTrocar: trocarResponsavel, onAbrir: (t) => setModal({ tipo: "detalhe", task: t }) }} />}
           {aba === "agenda" && <AgendaView {...{ tasks, users, souAdmin, meuSetor: eu?.setor || "", euId }} />}
-          {aba === "compras" && <ComprasView {...{ tasks, produtos, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onReabrir: reabrir }} />}
+          {aba === "compras" && <ComprasView {...{ tasks, produtos, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onReabrir: reabrir, onAbrir: (t) => setModal({ tipo: "detalhe", task: t }) }} />}
           {aba === "estoque" && <EstoqueView {...{ produtos, estoque, movs, users, onAjustar: ajustarEstoque, onAbrirProdutos: () => setProdutosAberto(true), onMovimento: (mv) => setModal({ tipo: "movimento", mov: mv }), onSaidaRapida: saidaRapida }} />}
           {aba === "painel" && souAdmin && <PainelView {...{ tasks, users }} />}
           {aba === "equipe" && souAdmin && <EquipeView {...{ users, souAdmin, euId, showToast, onRecarregar: reloadPerfis }} />}
@@ -689,7 +690,7 @@ export default function App() {
         </nav>
 
         {modal?.tipo === "tarefa" && <TarefaModal {...{ task: modal.task, users, eu, produtos, ehCompraInicial: modal.ehCompra, onCadastrarProduto: cadastrarProduto, showToast, onFechar: () => setModal(null), onSalvar: salvarTarefa }} />}
-        {modal?.tipo === "detalhe" && <DetalheTarefaModal {...{ t: modal.task, users, onFechar: () => setModal(null), onEditar: (t) => setModal({ tipo: "tarefa", task: t }) }} />}
+        {modal?.tipo === "detalhe" && <DetalheTarefaModal {...{ t: modal.task, users, produtos, onFechar: () => setModal(null), onEditar: (t) => setModal({ tipo: "tarefa", task: t }) }} />}
         {modal?.tipo === "concluir" && <ConcluirModal {...{ task: modal.task, produtos, showToast, onFechar: () => setModal(null), onConfirmar: (fotoUrl) => { concluirTarefa(modal.task, fotoUrl); setModal(null); } }} />}
         {infoAberto && <InfoModal onFechar={() => setInfoAberto(false)} />}
         {produtosAberto && <ProdutosModal {...{ produtos, onCadastrar: cadastrarProduto, onRemover: removerProduto, onRenomear: renomearProduto, onFechar: () => setProdutosAberto(false) }} />}
@@ -797,7 +798,6 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
   const iso = hojeISO();
   const feito = isConcluida(t, iso);
   const [abrirResp, setAbrirResp] = useState(false);
-  const [zoom, setZoom] = useState(false);
   // Quem realizou (por dia nas recorrentes; direto nas únicas).
   const concluinteId = t.tipo === "unica" ? t.concluidaPorId : (t.conclusoes && t.conclusoes[iso] ? t.conclusoes[iso].userId : null);
   const concluinte = feito && concluinteId ? nomeUser(users, concluinteId) : null;
@@ -817,10 +817,10 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
             {(t.horaInicio || t.horaFim) && <Chip icon={Clock} texto={`${t.horaInicio || "?"}${t.horaFim ? "–" + t.horaFim : ""}`} cor={C.ambar} />}
             {t.tipo === "unica" && t.data && <Chip icon={CalendarDays} texto={fmtData(t.data)} cor={C.cinza} />}
           </div>
-          {t.imagemUrl && (
-            <button onClick={() => setZoom(true)} title="Ver foto da tarefa" style={{ display: "block", position: "relative", width: "100%", marginTop: 8, borderRadius: 10, overflow: "hidden", border: `1px solid ${C.linha}` }}>
-              <img src={t.imagemUrl} alt="Foto de referência da tarefa" style={{ display: "block", maxHeight: 130, width: "100%", objectFit: "cover" }} />
-              <span style={{ position: "absolute", right: 8, bottom: 8, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}><Search size={12} /> Ver foto</span>
+          {(t.imagens && t.imagens.length > 0) && (
+            <button onClick={() => onAbrir && onAbrir(t)} title="Ver fotos e detalhes" style={{ display: "block", position: "relative", width: "100%", marginTop: 8, borderRadius: 10, overflow: "hidden", border: `1px solid ${C.linha}` }}>
+              <img src={t.imagens[0]} alt="Foto da tarefa" style={{ display: "block", maxHeight: 130, width: "100%", objectFit: "cover" }} />
+              <span style={{ position: "absolute", right: 8, bottom: 8, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}><Search size={12} /> {t.imagens.length > 1 ? `Ver ${t.imagens.length} fotos` : "Ver foto"}</span>
             </button>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -845,12 +845,6 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
           <button onClick={async () => { if (await Dialog.confirm({ titulo: "Excluir tarefa", mensagem: "Deseja excluir esta tarefa?", okLabel: "Excluir", perigo: true })) onExcluir(t.id); }} style={{ color: C.vermelho, padding: 4 }}><Trash2 size={17} /></button>
         </div>
       </div>
-      {zoom && t.imagemUrl && (
-        <div onClick={() => setZoom(false)} style={{ position: "fixed", inset: 0, background: "#000000e8", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <img src={t.imagemUrl} alt="Foto de referência da tarefa" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 12 }} />
-          <button onClick={() => setZoom(false)} title="Fechar" style={{ position: "fixed", top: 16, right: 16, background: "#ffffff26", color: "#fff", borderRadius: 999, padding: 10, display: "flex" }}><X size={22} /></button>
-        </div>
-      )}
     </div>
   );
 }
@@ -885,7 +879,7 @@ function AgendaView({ tasks, users, souAdmin, meuSetor, euId }) {
 }
 
 /* ============================= COMPRAS ============================= */
-function ComprasView({ tasks, produtos, onConcluir, onEditar, onExcluir, onReabrir }) {
+function ComprasView({ tasks, produtos, onConcluir, onEditar, onExcluir, onReabrir, onAbrir }) {
   const compras = tasks.filter((t) => t.ehCompra);
   const pendentes = compras.filter((t) => !isConcluida(t));
   const feitas = compras.filter((t) => isConcluida(t));
@@ -899,7 +893,7 @@ function ComprasView({ tasks, produtos, onConcluir, onEditar, onExcluir, onReabr
         return (
           <div key={t.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3 mb-2.5 flex items-start gap-3">
             <button onClick={() => onConcluir(t)} style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 999, border: `2px solid ${C.cinzaClaro}`, marginTop: 2 }} />
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0" onClick={() => onAbrir && onAbrir(t)} style={{ cursor: "pointer" }}>
               <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold" style={{ fontSize: 15 }}>{t.titulo}</span>{t.darEntrada === false && <Chip icon={Package} texto="Sem estoque" cor={C.cinza} />}</div>
               <div className="flex flex-col gap-1 mt-1.5">
                 {itens.map((it, i) => { const p = prodDe(it.produtoId); return (<div key={i} className="flex items-center gap-2 text-sm"><span style={{ width: 6, height: 6, borderRadius: 999, background: C.ambar, flexShrink: 0 }} /><span className="flex-1 min-w-0 truncate">{p ? p.nome : "Produto"}{p?.subcategoria ? " · " + p.subcategoria : ""}</span><b style={{ color: C.pastoEsc, whiteSpace: "nowrap" }}>{it.quantidade} {p?.unidade || ""}</b></div>); })}
@@ -1424,8 +1418,8 @@ function ProdutosModal({ produtos, onCadastrar, onRemover, onRenomear, onFechar 
 /* ============================= MODAL: TAREFA ============================= */
 function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarProduto, showToast, onFechar, onSalvar }) {
   const souAdmin = eu?.papel === "admin";
-  const [f, setF] = useState(() => task || { titulo: "", descricao: "", responsavelId: eu?.id, setor: eu?.setor || "", tipo: "unica", freq: "diaria", dias: [], intervaloSemanas: 1, data: hojeISO(), dataInicio: hojeISO(), horaInicio: "", horaFim: "", imagemUrl: null, ehCompra: !!ehCompraInicial, darEntrada: true, compra: { itens: [] } });
-  const [imgPreview, setImgPreview] = useState(task?.imagemUrl || null); const [salvandoImg, setSalvandoImg] = useState(false);
+  const [f, setF] = useState(() => task || { titulo: "", descricao: "", responsavelId: eu?.id, setor: eu?.setor || "", tipo: "unica", freq: "diaria", dias: [], intervaloSemanas: 1, data: hojeISO(), dataInicio: hojeISO(), horaInicio: "", horaFim: "", imagemUrl: null, imagens: [], ehCompra: !!ehCompraInicial, darEntrada: true, compra: { itens: [] } });
+  const [salvandoImg, setSalvandoImg] = useState(false);
   const [novoProd, setNovoProd] = useState(false);
   const [np, setNp] = useState({ nome: "", categoria: "Supermercado", subcategoria: "", unidade: "un" });
   const [addProdId, setAddProdId] = useState("");
@@ -1443,7 +1437,13 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
   const adicionarItem = () => { if (!addProdId || !(parseFloat(addQtd) > 0)) return; setItens([...itens, { id: uid(), produtoId: addProdId, quantidade: parseFloat(addQtd) }]); setAddProdId(""); setAddQtd(""); setAddKey((k) => k + 1); };
   const removerItem = (id) => setItens(itens.filter((x) => x.id !== id));
 
-  const escolherImg = async (e) => { const file = e.target.files?.[0]; if (!file) return; setSalvandoImg(true); try { const url = await uploadFoto(file); set("imagemUrl", url); setImgPreview(url); } catch (err) { console.error("uploadFoto", err); window.alert("Não consegui salvar a foto.\n\nMotivo: " + (err?.message || err)); } setSalvandoImg(false); };
+  const escolherImg = async (e) => {
+    const files = Array.from(e.target.files || []); if (!files.length) return;
+    setSalvandoImg(true);
+    try { const urls = []; for (const file of files) urls.push(await uploadFoto(file)); setF((p) => ({ ...p, imagens: [...(p.imagens || []), ...urls] })); }
+    catch (err) { console.error("uploadFoto", err); window.alert("Não consegui salvar a foto.\n\nMotivo: " + (err?.message || err)); }
+    setSalvandoImg(false); e.target.value = "";
+  };
   const toggleDia = (d) => set("dias", f.dias.includes(d) ? f.dias.filter((x) => x !== d) : [...f.dias, d]);
   const abrirCadastroTexto = (texto) => { setNp((p) => ({ ...p, nome: texto })); setNovoProd(true); };
   const salvarNovoProduto = async () => { if (!np.nome.trim()) return; const criado = await onCadastrarProduto({ nome: np.nome.trim(), categoria: np.categoria, subcategoria: np.categoria === "Combustível" ? np.subcategoria : "", unidade: np.unidade }); if (criado) { setAddProdId(criado.id); setAddKey((k) => k + 1); } setNovoProd(false); setNp({ nome: "", categoria: "Supermercado", subcategoria: "", unidade: "un" }); };
@@ -1565,17 +1565,28 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
 
       <Campo label="Horário (opcional — gera lembrete 15 min antes)"><div className="flex gap-2 items-center"><input type="time" value={f.horaInicio} onChange={(e) => set("horaInicio", e.target.value)} style={{ ...inpSt, flex: 1 }} /><span style={{ color: C.cinza }}>até</span><input type="time" value={f.horaFim} onChange={(e) => set("horaFim", e.target.value)} style={{ ...inpSt, flex: 1 }} /></div></Campo>
 
-      <Campo label="Foto de referência (opcional)">
-        {imgPreview ? (<div style={{ position: "relative" }}><img src={imgPreview} alt="" style={{ borderRadius: 12, width: "100%", maxHeight: 180, objectFit: "cover" }} /><button onClick={() => { setImgPreview(null); set("imagemUrl", null); }} style={{ position: "absolute", top: 8, right: 8, background: "#000a", color: "#fff", borderRadius: 999, padding: 6 }}><X size={16} /></button></div>) : (salvandoImg ? (
+      <Campo label={f.ehCompra ? "Fotos (opcional) — lista, receita, foto do produto…" : "Fotos de referência (opcional)"}>
+        {(f.imagens || []).length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {f.imagens.map((url, i) => (
+              <div key={i} style={{ position: "relative", width: 84, height: 84 }}>
+                <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 10, border: `1px solid ${C.linha}` }} />
+                <button onClick={() => setF((p) => ({ ...p, imagens: p.imagens.filter((_, k) => k !== i) }))} style={{ position: "absolute", top: -6, right: -6, background: "#000c", color: "#fff", borderRadius: 999, padding: 4, display: "flex" }}><X size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        {salvandoImg ? (
           <div style={{ width: "100%", border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, textAlign: "center", fontWeight: 600 }}>Enviando…</div>
         ) : (
           <div className="flex gap-2">
-            <button onClick={() => camRef.current?.click()} style={{ flex: 1, border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 600 }}><Camera size={18} /> Tirar foto</button>
-            <button onClick={() => fileRef.current?.click()} style={{ flex: 1, border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 16, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 600 }}><Images size={18} /> Da galeria</button>
+            <button onClick={() => camRef.current?.click()} style={{ flex: 1, border: `1px dashed ${C.cinzaClaro}`, borderRadius: 12, padding: 14, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 600 }}><Camera size={18} /> Tirar foto</button>
+            <button onClick={() => fileRef.current?.click()} style={{ flex: 1, border: `1px dashed ${C.cinzaClaro}`, borderRadius: 14, padding: 14, color: C.cinza, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontWeight: 600 }}><Images size={18} /> Da galeria</button>
           </div>
-        ))}
+        )}
+        {(f.imagens || []).length > 0 && <div style={{ color: C.cinzaClaro, fontSize: 11.5 }} className="mt-1.5">Você pode adicionar mais fotos.</div>}
         <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={escolherImg} style={{ display: "none" }} />
-        <input ref={fileRef} type="file" accept="image/*" onChange={escolherImg} style={{ display: "none" }} />
+        <input ref={fileRef} type="file" accept="image/*" multiple onChange={escolherImg} style={{ display: "none" }} />
       </Campo>
 
       {semDiaSelecionado && <div style={{ color: C.vermelho, fontSize: 13 }} className="mb-2">Escolha pelo menos um dia da semana.</div>}
@@ -1627,12 +1638,14 @@ function MovimentoModal({ tipo, produtos, estoque, onAplicar, onFechar }) {
 
 /* ============================= MODAL: CONCLUIR ============================= */
 // Detalhes da tarefa (abre ao tocar no título). Só leitura, com botão para editar.
-function DetalheTarefaModal({ t, users, onFechar, onEditar }) {
-  const [zoom, setZoom] = useState(false);
+function DetalheTarefaModal({ t, users, produtos, onFechar, onEditar }) {
+  const [zoomUrl, setZoomUrl] = useState(null);
   const iso = hojeISO();
   const feito = isConcluida(t, iso);
   const concluinteId = t.tipo === "unica" ? t.concluidaPorId : (t.conclusoes && t.conclusoes[iso] ? t.conclusoes[iso].userId : null);
   const fotoFeito = t.tipo === "unica" ? t.fotoConclusaoUrl : (t.conclusoes && t.conclusoes[iso] ? t.conclusoes[iso].fotoUrl : null);
+  const fotos = t.imagens && t.imagens.length ? t.imagens : (t.imagemUrl ? [t.imagemUrl] : []);
+  const itens = t.ehCompra ? itensDaCompra(t) : [];
   const Linha = ({ icon: Ic, label, valor }) => (
     <div className="flex items-start gap-2 py-2.5" style={{ borderTop: `1px solid ${C.bg}` }}>
       <Ic size={16} style={{ color: C.cinzaClaro, marginTop: 2, flexShrink: 0 }} />
@@ -1640,31 +1653,49 @@ function DetalheTarefaModal({ t, users, onFechar, onEditar }) {
     </div>
   );
   return (
-    <Sheet titulo="Detalhes da tarefa" onFechar={onFechar}>
+    <Sheet titulo={t.ehCompra ? "Detalhes da compra" : "Detalhes da tarefa"} onFechar={onFechar}>
       <div className="font-bold text-lg" style={{ color: C.terra }}>{t.titulo}</div>
       {t.descricao && <div style={{ color: C.cinza }} className="text-sm mt-1">{t.descricao}</div>}
-      {t.imagemUrl && (
-        <button onClick={() => setZoom(true)} style={{ display: "block", width: "100%", marginTop: 12, borderRadius: 12, overflow: "hidden", border: `1px solid ${C.linha}`, position: "relative" }}>
-          <img src={t.imagemUrl} alt="Foto de referência da tarefa" style={{ display: "block", width: "100%", maxHeight: 240, objectFit: "cover" }} />
-          <span style={{ position: "absolute", right: 8, bottom: 8, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}><Search size={12} /> Ampliar</span>
-        </button>
+      {fotos.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          {fotos.map((url, i) => (
+            <button key={i} onClick={() => setZoomUrl(url)} style={{ position: "relative", width: fotos.length === 1 ? "100%" : "calc(50% - 4px)", borderRadius: 12, overflow: "hidden", border: `1px solid ${C.linha}` }}>
+              <img src={url} alt={"Foto " + (i + 1)} style={{ display: "block", width: "100%", height: fotos.length === 1 ? "auto" : 130, maxHeight: 240, objectFit: "cover" }} />
+              <span style={{ position: "absolute", right: 6, bottom: 6, background: "#0009", color: "#fff", borderRadius: 999, padding: 5, display: "inline-flex" }}><Search size={13} /></span>
+            </button>
+          ))}
+        </div>
+      )}
+      {t.ehCompra && (
+        <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3 mt-3">
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: C.cinza }} className="mb-1.5">Itens da compra{itens.length ? ` (${itens.length})` : ""}</div>
+          {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 13 }}>Sem itens.</div>}
+          {itens.map((it, i) => { const pr = (produtos || []).find((x) => x.id === it.produtoId); return (
+            <div key={i} className="flex items-center gap-2 py-1.5" style={{ borderTop: i ? `1px solid ${C.bg}` : "none" }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: C.ambar, flexShrink: 0 }} />
+              <span className="flex-1 min-w-0 truncate" style={{ fontSize: 14 }}>{pr ? pr.nome : "Produto"}{pr?.subcategoria ? " · " + pr.subcategoria : ""}</span>
+              <b style={{ color: C.pastoEsc, whiteSpace: "nowrap" }}>{it.quantidade} {pr?.unidade || ""}</b>
+            </div>
+          ); })}
+          <div style={{ color: C.cinza, fontSize: 12 }} className="flex items-center gap-1 mt-2 pt-2" ><Package size={13} style={{ color: C.cinzaClaro }} /> {t.darEntrada === false ? "Só registro — não entra no estoque." : "Ao concluir, os itens entram no estoque."}</div>
+        </div>
       )}
       <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="px-3 py-0.5 mt-3">
         <Linha icon={User} label="Responsável" valor={nomeUser(users, t.responsavelId)} />
-        <Linha icon={Users} label="Setor" valor={t.setor || "—"} />
+        {!t.ehCompra && <Linha icon={Users} label="Setor" valor={t.setor || "—"} />}
         <Linha icon={t.tipo === "recorrente" ? Repeat : CalendarDays} label="Quando" valor={t.tipo === "recorrente" ? textoRecorrencia(t) : (t.data ? fmtData(t.data) : "—")} />
-        <Linha icon={Clock} label="Horário" valor={(t.horaInicio || t.horaFim) ? `${t.horaInicio || "?"}${t.horaFim ? " – " + t.horaFim : ""}` : "—"} />
-        <Linha icon={Check} label="Situação" valor={feito ? (concluinteId ? "Feito por " + nomeUser(users, concluinteId) : "Concluída") : "Pendente"} />
+        {!t.ehCompra && <Linha icon={Clock} label="Horário" valor={(t.horaInicio || t.horaFim) ? `${t.horaInicio || "?"}${t.horaFim ? " – " + t.horaFim : ""}` : "—"} />}
+        <Linha icon={Check} label="Situação" valor={feito ? (concluinteId ? "Feito por " + nomeUser(users, concluinteId) : (t.ehCompra ? "Comprada" : "Concluída")) : "Pendente"} />
       </div>
       {fotoFeito && (<>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: C.cinza }} className="mt-3 mb-1">Foto da conclusão</div>
-        <img src={fotoFeito} alt="Foto da conclusão" style={{ width: "100%", borderRadius: 12, border: `1px solid ${C.linha}`, maxHeight: 240, objectFit: "cover" }} />
+        <button onClick={() => setZoomUrl(fotoFeito)} style={{ display: "block", width: "100%", borderRadius: 12, overflow: "hidden", border: `1px solid ${C.linha}` }}><img src={fotoFeito} alt="Foto da conclusão" style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }} /></button>
       </>)}
-      <button onClick={() => { onFechar(); onEditar(t); }} className="flex items-center justify-center gap-2" style={{ width: "100%", marginTop: 16, background: C.pasto, color: "#fff", borderRadius: 12, padding: 13, fontWeight: 700 }}><Pencil size={17} /> Editar tarefa</button>
-      {zoom && t.imagemUrl && (
-        <div onClick={() => setZoom(false)} style={{ position: "fixed", inset: 0, background: "#000000e8", zIndex: 96, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <img src={t.imagemUrl} alt="Foto de referência da tarefa" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 12 }} />
-          <button onClick={() => setZoom(false)} title="Fechar" style={{ position: "fixed", top: 16, right: 16, background: "#ffffff26", color: "#fff", borderRadius: 999, padding: 10, display: "flex" }}><X size={22} /></button>
+      <button onClick={() => { onFechar(); onEditar(t); }} className="flex items-center justify-center gap-2" style={{ width: "100%", marginTop: 16, background: C.pasto, color: "#fff", borderRadius: 12, padding: 13, fontWeight: 700 }}><Pencil size={17} /> Editar {t.ehCompra ? "compra" : "tarefa"}</button>
+      {zoomUrl && (
+        <div onClick={() => setZoomUrl(null)} style={{ position: "fixed", inset: 0, background: "#000000e8", zIndex: 96, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <img src={zoomUrl} alt="Foto ampliada" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 12 }} />
+          <button onClick={() => setZoomUrl(null)} title="Fechar" style={{ position: "fixed", top: 16, right: 16, background: "#ffffff26", color: "#fff", borderRadius: 999, padding: 10, display: "flex" }}><X size={22} /></button>
         </div>
       )}
     </Sheet>
