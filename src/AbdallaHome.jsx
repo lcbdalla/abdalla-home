@@ -45,6 +45,19 @@ const urlBase64ToUint8Array = (base64) => {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 };
 
+// Convite de instalação (PWA). O navegador avisa quando o app pode ser instalado
+// pelo evento "beforeinstallprompt"; guardamos esse convite para usar num botão.
+let _installEvt = null;
+const _installSubs = new Set();
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); _installEvt = e; _installSubs.forEach((fn) => fn()); });
+  window.addEventListener("appinstalled", () => { _installEvt = null; try { localStorage.setItem("instalarDispensado", "1"); } catch { /* sem storage */ } _installSubs.forEach((fn) => fn()); });
+}
+const estaInstalado = () => {
+  try { if (window.matchMedia("(display-mode: standalone)").matches) return true; } catch { /* ok */ }
+  return window.navigator.standalone === true; // iPhone
+};
+
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const hojeISO = () => new Date().toISOString().slice(0, 10);
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -630,6 +643,7 @@ export default function App() {
         {modal?.tipo === "movimento" && <MovimentoModal {...{ tipo: modal.mov, produtos, estoque, onFechar: () => setModal(null), onAplicar: (lista) => { aplicarMovimentos(lista, modal.mov, "manual"); showToast((modal.mov === "saida" ? "Saída" : "Entrada") + " registrada (" + lista.length + (lista.length === 1 ? " item" : " itens") + ")"); setModal(null); } }} />}
 
         {toast && <div style={{ position: "fixed", bottom: 96, left: "50%", transform: "translateX(-50%)", background: C.terra, color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 14, fontWeight: 600, zIndex: 60, boxShadow: "0 4px 14px #0003", whiteSpace: "nowrap" }}>{toast}</div>}
+        <InstalarPrompt />
         <DialogHost />
       </div>
     </div>
@@ -1074,6 +1088,72 @@ function NovaPessoaSheet({ showToast, onCriado, onFechar }) {
       {erro && <div style={{ background: C.vermelhoClaro, color: C.vermelho, borderRadius: 10, fontSize: 14 }} className="p-3 mb-3">{erro}</div>}
       <button onClick={criar} disabled={criando} style={{ width: "100%", background: criando ? C.cinzaClaro : C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>{criando ? "Criando acesso…" : "Criar acesso"}</button>
     </Sheet>
+  );
+}
+
+// Popup que convida a instalar o app na tela inicial (some quando já instalado).
+function InstalarPrompt() {
+  const [visivel, setVisivel] = useState(false);
+  const [ajudaIOS, setAjudaIOS] = useState(false);
+  const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+  useEffect(() => {
+    if (estaInstalado()) return;
+    let dispensado = false;
+    try { dispensado = localStorage.getItem("instalarDispensado") === "1"; } catch { /* ok */ }
+    if (dispensado) return;
+    // Mostra no iPhone (instalação manual) ou quando o Android já ofereceu o convite.
+    const talvezMostrar = () => { if (!estaInstalado() && (iOS || _installEvt)) setVisivel(true); };
+    _installSubs.add(talvezMostrar);
+    const t = setTimeout(talvezMostrar, 800);
+    return () => { _installSubs.delete(talvezMostrar); clearTimeout(t); };
+  }, [iOS]);
+
+  if (!visivel || estaInstalado()) return null;
+
+  const dispensar = () => { try { localStorage.setItem("instalarDispensado", "1"); } catch { /* ok */ } setVisivel(false); };
+  const instalar = async () => {
+    if (_installEvt) {
+      _installEvt.prompt();
+      const escolha = await _installEvt.userChoice.catch(() => null);
+      _installEvt = null;
+      if (escolha?.outcome === "accepted") setVisivel(false);
+      return;
+    }
+    if (iOS) { setAjudaIOS(true); return; }
+    setVisivel(false);
+  };
+
+  const Passo = ({ n, children }) => (
+    <div className="flex items-start gap-3 mb-2">
+      <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 999, background: C.pastoClaro, color: C.pastoEsc, fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>{n}</span>
+      <div style={{ fontSize: 14, color: C.terra, paddingTop: 1 }}>{children}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#0007", zIndex: 85, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 12 }} onClick={dispensar}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.card, width: "100%", maxWidth: 420, borderRadius: 20, padding: 18, boxShadow: "0 12px 34px #0004" }}>
+        <div className="flex items-center gap-3 mb-2">
+          <div style={{ background: C.pastoEsc, borderRadius: 14, width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><MapPin size={26} color="#fff" /></div>
+          <div><div className="font-bold text-lg leading-tight" style={{ color: C.terra }}>Instalar o Abdalla Home</div><div style={{ color: C.cinza, fontSize: 13 }}>Fica na tela do celular como um app.</div></div>
+        </div>
+        {ajudaIOS ? (
+          <div style={{ background: C.bg, borderRadius: 14 }} className="p-3 mt-2 mb-3">
+            <Passo n={1}>Toque no botão <b>Compartilhar</b> do Safari (o quadradinho com a seta pra cima, na barra de baixo).</Passo>
+            <Passo n={2}>Role e toque em <b>Adicionar à Tela de Início</b>.</Passo>
+            <Passo n={3}>Toque em <b>Adicionar</b>. Pronto!</Passo>
+          </div>
+        ) : (
+          <div style={{ color: C.cinza, fontSize: 14 }} className="mb-3 mt-1">Abre rapidinho, sem digitar endereço, e recebe os lembretes de tarefa.</div>
+        )}
+        <div className="flex gap-2">
+          <button onClick={dispensar} style={{ flex: 1, padding: 13, borderRadius: 12, fontWeight: 600, color: C.cinza, background: C.bg }}>Agora não</button>
+          {!ajudaIOS && <button onClick={instalar} className="flex items-center justify-center gap-2" style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}><ArrowDownToLine size={18} /> {iOS ? "Como instalar" : "Instalar"}</button>}
+          {ajudaIOS && <button onClick={dispensar} style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}>Entendi</button>}
+        </div>
+      </div>
+    </div>
   );
 }
 
