@@ -722,6 +722,7 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
   const iso = hojeISO();
   const feito = isConcluida(t, iso);
   const [abrirResp, setAbrirResp] = useState(false);
+  const [zoom, setZoom] = useState(false);
   // Quem realizou (por dia nas recorrentes; direto nas únicas).
   const concluinteId = t.tipo === "unica" ? t.concluidaPorId : (t.conclusoes && t.conclusoes[iso] ? t.conclusoes[iso].userId : null);
   const concluinte = feito && concluinteId ? nomeUser(users, concluinteId) : null;
@@ -739,7 +740,12 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
             {(t.horaInicio || t.horaFim) && <Chip icon={Clock} texto={`${t.horaInicio || "?"}${t.horaFim ? "–" + t.horaFim : ""}`} cor={C.ambar} />}
             {t.tipo === "unica" && t.data && <Chip icon={CalendarDays} texto={fmtData(t.data)} cor={C.cinza} />}
           </div>
-          {t.imagemUrl && <img src={t.imagemUrl} alt="" style={{ marginTop: 8, borderRadius: 10, maxHeight: 130, width: "100%", objectFit: "cover" }} />}
+          {t.imagemUrl && (
+            <button onClick={() => setZoom(true)} title="Ver foto da tarefa" style={{ display: "block", position: "relative", width: "100%", marginTop: 8, borderRadius: 10, overflow: "hidden", border: `1px solid ${C.linha}` }}>
+              <img src={t.imagemUrl} alt="Foto de referência da tarefa" style={{ display: "block", maxHeight: 130, width: "100%", objectFit: "cover" }} />
+              <span style={{ position: "absolute", right: 8, bottom: 8, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}><Search size={12} /> Ver foto</span>
+            </button>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <div className="relative">
               <button onClick={() => setAbrirResp((v) => !v)} title="Responsável (de quem é a tarefa)" style={{ background: C.pastoClaro, color: C.pastoEsc, borderRadius: 999, padding: "4px 11px", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><User size={13} /> {nomeUser(users, t.responsavelId)} <RefreshCw size={11} /></button>
@@ -762,6 +768,12 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
           <button onClick={async () => { if (await Dialog.confirm({ titulo: "Excluir tarefa", mensagem: "Deseja excluir esta tarefa?", okLabel: "Excluir", perigo: true })) onExcluir(t.id); }} style={{ color: C.vermelho, padding: 4 }}><Trash2 size={17} /></button>
         </div>
       </div>
+      {zoom && t.imagemUrl && (
+        <div onClick={() => setZoom(false)} style={{ position: "fixed", inset: 0, background: "#000000e8", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <img src={t.imagemUrl} alt="Foto de referência da tarefa" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 12 }} />
+          <button onClick={() => setZoom(false)} title="Fechar" style={{ position: "fixed", top: 16, right: 16, background: "#ffffff26", color: "#fff", borderRadius: 999, padding: 10, display: "flex" }}><X size={22} /></button>
+        </div>
+      )}
     </div>
   );
 }
