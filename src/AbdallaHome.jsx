@@ -1440,7 +1440,7 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
   const adicionarItem = () => { if (!addProdId || !(parseFloat(addQtd) > 0)) return; setItens([...itens, { id: uid(), produtoId: addProdId, quantidade: parseFloat(addQtd) }]); setAddProdId(""); setAddQtd(""); setAddKey((k) => k + 1); };
   const removerItem = (id) => setItens(itens.filter((x) => x.id !== id));
 
-  const escolherImg = async (e) => { const file = e.target.files?.[0]; if (!file) return; setSalvandoImg(true); try { const url = await uploadFoto(file); set("imagemUrl", url); setImgPreview(url); } catch (err) { showToast?.("Erro ao enviar foto"); } setSalvandoImg(false); };
+  const escolherImg = async (e) => { const file = e.target.files?.[0]; if (!file) return; setSalvandoImg(true); try { const url = await uploadFoto(file); set("imagemUrl", url); setImgPreview(url); } catch (err) { console.error("uploadFoto", err); window.alert("Não consegui salvar a foto.\n\nMotivo: " + (err?.message || err)); } setSalvandoImg(false); };
   const toggleDia = (d) => set("dias", f.dias.includes(d) ? f.dias.filter((x) => x !== d) : [...f.dias, d]);
   const abrirCadastroTexto = (texto) => { setNp((p) => ({ ...p, nome: texto })); setNovoProd(true); };
   const salvarNovoProduto = async () => { if (!np.nome.trim()) return; const criado = await onCadastrarProduto({ nome: np.nome.trim(), categoria: np.categoria, subcategoria: np.categoria === "Combustível" ? np.subcategoria : "", unidade: np.unidade }); if (criado) { setAddProdId(criado.id); setAddKey((k) => k + 1); } setNovoProd(false); setNp({ nome: "", categoria: "Supermercado", subcategoria: "", unidade: "un" }); };
@@ -1667,7 +1667,7 @@ function ConcluirModal({ task, produtos, showToast, onFechar, onConfirmar }) {
   const fileRef = useRef();
   const camRef = useRef();
   const itensC = itensDaCompra(task);
-  const escolher = async (e) => { const file = e.target.files?.[0]; if (!file) return; setSalvando(true); try { const u = await uploadFoto(file); setFoto(u); setUrl(u); } catch (err) { showToast?.("Erro ao enviar foto"); } setSalvando(false); };
+  const escolher = async (e) => { const file = e.target.files?.[0]; if (!file) return; setSalvando(true); try { const u = await uploadFoto(file); setFoto(u); setUrl(u); } catch (err) { console.error("uploadFoto", err); window.alert("Não consegui salvar a foto.\n\nMotivo: " + (err?.message || err)); } setSalvando(false); };
   return (
     <Sheet titulo="Concluir tarefa" onFechar={onFechar}>
       <div style={{ background: C.pastoClaro, borderRadius: 12 }} className="p-3 mb-3"><div className="font-semibold">{task.titulo}</div>{task.ehCompra && itensC.length > 0 && <div style={{ color: C.pastoEsc }} className="text-sm mt-1.5">Entrará no estoque:{itensC.map((it, i) => { const p = produtos.find((x) => x.id === it.produtoId); return (<div key={i}>• {it.quantidade} {p?.unidade || ""} de {p?.nome || "produto"}</div>); })}</div>}</div>
