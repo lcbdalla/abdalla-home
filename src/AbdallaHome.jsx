@@ -1106,13 +1106,18 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                 <div style={{ flex: 1, fontSize: 13, color: u.setor ? setorCor(u.setor) : C.cinzaClaro, fontWeight: u.setor ? 600 : 400 }}>{u.setor || "Sem setor"}</div>
               )}
             </div>
-            {souAdmin && (
+            {souAdmin && (<>
               <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
                 <Home size={13} style={{ color: C.cinzaClaro }} />
                 <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode controlar a casa</div>
                 <Toggle on={u.podeControle === true} onToggle={() => editar(u.id, "pode_controle", !(u.podeControle === true))} />
               </div>
-            )}
+              <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
+                <Wrench size={13} style={{ color: C.cinzaClaro }} />
+                <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode configurar o controle</div>
+                <Toggle on={u.podeGerirControle === true} onToggle={async () => { const novo = !(u.podeGerirControle === true); const { error } = await supabase.from("perfis").update(novo ? { pode_gerir_controle: true, pode_controle: true } : { pode_gerir_controle: false }).eq("id", u.id); if (error) { showToast("Erro ao salvar: " + error.message); return; } onRecarregar(); }} />
+              </div>
+            </>)}
           </div>
         );
       })}
