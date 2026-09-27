@@ -159,7 +159,7 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -611,8 +611,8 @@ export default function App() {
 
   // App separado de Controle da Casa (mesmo login), aberto por #controle.
   if (rota === "controle") {
-    return eu?.podeControle
-      ? <ControleApp onVoltar={() => { window.location.hash = ""; }} />
+    return (eu?.podeControle || eu?.podeGerirControle)
+      ? <ControleApp eu={eu} onVoltar={() => { window.location.hash = ""; }} />
       : <ControleSemAcesso onVoltar={() => { window.location.hash = ""; }} />;
   }
 
@@ -1244,31 +1244,53 @@ function InstalarPrompt() {
 }
 
 /* ===================== CONTROLE DA CASA (Home Assistant) ===================== */
-const HA_DOMINIOS = ["light", "switch", "fan", "cover", "lock", "climate", "media_player", "binary_sensor", "sensor"];
-const HA_TITULO = { light: "Luzes", switch: "Interruptores", fan: "Ventiladores", cover: "Portões / Cortinas", lock: "Fechaduras", climate: "Climatização", media_player: "Mídia", binary_sensor: "Sensores (aberto/fechado)", sensor: "Medidores" };
+
+// Tipos de controle que o app entende (o gestor escolhe ao vincular o aparelho).
+const CTRL_TIPOS = [
+  { id: "interruptor", nome: "Liga / Desliga", ajuda: "Luz, tomada, ventilador" },
+  { id: "persiana", nome: "Persiana / Cortina / Flap", ajuda: "Abrir · Parar · Fechar" },
+  { id: "ar", nome: "Ar-condicionado", ajuda: "Temperatura, modo e vento" },
+  { id: "tv", nome: "TV / Mídia", ajuda: "Liga, volume, play/pausa" },
+  { id: "fechadura", nome: "Fechadura", ajuda: "Trancar / destrancar" },
+  { id: "sensor", nome: "Só leitura (sensor)", ajuda: "Mostra o valor" },
+];
+const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]));
+
+// Domínios do Home Assistant que aparecem para o gestor escolher (o resto é ruído).
+const HA_ESCOLHIVEIS = ["light", "switch", "fan", "cover", "climate", "media_player", "lock", "input_boolean", "sensor", "binary_sensor"];
+
+// Sugere um tipo de controle a partir do identificador do aparelho (ex.: climate.sala).
+function tipoSugerido(entityId) {
+  const d = String(entityId).split(".")[0];
+  if (d === "cover") return "persiana";
+  if (d === "climate") return "ar";
+  if (d === "media_player") return "tv";
+  if (d === "lock") return "fechadura";
+  if (["light", "switch", "fan", "input_boolean"].includes(d)) return "interruptor";
+  return "sensor";
+}
+
+// Nomes amigáveis para modos e ventos do ar-condicionado.
+const AR_MODO_NOME = { off: "Desligado", cool: "Frio", heat: "Quente", dry: "Seco", fan_only: "Ventilar", heat_cool: "Auto", auto: "Auto" };
+const AR_VENTO_NOME = { auto: "Auto", low: "Baixo", medium: "Médio", middle: "Médio", high: "Alto", quiet: "Silencioso", silent: "Silencioso", focus: "Focado", diffuse: "Difuso", on: "Ligado", off: "Desligado" };
+
 function haEstado(s, attrs) {
   const map = {
     on: ["Ligado", "#2f7d4f"], off: ["Desligado", "#a49c8c"],
-    open: ["Aberto", "#c8862a"], closed: ["Fechado", "#a49c8c"],
+    open: ["Aberto", "#c8862a"], closed: ["Fechado", "#a49c8c"], opening: ["Abrindo…", "#c8862a"], closing: ["Fechando…", "#c8862a"],
     locked: ["Trancado", "#2f7d4f"], unlocked: ["Destrancado", "#c8862a"],
     home: ["Em casa", "#2f7d4f"], not_home: ["Fora", "#a49c8c"],
     playing: ["Tocando", "#2b7a8c"], paused: ["Pausado", "#a49c8c"], idle: ["Parado", "#a49c8c"], standby: ["Repouso", "#a49c8c"],
     unavailable: ["Indisponível", "#c9c2b2"], unknown: ["—", "#c9c2b2"],
+    cool: ["Frio", "#2b7a8c"], heat: ["Quente", "#c8862a"], dry: ["Seco", "#c8862a"], fan_only: ["Ventilando", "#2b7a8c"], heat_cool: ["Auto", "#2b7a8c"], auto: ["Auto", "#2b7a8c"],
   };
   if (map[s]) return { texto: map[s][0], cor: map[s][1] };
   const u = attrs?.unit_of_measurement;
   return { texto: u ? `${s} ${u}` : String(s), cor: "#2b7a8c" };
 }
 
-// Aparelhos que dá para ligar/desligar (o resto é só leitura: sensores, medidores).
-const HA_CONTROLAVEIS = ["light", "switch", "fan", "cover", "input_boolean", "lock", "media_player"];
-function haComando(e) {
-  const d = e.dom;
-  if (["light", "switch", "fan", "cover", "input_boolean"].includes(d)) return { domain: d, service: "toggle" };
-  if (d === "lock") return { domain: "lock", service: e.state === "locked" ? "unlock" : "lock" };
-  if (d === "media_player") return { domain: "media_player", service: ["off", "idle", "standby"].includes(e.state) ? "turn_on" : "turn_off" };
-  return null;
-}
+const LAGO = "#2b7a8c", LAGO_ESC = "#1f5c6b";
+const inpControle = { flex: 1, minWidth: 0, border: `1px solid ${C.linha}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, background: C.card, color: C.terra, outline: "none" };
 
 function ControleSemAcesso({ onVoltar }) {
   return (
@@ -1283,16 +1305,303 @@ function ControleSemAcesso({ onVoltar }) {
   );
 }
 
-function ControleApp({ onVoltar }) {
+/* ---- Peças visuais reutilizáveis ---- */
+function PillToggle({ on, cor, onClick, disabled }) {
+  return (
+    <button onClick={onClick} disabled={disabled} title={on ? "desligar" : "ligar"}
+      style={{ width: 52, height: 30, borderRadius: 999, background: on ? (cor || C.pasto) : "#c9c2b2", position: "relative", flexShrink: 0, border: "none", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}>
+      <span style={{ position: "absolute", top: 3, left: on ? 25 : 3, width: 24, height: 24, borderRadius: 999, background: "#fff", transition: "left .15s" }} />
+    </button>
+  );
+}
+function RoundBtn({ children, onClick, disabled }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{ width: 46, height: 46, borderRadius: 999, border: `1px solid ${C.linha}`, background: disabled ? C.bg : C.card, color: C.terra, fontSize: 22, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1, flexShrink: 0 }}>
+      {children}
+    </button>
+  );
+}
+function CtrlChip({ ativo, onClick, children, cor }) {
+  return (
+    <button onClick={onClick}
+      style={{ padding: "7px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, border: `1px solid ${ativo ? (cor || LAGO) : C.linha}`, background: ativo ? (cor || LAGO) : C.card, color: ativo ? "#fff" : C.cinza, cursor: "pointer" }}>
+      {children}
+    </button>
+  );
+}
+function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{ flex: 1, background: disabled ? C.bg : cor, color: disabled ? C.cinzaClaro : "#fff", borderRadius: 12, padding: "11px 6px", fontWeight: 700, fontSize: 13, border: "none", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      {Icon && <Icon size={18} />}{label}
+    </button>
+  );
+}
+
+/* ---- Controles por tipo de aparelho ---- */
+function CtrlInterruptor({ e, enviar }) {
+  const on = e.state === "on"; const ind = !e.disponivel;
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (on ? C.pasto : C.cinza), fontWeight: 600 }}>{ind ? "Indisponível" : (on ? "Ligado" : "Desligado")}</div>
+      <PillToggle on={on} cor={C.pasto} disabled={ind} onClick={() => enviar("homeassistant", "toggle", e.id)} />
+    </div>
+  );
+}
+function CtrlPersiana({ e, enviar }) {
+  const ind = !e.disponivel; const st = haEstado(e.state, e.attributes);
+  return (
+    <div>
+      <div className="text-sm mb-2" style={{ color: ind ? C.cinzaClaro : st.cor, fontWeight: 700 }}>{ind ? "Indisponível" : st.texto}</div>
+      <div className="flex gap-2">
+        <BotaoAcao icon={ArrowUpFromLine} label="Abrir" cor={C.pasto} disabled={ind} onClick={() => enviar("cover", "open_cover", e.id)} />
+        <BotaoAcao icon={X} label="Parar" cor={C.ambar} disabled={ind} onClick={() => enviar("cover", "stop_cover", e.id)} />
+        <BotaoAcao icon={ArrowDownToLine} label="Fechar" cor={C.cinza} disabled={ind} onClick={() => enviar("cover", "close_cover", e.id)} />
+      </div>
+    </div>
+  );
+}
+function CtrlAr({ e, enviar }) {
+  const ind = !e.disponivel; const a = e.attributes || {};
+  const ligado = !!e.state && e.state !== "off" && !ind;
+  const alvo = a.temperature; const atual = a.current_temperature;
+  const passo = a.target_temp_step || 1;
+  const min = a.min_temp != null ? a.min_temp : 16, max = a.max_temp != null ? a.max_temp : 30;
+  const modos = (a.hvac_modes || []).filter((m) => m !== "off");
+  const ventos = a.fan_modes || [];
+  const setTemp = (delta) => {
+    if (alvo == null) return;
+    let v = Math.round((alvo + delta) * 10) / 10;
+    v = Math.min(max, Math.max(min, v));
+    enviar("climate", "set_temperature", e.id, { temperature: v });
+  };
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (ligado ? LAGO : C.cinza), fontWeight: 600 }}>
+          {ind ? "Indisponível" : (ligado ? `Ligado · ${AR_MODO_NOME[e.state] || e.state}` : "Desligado")}
+          {atual != null && <span style={{ color: C.cinzaClaro }}> · ambiente {Math.round(atual)}°</span>}
+        </div>
+        <PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={() => enviar("climate", ligado ? "turn_off" : "turn_on", e.id)} />
+      </div>
+      {ligado && (
+        <>
+          <div className="flex items-center justify-center gap-4 mb-3">
+            <RoundBtn onClick={() => setTemp(-passo)} disabled={alvo == null}>−</RoundBtn>
+            <div style={{ minWidth: 92, textAlign: "center" }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: C.terra, lineHeight: 1 }}>{alvo != null ? `${alvo}°` : "—"}</div>
+              <div style={{ fontSize: 11, color: C.cinzaClaro }}>temperatura</div>
+            </div>
+            <RoundBtn onClick={() => setTemp(passo)} disabled={alvo == null}>+</RoundBtn>
+          </div>
+          {modos.length > 0 && (
+            <div className="mb-2">
+              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Modo</div>
+              <div className="flex flex-wrap gap-2">{modos.map((m) => <CtrlChip key={m} ativo={e.state === m} cor={LAGO} onClick={() => enviar("climate", "set_hvac_mode", e.id, { hvac_mode: m })}>{AR_MODO_NOME[m] || m}</CtrlChip>)}</div>
+            </div>
+          )}
+          {ventos.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Vento</div>
+              <div className="flex flex-wrap gap-2">{ventos.map((f) => <CtrlChip key={f} ativo={a.fan_mode === f} cor={C.pasto} onClick={() => enviar("climate", "set_fan_mode", e.id, { fan_mode: f })}>{AR_VENTO_NOME[f] || f}</CtrlChip>)}</div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+function CtrlTv({ e, enviar }) {
+  const ind = !e.disponivel;
+  const ligado = !["off", "idle", "standby"].includes(e.state) && !ind;
+  const mudo = e.attributes?.is_volume_muted === true;
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (ligado ? LAGO : C.cinza), fontWeight: 600 }}>{ind ? "Indisponível" : (ligado ? "Ligada" : "Desligada")}</div>
+        <PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={() => enviar("media_player", ligado ? "turn_off" : "turn_on", e.id)} />
+      </div>
+      {ligado && (
+        <div className="flex gap-2">
+          <BotaoAcao label="Vol −" cor={C.cinza} onClick={() => enviar("media_player", "volume_down", e.id)} />
+          <BotaoAcao label="Vol +" cor={C.pasto} onClick={() => enviar("media_player", "volume_up", e.id)} />
+          <BotaoAcao label={mudo ? "Som" : "Mudo"} cor={C.ambar} onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} />
+          <BotaoAcao label="Play/Pausa" cor={LAGO} onClick={() => enviar("media_player", "media_play_pause", e.id)} />
+        </div>
+      )}
+    </div>
+  );
+}
+function CtrlFechadura({ e, enviar }) {
+  const ind = !e.disponivel; const trancado = e.state === "locked";
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (trancado ? C.pasto : C.ambar), fontWeight: 700 }}>{ind ? "Indisponível" : (trancado ? "Trancado" : "Destrancado")}</div>
+      <BotaoAcao icon={Lock} label={trancado ? "Destrancar" : "Trancar"} cor={trancado ? C.ambar : C.pasto} disabled={ind} onClick={() => enviar("lock", trancado ? "unlock" : "lock", e.id)} />
+    </div>
+  );
+}
+function CtrlSensor({ e }) {
+  const st = haEstado(e.state, e.attributes);
+  return <div className="text-right"><span style={{ color: e.disponivel ? st.cor : C.cinzaClaro, fontWeight: 700, fontSize: 15 }}>{e.disponivel ? st.texto : "Indisponível"}</span></div>;
+}
+function EquipControle({ e, enviar }) {
+  if (e.tipo === "persiana") return <CtrlPersiana e={e} enviar={enviar} />;
+  if (e.tipo === "ar") return <CtrlAr e={e} enviar={enviar} />;
+  if (e.tipo === "tv") return <CtrlTv e={e} enviar={enviar} />;
+  if (e.tipo === "fechadura") return <CtrlFechadura e={e} enviar={enviar} />;
+  if (e.tipo === "sensor") return <CtrlSensor e={e} />;
+  return <CtrlInterruptor e={e} enviar={enviar} />;
+}
+function EquipCard({ e, enviar }) {
+  const st = haEstado(e.state, e.attributes);
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3 mb-2">
+      <div className="flex items-center gap-2 mb-2">
+        <span style={{ width: 10, height: 10, borderRadius: 999, background: e.disponivel ? st.cor : "#c9c2b2", flexShrink: 0 }} />
+        <div className="font-semibold truncate" style={{ fontSize: 15, color: C.terra }}>{e.nome}</div>
+      </div>
+      <EquipControle e={e} enviar={enviar} />
+    </div>
+  );
+}
+
+/* ---- Modo GERENCIAR (só gestor): criar ambientes e vincular aparelhos ---- */
+function SeletorAparelho({ ents, usados, onEscolher, onFechar }) {
+  const [busca, setBusca] = useState("");
+  const lista = Object.entries(ents)
+    .map(([id, v]) => ({ id, dom: id.split(".")[0], nome: v.attributes?.friendly_name || id }))
+    .filter((x) => HA_ESCOLHIVEIS.includes(x.dom) && !usados.has(x.id))
+    .filter((x) => (x.nome + " " + x.id).toLowerCase().includes(busca.toLowerCase()))
+    .sort((a, b) => a.nome.localeCompare(b.nome))
+    .slice(0, 60);
+  return (
+    <div style={{ border: `1px dashed ${C.lago}66`, borderRadius: 12, background: C.lagoClaro, padding: 10, marginTop: 8 }}>
+      <div className="flex items-center gap-2 mb-2">
+        <Search size={16} style={{ color: C.cinza }} />
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar aparelho…" style={{ ...inpControle, background: "#fff" }} autoFocus />
+        <button onClick={onFechar} style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><X size={16} /></button>
+      </div>
+      {Object.keys(ents).length === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Conecte-se ao Home Assistant (↻ no topo) para listar os aparelhos.</div>}
+      {lista.length === 0 && Object.keys(ents).length > 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Nenhum aparelho novo encontrado.</div>}
+      <div style={{ maxHeight: 260, overflowY: "auto" }}>
+        {lista.map((x) => (
+          <button key={x.id} onClick={() => onEscolher(x.id)} style={{ width: "100%", textAlign: "left", background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: "9px 11px", marginBottom: 6, cursor: "pointer" }}>
+            <div className="flex items-center gap-2">
+              <Plus size={15} style={{ color: C.pasto, flexShrink: 0 }} />
+              <div className="min-w-0"><div className="truncate" style={{ fontWeight: 600, fontSize: 14, color: C.terra }}>{x.nome}</div><div style={{ fontSize: 11, color: C.cinzaClaro }}>sugerido: {CTRL_TIPO_NOME[tipoSugerido(x.id)]}</div></div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+function AmbienteGerenciar({ amb, itens, ents, usados, onRenomearAmb, onExcluirAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip }) {
+  const [editando, setEditando] = useState(false);
+  const [nome, setNome] = useState(amb.nome);
+  const [abrindoSel, setAbrindoSel] = useState(false);
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, padding: 12, marginBottom: 12 }}>
+      <div className="flex items-center gap-2 mb-2">
+        {editando ? (
+          <>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} style={inpControle} autoFocus />
+            <button onClick={() => { if (nome.trim()) onRenomearAmb(amb.id, nome.trim()); setEditando(false); }} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: 9 }}><Check size={16} /></button>
+          </>
+        ) : (
+          <>
+            <div className="flex-1 font-bold truncate" style={{ fontSize: 16, color: C.terra }}>{amb.nome}</div>
+            <button onClick={() => { setNome(amb.nome); setEditando(true); }} title="Renomear" style={{ background: C.bg, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><Pencil size={15} style={{ color: C.cinza }} /></button>
+            <button onClick={() => { if (window.confirm(`Excluir o ambiente "${amb.nome}"? Os aparelhos dele voltam a ficar sem ambiente.`)) onExcluirAmb(amb.id); }} title="Excluir ambiente" style={{ background: C.vermelhoClaro, border: `1px solid ${C.vermelho}44`, borderRadius: 10, padding: 8 }}><Trash2 size={15} style={{ color: C.vermelho }} /></button>
+          </>
+        )}
+      </div>
+
+      {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="mb-2">Nenhum aparelho ainda neste ambiente.</div>}
+      {itens.map((q) => {
+        const live = ents[q.entity_id];
+        const rotulo = q.nome || live?.attributes?.friendly_name || q.entity_id;
+        return (
+          <div key={q.id} style={{ border: `1px solid ${C.linha}`, borderRadius: 10, padding: 9, marginBottom: 7 }}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex-1 min-w-0 truncate" style={{ fontWeight: 600, fontSize: 14, color: C.terra }}>{rotulo}</div>
+              <button onClick={() => onDelEquip(q.id)} title="Remover do ambiente" style={{ background: C.vermelhoClaro, borderRadius: 9, padding: 7 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
+            </div>
+            <div className="flex items-center gap-2">
+              <select value={q.tipo} onChange={(e) => onTipoEquip(q.id, e.target.value)} style={{ ...inpControle, flex: "0 0 auto", padding: "8px 10px" }}>
+                {CTRL_TIPOS.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+              </select>
+              <input defaultValue={q.nome || ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (q.nome || "")) onNomeEquip(q.id, v); }} placeholder="Apelido (opcional)" style={inpControle} />
+            </div>
+          </div>
+        );
+      })}
+
+      {abrindoSel
+        ? <SeletorAparelho ents={ents} usados={usados} onEscolher={(entityId) => { onAddEquip(amb.id, entityId); }} onFechar={() => setAbrindoSel(false)} />
+        : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 4, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${C.pasto}33`, borderRadius: 10, padding: "9px 12px", fontWeight: 700, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={16} /> Adicionar aparelho</button>}
+    </div>
+  );
+}
+function GerenciarView({ ambientes, equipamentos, ents, onCriarAmb, onRenomearAmb, onExcluirAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip }) {
+  const [novo, setNovo] = useState("");
+  const usados = new Set(equipamentos.map((q) => q.entity_id));
+  return (
+    <div>
+      <div className="mb-3" style={{ background: C.lagoClaro, border: `1px solid ${LAGO}33`, borderRadius: 12, padding: "10px 12px", fontSize: 12.5, color: LAGO_ESC }}>
+        Organize a casa: crie ambientes e escolha quais aparelhos aparecem em cada um. Só você (gestor) vê esta tela.
+      </div>
+      <div className="flex gap-2 mb-4">
+        <input value={novo} onChange={(e) => setNovo(e.target.value)} placeholder="Novo ambiente (ex.: Sala)" style={inpControle} />
+        <button onClick={() => { if (novo.trim()) { onCriarAmb(novo.trim()); setNovo(""); } }} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: "0 16px", fontWeight: 700 }}>Criar</button>
+      </div>
+      {ambientes.length === 0 && <div className="text-center py-10" style={{ color: C.cinza }}>Nenhum ambiente ainda. Crie o primeiro acima. 🏠</div>}
+      {ambientes.map((amb) => (
+        <AmbienteGerenciar key={amb.id} amb={amb}
+          itens={equipamentos.filter((q) => q.ambiente_id === amb.id).sort((a, b) => a.ordem - b.ordem)}
+          ents={ents} usados={usados}
+          onRenomearAmb={onRenomearAmb} onExcluirAmb={onExcluirAmb}
+          onAddEquip={onAddEquip} onTipoEquip={onTipoEquip} onNomeEquip={onNomeEquip} onDelEquip={onDelEquip} />
+      ))}
+    </div>
+  );
+}
+
+function ControleApp({ eu, onVoltar }) {
   const [status, setStatus] = useState("carregando"); // carregando | ok | erro
   const [erro, setErro] = useState("");
   const [ents, setEnts] = useState({});
   const [tentativa, setTentativa] = useState(0);
   const [aviso, setAviso] = useState(null);
+  const [ambientes, setAmbientes] = useState([]);
+  const [equipamentos, setEquipamentos] = useState([]);
+  const [modo, setModo] = useState("usar"); // usar | gerenciar
   const wsRef = useRef(null);
   const idRef = useRef(1);
-  const LAGO = "#2b7a8c", LAGO_ESC = "#1f5c6b";
+  const souGestor = eu?.podeGerirControle === true;
 
+  // ---- Carrega ambientes/equipamentos do Supabase (+ tempo real) ----
+  const carregarConfig = useCallback(async () => {
+    const [a, e] = await Promise.all([
+      supabase.from("ambientes").select("*").order("ordem"),
+      supabase.from("controle_equipamentos").select("*").order("ordem"),
+    ]);
+    if (!a.error) setAmbientes(a.data || []);
+    if (!e.error) setEquipamentos(e.data || []);
+  }, []);
+
+  useEffect(() => {
+    carregarConfig();
+    const canal = supabase.channel("controle-config")
+      .on("postgres_changes", { event: "*", schema: "public", table: "ambientes" }, carregarConfig)
+      .on("postgres_changes", { event: "*", schema: "public", table: "controle_equipamentos" }, carregarConfig)
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+  }, [carregarConfig]);
+
+  // ---- Conexão ao vivo com o Home Assistant (WebSocket) ----
   useEffect(() => {
     let ativo = true, conectou = false, ws;
     setStatus("carregando"); setErro("");
@@ -1326,20 +1635,45 @@ function ControleApp({ onVoltar }) {
     return () => { ativo = false; try { ws && ws.close(); } catch { /* ok */ } };
   }, [tentativa]);
 
-  const acionar = (e) => {
-    const c = haComando(e); const ws = wsRef.current;
-    if (!c) return;
+  // ---- Envia um comando ao Home Assistant ----
+  const enviar = (domain, service, entityId, serviceData) => {
+    const ws = wsRef.current;
     if (!ws || ws.readyState !== 1) { setAviso({ erro: true, texto: "A conexão com o Home Assistant caiu. Toque no ↻ (atualizar) no topo e tente de novo." }); return; }
-    ws.send(JSON.stringify({ id: idRef.current++, type: "call_service", domain: c.domain, service: c.service, target: { entity_id: e.id } }));
-    setAviso({ texto: "Comando enviado a " + e.nome + "…" });
-    setTimeout(() => setAviso((a) => (a && !a.erro ? null : a)), 2500);
+    ws.send(JSON.stringify({ id: idRef.current++, type: "call_service", domain, service, target: { entity_id: entityId }, service_data: serviceData || {} }));
+    setAviso({ texto: "Comando enviado…" });
+    setTimeout(() => setAviso((a) => (a && !a.erro ? null : a)), 2000);
   };
 
-  const lista = Object.entries(ents).map(([id, v]) => ({ id, dom: id.split(".")[0], nome: v.attributes?.friendly_name || id, ...v }))
-    .filter((e) => HA_DOMINIOS.includes(e.dom) && !["unavailable", "unknown", "none", ""].includes(e.state))
-    .sort((a, b) => a.nome.localeCompare(b.nome));
-  const grupos = HA_DOMINIOS.map((d) => ({ dom: d, titulo: HA_TITULO[d], itens: lista.filter((e) => e.dom === d) })).filter((g) => g.itens.length);
-  const ligados = lista.filter((e) => e.state === "on").length;
+  // ---- Grava configuração (só gestor; o banco também exige a permissão) ----
+  const salvar = async (p, okTxt) => {
+    const { error } = await p;
+    if (error) { setAviso({ erro: true, texto: "Não consegui salvar: " + error.message }); return; }
+    await carregarConfig();
+    if (okTxt) { setAviso({ texto: okTxt }); setTimeout(() => setAviso((a) => (a && !a.erro ? null : a)), 2200); }
+  };
+  const onCriarAmb = (nome) => salvar(supabase.from("ambientes").insert({ nome, ordem: ambientes.length }), "Ambiente criado");
+  const onRenomearAmb = (id, nome) => salvar(supabase.from("ambientes").update({ nome }).eq("id", id));
+  const onExcluirAmb = (id) => salvar(supabase.from("ambientes").delete().eq("id", id), "Ambiente excluído");
+  const onAddEquip = (ambienteId, entityId) => salvar(supabase.from("controle_equipamentos").insert({ ambiente_id: ambienteId, entity_id: entityId, tipo: tipoSugerido(entityId), ordem: equipamentos.filter((q) => q.ambiente_id === ambienteId).length }), "Aparelho adicionado");
+  const onTipoEquip = (id, tipo) => salvar(supabase.from("controle_equipamentos").update({ tipo }).eq("id", id));
+  const onNomeEquip = (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id));
+  const onDelEquip = (id) => salvar(supabase.from("controle_equipamentos").delete().eq("id", id));
+
+  // ---- Monta a lista para o modo "usar" ----
+  const mkEquip = (row) => {
+    const live = ents[row.entity_id];
+    const state = live?.state;
+    return {
+      dbId: row.id, id: row.entity_id, tipo: row.tipo,
+      nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
+      state, attributes: live?.attributes || {},
+      disponivel: state != null && !["unavailable", "unknown", "none", ""].includes(state),
+    };
+  };
+  const porAmbiente = ambientes.map((amb) => ({
+    id: amb.id, nome: amb.nome,
+    itens: equipamentos.filter((q) => q.ambiente_id === amb.id).sort((a, b) => a.ordem - b.ordem).map(mkEquip),
+  })).filter((g) => g.itens.length > 0 || modo === "gerenciar");
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
@@ -1348,10 +1682,11 @@ function ControleApp({ onVoltar }) {
           <div className="flex items-center gap-2">
             <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><ChevronLeft size={18} /></button>
             <div style={{ background: "#ffffff22", borderRadius: 12, padding: 7 }}><Home size={20} /></div>
-            <div className="flex-1"><div className="font-bold text-lg leading-tight">Controle da Casa</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">Rancho Abdalla</div></div>
+            <div className="flex-1"><div className="font-bold text-lg leading-tight">Controle da Casa</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">{modo === "gerenciar" ? "Organizando ambientes" : "Rancho Abdalla"}</div></div>
+            {souGestor && <button onClick={() => setModo((m) => (m === "usar" ? "gerenciar" : "usar"))} title={modo === "usar" ? "Gerenciar ambientes" : "Voltar a usar"} style={{ background: modo === "gerenciar" ? "#ffffff44" : "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}>{modo === "usar" ? <Wrench size={18} /> : <Check size={18} />}</button>}
             <button onClick={() => setTentativa((t) => t + 1)} title="Atualizar" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><RefreshCw size={18} /></button>
           </div>
-          {status === "ok" && <div className="mt-3 text-sm" style={{ background: "#ffffff1a", borderRadius: 12, padding: "8px 12px" }}>{lista.length} aparelhos · <b>{ligados} ligados</b> · ao vivo</div>}
+          {status === "ok" && modo === "usar" && <div className="mt-3 text-sm" style={{ background: "#ffffff1a", borderRadius: 12, padding: "8px 12px" }}>{ambientes.length} ambientes · ao vivo</div>}
         </header>
 
         <main className="px-3 pt-3">
@@ -1363,30 +1698,28 @@ function ControleApp({ onVoltar }) {
               <button onClick={() => setTentativa((t) => t + 1)} style={{ marginTop: 12, background: LAGO, color: "#fff", borderRadius: 10, padding: "10px 18px", fontWeight: 700 }}>Tentar de novo</button>
             </div>
           )}
-          {status === "ok" && grupos.length === 0 && <div className="text-center py-16" style={{ color: C.cinza }}>Conectado, mas não achei aparelhos para mostrar.</div>}
-          {status === "ok" && grupos.map((g) => (
-            <div key={g.dom} className="mb-4">
-              <div style={{ color: C.cinza }} className="text-xs font-semibold uppercase mb-2">{g.titulo}</div>
-              {g.itens.map((e) => {
-                const st = haEstado(e.state, e.attributes);
-                const ctrl = HA_CONTROLAVEIS.includes(e.dom);
-                const ligado = ["on", "open", "unlocked", "playing", "home"].includes(e.state);
-                const acao = e.dom === "cover" ? (ligado ? "fechar" : "abrir") : e.dom === "lock" ? (e.state === "locked" ? "destrancar" : "trancar") : (ligado ? "desligar" : "ligar");
-                return (
-                  <button key={e.id} onClick={ctrl ? () => acionar(e) : undefined} disabled={!ctrl} style={{ width: "100%", textAlign: "left", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, cursor: ctrl ? "pointer" : "default" }} className="p-3 mb-2 flex items-center gap-3">
-                    <span style={{ width: 12, height: 12, borderRadius: 999, background: st.cor, flexShrink: 0 }} />
-                    <div className="flex-1 min-w-0"><div className="font-medium truncate" style={{ fontSize: 15 }}>{e.nome}</div>{ctrl && <div style={{ fontSize: 11.5, color: C.cinzaClaro }}>tocar para {acao}</div>}</div>
-                    {ctrl ? (
-                      <span style={{ width: 46, height: 27, borderRadius: 999, background: ligado ? st.cor : C.cinzaClaro, position: "relative", flexShrink: 0 }}><span style={{ position: "absolute", top: 3, left: ligado ? 22 : 3, width: 21, height: 21, borderRadius: 999, background: "#fff" }} /></span>
-                    ) : (
-                      <span style={{ color: st.cor, fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap" }}>{st.texto}</span>
-                    )}
-                  </button>
-                ); })}
+
+          {modo === "gerenciar" && souGestor && (
+            <GerenciarView ambientes={ambientes} equipamentos={equipamentos} ents={ents}
+              onCriarAmb={onCriarAmb} onRenomearAmb={onRenomearAmb} onExcluirAmb={onExcluirAmb}
+              onAddEquip={onAddEquip} onTipoEquip={onTipoEquip} onNomeEquip={onNomeEquip} onDelEquip={onDelEquip} />
+          )}
+
+          {modo === "usar" && status === "ok" && ambientes.length === 0 && (
+            <div className="text-center py-16" style={{ color: C.cinza }}>
+              Nenhum ambiente organizado ainda.
+              {souGestor && <div className="mt-3"><button onClick={() => setModo("gerenciar")} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: "10px 18px", fontWeight: 700 }}>Organizar agora</button></div>}
+            </div>
+          )}
+          {modo === "usar" && status === "ok" && porAmbiente.map((g) => (
+            <div key={g.id} className="mb-4">
+              <div style={{ color: C.cinza }} className="text-xs font-semibold uppercase mb-2">{g.nome}</div>
+              {g.itens.map((e) => <EquipCard key={e.dbId} e={e} enviar={enviar} />)}
             </div>
           ))}
+
           {aviso && <div style={{ background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, borderRadius: 12, fontSize: 13.5 }} className="p-3 mb-3">{aviso.texto}</div>}
-          {status === "ok" && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Toque no aparelho para ligar/desligar. Medidores e sensores são só leitura.</div>}
+          {modo === "usar" && status === "ok" && ambientes.length > 0 && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Cada aparelho tem os controles do seu tipo.</div>}
         </main>
       </div>
     </div>

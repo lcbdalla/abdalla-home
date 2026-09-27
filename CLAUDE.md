@@ -50,6 +50,18 @@ conclusoes (id, tarefa_id, data, user_id, foto_url).
 - Login por e-mail/senha (Supabase Auth), leitura/gravação no banco, tempo real,
   fotos no Storage, base de produtos, todas as telas. Testado localmente e no ar.
 
+## Controle da Casa (Home Assistant) — como está montado
+- Tela separada aberta por #controle (ControleApp em src/AbdallaHome.jsx). Conecta
+  ao HA por WebSocket (endereço+token na tabela ha_config).
+- Permissões em perfis: `pode_controle` (usar) e `pode_gerir_controle` (GESTOR:
+  criar ambientes e vincular aparelhos — só o dono). RLS trava a escrita ao gestor.
+- Tabelas: `ambientes` (nome, ordem) e `controle_equipamentos` (ambiente_id,
+  entity_id do HA, nome/apelido, tipo). Roteiro: supabase/sql/ha-ambientes.sql.
+- Cada aparelho tem controle por TIPO: interruptor (liga/desliga), persiana
+  (abrir/parar/fechar — serve p/ cortina e flap), ar (climate: on/off, temp+/-,
+  modo, vento), tv (media_player: on/off, volume, play/pausa), fechadura, sensor.
+- Modo "Gerenciar" (ícone chave inglesa no topo) aparece só para o gestor.
+
 ## O que FALTA (próximos passos)
 1. **Cadastro de equipe pelo app (PRIORIDADE):** ativar o botão "Adicionar
    pessoa" da aba Equipe. Isso depende de uma Edge Function do Supabase
