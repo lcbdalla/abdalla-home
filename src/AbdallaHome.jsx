@@ -1491,29 +1491,37 @@ function EquipCard({ e, enviar }) {
 }
 
 /* ---- Modo GERENCIAR (só gestor) ---- */
-function SeletorAparelho({ ents, usados, onEscolher, onFechar }) {
+function SeletorAparelho({ ents, areas, usados, onEscolher, onFechar }) {
   const [busca, setBusca] = useState("");
   const lista = Object.entries(ents)
-    .map(([id, v]) => ({ id, dom: id.split(".")[0], nome: v.attributes?.friendly_name || id }))
+    .map(([id, v]) => ({ id, dom: id.split(".")[0], nome: v.attributes?.friendly_name || id, area: (areas && areas[id]) || "" }))
     .filter((x) => HA_ESCOLHIVEIS.includes(x.dom) && !usados.has(x.id))
-    .filter((x) => (x.nome + " " + x.id).toLowerCase().includes(busca.toLowerCase()))
-    .sort((a, b) => a.nome.localeCompare(b.nome))
-    .slice(0, 60);
+    .filter((x) => (x.nome + " " + x.id + " " + x.area).toLowerCase().includes(busca.toLowerCase()))
+    // Ordena por área (ambiente do HA) e depois por nome, para facilitar achar.
+    .sort((a, b) => (a.area || "~").localeCompare(b.area || "~") || a.nome.localeCompare(b.nome))
+    .slice(0, 80);
   return (
     <div style={{ border: `1px dashed ${LAGO}66`, borderRadius: 12, background: C.lagoClaro, padding: 10, marginTop: 8 }}>
       <div className="flex items-center gap-2 mb-2">
         <Search size={16} style={{ color: C.cinza }} />
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar aparelho…" style={{ ...inpControle, background: "#fff" }} autoFocus />
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar por nome ou ambiente…" style={{ ...inpControle, background: "#fff" }} autoFocus />
         <button onClick={onFechar} style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><X size={16} /></button>
       </div>
       {Object.keys(ents).length === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Conecte-se ao Home Assistant (↻ no topo) para listar os aparelhos.</div>}
       {lista.length === 0 && Object.keys(ents).length > 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Nenhum aparelho novo encontrado.</div>}
-      <div style={{ maxHeight: 260, overflowY: "auto" }}>
+      {areas === null && Object.keys(ents).length > 0 && <div style={{ color: C.cinzaClaro, fontSize: 11.5 }} className="pb-2 text-center">Carregando os ambientes do Home Assistant…</div>}
+      <div style={{ maxHeight: 300, overflowY: "auto" }}>
         {lista.map((x) => (
           <button key={x.id} onClick={() => onEscolher(x.id)} style={{ width: "100%", textAlign: "left", background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: "9px 11px", marginBottom: 6, cursor: "pointer" }}>
             <div className="flex items-center gap-2">
               <Plus size={15} style={{ color: C.pasto, flexShrink: 0 }} />
-              <div className="min-w-0"><div className="truncate" style={{ fontWeight: 600, fontSize: 14, color: C.terra }}>{x.nome}</div><div style={{ fontSize: 11, color: C.cinzaClaro }}>sugerido: {CTRL_TIPO_NOME[tipoSugerido(x.id)]}</div></div>
+              <div className="min-w-0" style={{ flex: 1 }}>
+                <div className="flex items-center gap-2">
+                  <span className="truncate" style={{ fontWeight: 600, fontSize: 14, color: C.terra, flex: 1 }}>{x.nome}</span>
+                  {x.area && <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, background: C.lagoClaro, color: LAGO_ESC, border: `1px solid ${LAGO}33`, borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}><MapPin size={11} />{x.area}</span>}
+                </div>
+                <div className="truncate" style={{ fontSize: 11, color: C.cinzaClaro }}>{x.id} · sugerido: {CTRL_TIPO_NOME[tipoSugerido(x.id)]}</div>
+              </div>
             </div>
           </button>
         ))}
@@ -1521,7 +1529,7 @@ function SeletorAparelho({ ents, usados, onEscolher, onFechar }) {
     </div>
   );
 }
-function AmbienteGerenciar({ amb, pavimentos, itens, ents, usados, onRenomearAmb, onExcluirAmb, onMoverAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip }) {
+function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onRenomearAmb, onExcluirAmb, onMoverAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip }) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(amb.nome);
   const [abrindoSel, setAbrindoSel] = useState(false);
@@ -1569,12 +1577,12 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, usados, onRenomearAmb
       })}
 
       {abrindoSel
-        ? <SeletorAparelho ents={ents} usados={usados} onEscolher={(entityId) => { onAddEquip(amb.id, entityId); }} onFechar={() => setAbrindoSel(false)} />
+        ? <SeletorAparelho ents={ents} areas={areas} usados={usados} onEscolher={(entityId) => { onAddEquip(amb.id, entityId); }} onFechar={() => setAbrindoSel(false)} />
         : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 2, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${C.pasto}33`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Adicionar aparelho</button>}
     </div>
   );
 }
-function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, usados, cbs }) {
+function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, areas, usados, cbs }) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(pav.nome);
   const [novoAmb, setNovoAmb] = useState("");
@@ -1597,7 +1605,7 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, us
       </div>
       {meus.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="mb-2">Nenhum cômodo neste pavimento ainda.</div>}
       {meus.map((a) => (
-        <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} usados={usados}
+        <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
           itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
           onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
           onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} />
@@ -1609,7 +1617,7 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, us
     </div>
   );
 }
-function GerenciarView({ pavimentos, ambientes, equipamentos, ents, cbs }) {
+function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }) {
   const [novoPav, setNovoPav] = useState("");
   const usados = new Set(equipamentos.map((q) => q.entity_id));
   const orfaos = ambientes.filter((a) => !a.pavimento_id || !pavimentos.some((p) => p.id === a.pavimento_id));
@@ -1624,13 +1632,13 @@ function GerenciarView({ pavimentos, ambientes, equipamentos, ents, cbs }) {
       </div>
       {pavimentos.length === 0 && orfaos.length === 0 && <div className="text-center py-10" style={{ color: C.cinza }}>Nenhum pavimento ainda. Crie o primeiro acima. 🏢</div>}
       {pavimentos.map((pav) => (
-        <PavimentoGerenciar key={pav.id} pav={pav} pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} usados={usados} cbs={cbs} />
+        <PavimentoGerenciar key={pav.id} pav={pav} pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} areas={areas} usados={usados} cbs={cbs} />
       ))}
       {orfaos.length > 0 && (
         <div style={{ border: `1px dashed ${C.linha}`, borderRadius: 16, padding: 12, marginBottom: 14 }}>
           <div className="font-bold mb-3" style={{ fontSize: 15, color: C.cinza }}>Sem pavimento</div>
           {orfaos.map((a) => (
-            <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} usados={usados}
+            <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
               itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
               onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
               onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} />
@@ -1645,6 +1653,7 @@ function ControleApp({ eu, onVoltar }) {
   const [status, setStatus] = useState("carregando"); // carregando | ok | erro
   const [erro, setErro] = useState("");
   const [ents, setEnts] = useState({});
+  const [areas, setAreas] = useState(null); // entity_id -> nome da área no Home Assistant
   const [tentativa, setTentativa] = useState(0);
   const [aviso, setAviso] = useState(null);
   const [pavimentos, setPavimentos] = useState([]);
@@ -1683,7 +1692,18 @@ function ControleApp({ eu, onVoltar }) {
   // ---- Conexão ao vivo com o Home Assistant (WebSocket) ----
   useEffect(() => {
     let ativo = true, conectou = false, ws;
-    setStatus("carregando"); setErro("");
+    setStatus("carregando"); setErro(""); setAreas(null);
+    const pend = {}; // id da requisição -> tipo (para saber qual resposta é qual)
+    const reg = { areas: null, devices: null, entities: null };
+    // Monta o mapa entity_id -> nome da área (ambiente do HA), via os "registries".
+    const montarAreas = () => {
+      if (!reg.areas || !reg.entities) return;
+      const areaNome = {}; reg.areas.forEach((a) => { areaNome[a.area_id] = a.name; });
+      const devArea = {}; (reg.devices || []).forEach((d) => { if (d.area_id) devArea[d.id] = d.area_id; });
+      const map = {};
+      reg.entities.forEach((en) => { const aid = en.area_id || (en.device_id ? devArea[en.device_id] : null); if (aid && areaNome[aid]) map[en.entity_id] = areaNome[aid]; });
+      if (ativo) setAreas(map);
+    };
     (async () => {
       const { data, error } = await supabase.from("ha_config").select("base_url, token").eq("id", "default").maybeSingle();
       if (!ativo) return;
@@ -1692,20 +1712,36 @@ function ControleApp({ eu, onVoltar }) {
       const wsUrl = data.base_url.replace(/^http/, "ws").replace(/\/+$/, "") + "/api/websocket";
       try { ws = new WebSocket(wsUrl); } catch (e) { setErro("Não consegui abrir a conexão: " + (e?.message || e)); setStatus("erro"); return; }
       wsRef.current = ws;
-      const send = (o) => ws.send(JSON.stringify(o));
+      const send = (o) => { const id = idRef.current++; const tipo = o.tipo; delete o.tipo; if (tipo) pend[id] = tipo; ws.send(JSON.stringify({ id, ...o })); };
       ws.onmessage = (ev) => {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
-        if (m.type === "auth_required") return send({ type: "auth", access_token: data.token });
+        if (m.type === "auth_required") return ws.send(JSON.stringify({ type: "auth", access_token: data.token }));
         if (m.type === "auth_invalid") { setErro("O token foi recusado pelo Home Assistant. Gere um novo e atualize no Supabase."); setStatus("erro"); try { ws.close(); } catch { /* ok */ } return; }
-        if (m.type === "auth_ok") { conectou = true; send({ id: idRef.current++, type: "get_states" }); send({ id: idRef.current++, type: "subscribe_events", event_type: "state_changed" }); return; }
-        if (m.type === "result" && m.success === false) { if (ativo) setAviso({ erro: true, texto: "Não consegui executar: " + (m.error?.message || "erro do Home Assistant") }); return; }
-        if (m.type === "result" && Array.isArray(m.result)) {
-          const map = {};
-          m.result.forEach((s) => {
-            const dom = s.entity_id.split(".")[0];
-            if (HA_SHOW.has(dom) && !ehGrupoLuz(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} };
-          });
-          if (ativo) { setEnts(map); setStatus("ok"); }
+        if (m.type === "auth_ok") {
+          conectou = true;
+          send({ tipo: "states", type: "get_states" });
+          send({ tipo: "areas", type: "config/area_registry/list" });
+          send({ tipo: "devices", type: "config/device_registry/list" });
+          send({ tipo: "entities", type: "config/entity_registry/list" });
+          send({ type: "subscribe_events", event_type: "state_changed" });
+          return;
+        }
+        if (m.type === "result") {
+          const tipo = pend[m.id]; delete pend[m.id];
+          if (m.success === false) {
+            if (tipo === "states") { setErro("Falha ao ler estados: " + (m.error?.message || "")); setStatus("erro"); }
+            else if (ativo && !["areas", "devices", "entities"].includes(tipo)) setAviso({ erro: true, texto: "Não consegui executar: " + (m.error?.message || "erro do Home Assistant") });
+            return;
+          }
+          if (tipo === "states") {
+            const map = {};
+            (m.result || []).forEach((s) => { const dom = s.entity_id.split(".")[0]; if (HA_SHOW.has(dom) && !ehGrupoLuz(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
+            if (ativo) { setEnts(map); setStatus("ok"); }
+            return;
+          }
+          if (tipo === "areas") { reg.areas = m.result || []; montarAreas(); return; }
+          if (tipo === "devices") { reg.devices = m.result || []; montarAreas(); return; }
+          if (tipo === "entities") { reg.entities = m.result || []; montarAreas(); return; }
           return;
         }
         if (m.type === "event" && m.event?.event_type === "state_changed") {
@@ -1794,7 +1830,7 @@ function ControleApp({ eu, onVoltar }) {
           )}
 
           {modo === "gerenciar" && souGestor && (
-            <GerenciarView pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} cbs={cbs} />
+            <GerenciarView pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} areas={areas} cbs={cbs} />
           )}
 
           {modo === "usar" && status === "ok" && listaPav.length === 0 && (
