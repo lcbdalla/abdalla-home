@@ -1593,9 +1593,10 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(amb.nome);
   const [abrindoSel, setAbrindoSel] = useState(false);
+  const [aberto, setAberto] = useState(false);
   return (
     <div style={{ background: C.bg, border: `1px solid ${C.linha}`, borderRadius: 12, padding: 11, marginBottom: 10 }}>
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2">
         {editando ? (
           <>
             <input value={nome} onChange={(e) => setNome(e.target.value)} style={inpControle} autoFocus />
@@ -1603,7 +1604,11 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
           </>
         ) : (
           <>
-            <div className="flex-1 font-bold truncate" style={{ fontSize: 15, color: C.terra }}>{amb.nome}</div>
+            <button onClick={() => setAberto((v) => !v)} className="flex items-center gap-2 flex-1 min-w-0" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              <span style={{ color: C.cinza, fontSize: 13, flexShrink: 0 }}>{aberto ? "▾" : "▸"}</span>
+              <span className="font-bold truncate" style={{ fontSize: 15, color: C.terra }}>{amb.nome}</span>
+              <span style={{ fontSize: 11, color: C.cinza, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "1px 8px", flexShrink: 0 }}>{itens.length}</span>
+            </button>
             {pavimentos.length > 0 && (
               <select value={amb.pavimento_id || ""} onChange={(e) => onMoverAmb(amb.id, e.target.value || null)} title="Mudar de pavimento" style={{ border: `1px solid ${C.linha}`, borderRadius: 9, padding: "6px 8px", fontSize: 12, background: C.card, color: C.cinza }}>
                 {pavimentos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
@@ -1615,37 +1620,39 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
         )}
       </div>
 
-      {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 12.5 }} className="mb-2">Nenhum aparelho ainda neste cômodo.</div>}
-      {itens.map((q) => {
-        const live = ents[q.entity_id];
-        const original = live?.attributes?.friendly_name || q.entity_id; // nome de referência (vem do HA)
-        return (
-          <div key={q.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 10, marginBottom: 7 }}>
-            <div className="flex items-start gap-2 mb-2">
-              <span style={{ fontSize: 16, lineHeight: "18px" }}>{CTRL_EMOJI[q.tipo] || "●"}</span>
-              <div className="flex-1 min-w-0">
-                <div className="truncate" style={{ fontWeight: 600, fontSize: 13.5, color: C.terra }}>{q.nome || original}</div>
-                <div className="truncate" style={{ fontSize: 10.5, color: C.cinzaClaro }}>{q.entity_id}</div>
+      {aberto && (<div className="mt-3">
+        {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 12.5 }} className="mb-2">Nenhum aparelho ainda neste cômodo.</div>}
+        {itens.map((q) => {
+          const live = ents[q.entity_id];
+          const original = live?.attributes?.friendly_name || q.entity_id; // nome de referência (vem do HA)
+          return (
+            <div key={q.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 10, marginBottom: 7 }}>
+              <div className="flex items-start gap-2 mb-2">
+                <span style={{ fontSize: 16, lineHeight: "18px" }}>{CTRL_EMOJI[q.tipo] || "●"}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate" style={{ fontWeight: 600, fontSize: 13.5, color: C.terra }}>{q.nome || original}</div>
+                  <div className="truncate" style={{ fontSize: 10.5, color: C.cinzaClaro }}>{q.entity_id}</div>
+                </div>
+                <button onClick={() => onDelEquip(q.id)} title="Remover do cômodo" style={{ background: C.vermelhoClaro, borderRadius: 9, padding: 7, flexShrink: 0 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
               </div>
-              <button onClick={() => onDelEquip(q.id)} title="Remover do cômodo" style={{ background: C.vermelhoClaro, borderRadius: 9, padding: 7, flexShrink: 0 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 3 }}>Nome que aparece no controle</div>
+                <input defaultValue={q.nome || ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (q.nome || "")) onNomeEquip(q.id, v); }} placeholder={original} style={{ ...inpControle, width: "100%" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 3 }}>Como controla</div>
+                <select value={q.tipo} onChange={(e) => onTipoEquip(q.id, e.target.value)} style={{ ...inpControle, width: "100%" }}>
+                  {CTRL_TIPOS.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                </select>
+              </div>
             </div>
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 3 }}>Nome que aparece no controle</div>
-              <input defaultValue={q.nome || ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (q.nome || "")) onNomeEquip(q.id, v); }} placeholder={original} style={{ ...inpControle, width: "100%" }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 3 }}>Como controla</div>
-              <select value={q.tipo} onChange={(e) => onTipoEquip(q.id, e.target.value)} style={{ ...inpControle, width: "100%" }}>
-                {CTRL_TIPOS.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-              </select>
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
 
-      {abrindoSel
-        ? <SeletorAparelho ents={ents} areas={areas} usados={usados} onEscolher={(entityId) => { onAddEquip(amb.id, entityId); }} onFechar={() => setAbrindoSel(false)} />
-        : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 2, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${C.pasto}33`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Adicionar aparelho</button>}
+        {abrindoSel
+          ? <SeletorAparelho ents={ents} areas={areas} usados={usados} onEscolher={(entityId) => { onAddEquip(amb.id, entityId); }} onFechar={() => setAbrindoSel(false)} />
+          : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 2, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${C.pasto}33`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Adicionar aparelho</button>}
+      </div>)}
     </div>
   );
 }
@@ -1653,10 +1660,12 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, ar
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(pav.nome);
   const [novoAmb, setNovoAmb] = useState("");
+  const [aberto, setAberto] = useState(false);
   const meus = ambientes.filter((a) => a.pavimento_id === pav.id).sort((a, b) => a.ordem - b.ordem);
+  const nDisp = equipamentos.filter((q) => meus.some((a) => a.id === q.ambiente_id)).length;
   return (
     <div style={{ border: `1px solid ${C.linha}`, borderRadius: 16, background: C.card, padding: 12, marginBottom: 14 }}>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2">
         {editando ? (
           <>
             <input value={nome} onChange={(e) => setNome(e.target.value)} style={inpControle} autoFocus />
@@ -1664,23 +1673,29 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, ar
           </>
         ) : (
           <>
-            <div className="flex-1 font-bold truncate" style={{ fontSize: 17, color: C.terra }}>🏢 {pav.nome}</div>
+            <button onClick={() => setAberto((v) => !v)} className="flex items-center gap-2 flex-1 min-w-0" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              <span style={{ color: C.cinza, fontSize: 15, flexShrink: 0 }}>{aberto ? "▾" : "▸"}</span>
+              <span className="font-bold truncate" style={{ fontSize: 17, color: C.terra }}>🏢 {pav.nome}</span>
+              <span style={{ fontSize: 11.5, color: C.cinza, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "1px 9px", flexShrink: 0 }}>{nDisp}</span>
+            </button>
             <button onClick={() => { setNome(pav.nome); setEditando(true); }} title="Renomear pavimento" style={{ background: C.bg, border: `1px solid ${C.linha}`, borderRadius: 9, padding: 8 }}><Pencil size={15} style={{ color: C.cinza }} /></button>
             <button onClick={() => { if (window.confirm(`Excluir o pavimento "${pav.nome}"? Os cômodos dele ficam "sem pavimento".`)) cbs.onExcluirPav(pav.id); }} title="Excluir pavimento" style={{ background: C.vermelhoClaro, border: `1px solid ${C.vermelho}44`, borderRadius: 9, padding: 8 }}><Trash2 size={15} style={{ color: C.vermelho }} /></button>
           </>
         )}
       </div>
-      {meus.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="mb-2">Nenhum cômodo neste pavimento ainda.</div>}
-      {meus.map((a) => (
-        <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
-          itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
-          onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
-          onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} />
-      ))}
-      <div className="flex gap-2 mt-1">
-        <input value={novoAmb} onChange={(e) => setNovoAmb(e.target.value)} placeholder="Novo cômodo (ex.: Sala TV)" style={inpControle} />
-        <button onClick={() => { if (novoAmb.trim()) { cbs.onCriarAmb(pav.id, novoAmb.trim()); setNovoAmb(""); } }} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: "0 16px", fontWeight: 700 }}>Criar</button>
-      </div>
+      {aberto && (<div className="mt-3">
+        {meus.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="mb-2">Nenhum cômodo neste pavimento ainda.</div>}
+        {meus.map((a) => (
+          <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
+            itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
+            onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
+            onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} />
+        ))}
+        <div className="flex gap-2 mt-1">
+          <input value={novoAmb} onChange={(e) => setNovoAmb(e.target.value)} placeholder="Novo cômodo (ex.: Sala TV)" style={inpControle} />
+          <button onClick={() => { if (novoAmb.trim()) { cbs.onCriarAmb(pav.id, novoAmb.trim()); setNovoAmb(""); } }} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: "0 16px", fontWeight: 700 }}>Criar</button>
+        </div>
+      </div>)}
     </div>
   );
 }
