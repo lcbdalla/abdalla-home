@@ -1,14 +1,32 @@
 @import "tailwindcss";
 
-/* Reset minimo. O layout/cores do app vem de estilos inline no proprio
-   componente (paleta verde/terra) e das classes utilitarias do Tailwind. */
+/* Paleta do app em variaveis, para permitir o modo noturno.
+   A troca de tema e feita colocando data-theme="dark" no <html>. */
+:root {
+  color-scheme: light;
+  --c-bg: #f6f3ea; --c-card: #ffffff; --c-linha: #e6dfcd;
+  --c-pasto: #2f7d4f; --c-pastoEsc: #1f5c39; --c-pastoClaro: #e6f2ea;
+  --c-lago: #2b7a8c; --c-lagoClaro: #e2f0f2; --c-areia: #efe7d4;
+  --c-terra: #33302a; --c-cinza: #726b5e; --c-cinzaClaro: #a49c8c;
+  --c-ambar: #c8862a; --c-ambarClaro: #fbf0dc; --c-vermelho: #b34a3a; --c-vermelhoClaro: #f7e6e2;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-bg: #15140f; --c-card: #22211b; --c-linha: #38352c;
+  --c-pasto: #43a56a; --c-pastoEsc: #2f7d4f; --c-pastoClaro: #1b3325;
+  --c-lago: #4aa9bd; --c-lagoClaro: #12313a; --c-areia: #2a271e;
+  --c-terra: #efe9db; --c-cinza: #b3ab9b; --c-cinzaClaro: #7a7264;
+  --c-ambar: #e0a24a; --c-ambarClaro: #3a2e1a; --c-vermelho: #d96a5a; --c-vermelhoClaro: #3a201c;
+}
+
+/* Reset minimo. O layout/cores do app vem de estilos inline (paleta acima). */
 html,
 body,
 #root {
   margin: 0;
   padding: 0;
   min-height: 100%;
-  background: #f6f3ea;
+  background: var(--c-bg);
 }
 
 * {

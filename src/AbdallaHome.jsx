@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
-  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home
+  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -12,13 +12,15 @@ import { supabase } from "./supabaseClient";
    Dados no Supabase (Auth + Postgres + Realtime + Storage)
    ============================================================ */
 
+// Cores vindas das variaveis de CSS (ver src/index.css) — permite o modo noturno.
 const C = {
-  bg: "#f6f3ea", card: "#ffffff", linha: "#e6dfcd",
-  pasto: "#2f7d4f", pastoEsc: "#1f5c39", pastoClaro: "#e6f2ea",
-  lago: "#2b7a8c", lagoClaro: "#e2f0f2", areia: "#efe7d4",
-  terra: "#33302a", cinza: "#726b5e", cinzaClaro: "#a49c8c",
-  ambar: "#c8862a", ambarClaro: "#fbf0dc", vermelho: "#b34a3a", vermelhoClaro: "#f7e6e2",
+  bg: "var(--c-bg,#f6f3ea)", card: "var(--c-card,#ffffff)", linha: "var(--c-linha,#e6dfcd)",
+  pasto: "var(--c-pasto,#2f7d4f)", pastoEsc: "var(--c-pastoEsc,#1f5c39)", pastoClaro: "var(--c-pastoClaro,#e6f2ea)",
+  lago: "var(--c-lago,#2b7a8c)", lagoClaro: "var(--c-lagoClaro,#e2f0f2)", areia: "var(--c-areia,#efe7d4)",
+  terra: "var(--c-terra,#33302a)", cinza: "var(--c-cinza,#726b5e)", cinzaClaro: "var(--c-cinzaClaro,#a49c8c)",
+  ambar: "var(--c-ambar,#c8862a)", ambarClaro: "var(--c-ambarClaro,#fbf0dc)", vermelho: "var(--c-vermelho,#b34a3a)", vermelhoClaro: "var(--c-vermelhoClaro,#f7e6e2)",
 };
+const alfa = (cor, pct) => `color-mix(in srgb, ${cor} ${pct}%, transparent)`;
 
 const CATEGORIAS = [
   { id: "Supermercado", icon: ShoppingBasket, cor: "#3a8a5a" },
@@ -284,6 +286,13 @@ export default function App() {
   const [infoAberto, setInfoAberto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [temAtualizacao, setTemAtualizacao] = useState(false);
+  const [tema, setTema] = useState(() => (typeof document !== "undefined" && document.documentElement.dataset.theme === "dark") ? "dark" : "light");
+  const alternarTema = () => {
+    const novo = tema === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = novo;
+    try { localStorage.setItem("tema", novo); } catch { /* ok */ }
+    setTema(novo);
+  };
   const [rota, setRota] = useState(() => (window.location.hash || "").replace(/^#/, ""));
   useEffect(() => { const h = () => setRota((window.location.hash || "").replace(/^#/, "")); window.addEventListener("hashchange", h); return () => window.removeEventListener("hashchange", h); }, []);
   const [produtosAberto, setProdutosAberto] = useState(false);
@@ -640,9 +649,10 @@ export default function App() {
                 <button onClick={() => setMenuAberto((v) => !v)} title="Mais opções" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><MoreVertical size={18} /></button>
                 {menuAberto && (<>
                   <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 44 }} />
-                  <div style={{ position: "absolute", top: 42, right: 0, background: "#fff", color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 22px #0003", zIndex: 45, minWidth: 210, overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: 42, right: 0, background: C.card, color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 22px #0003", zIndex: 45, minWidth: 210, overflow: "hidden" }}>
                     {[
                       ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => { setMenuAberto(false); _installOpen.fn && _installOpen.fn(); } }] : []),
+                      { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: () => { setMenuAberto(false); alternarTema(); } },
                       ...(eu?.podeControle ? [{ key: "controle", icon: Home, cor: C.lago, txt: "Controle da casa", on: () => { setMenuAberto(false); window.location.hash = "controle"; } }] : []),
                       ...(souAdmin ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: () => { setMenuAberto(false); setInfoAberto(true); } }] : []),
                       { key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { setMenuAberto(false); if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) sair(); } },
@@ -663,7 +673,7 @@ export default function App() {
         {avisos.length > 0 && (
           <div className="px-3 pt-3">
             {avisos.map((a) => (
-              <div key={a.id} style={{ background: C.ambarClaro, border: `1px solid ${C.ambar}55`, borderRadius: 12 }} className="p-3 mb-2 flex items-center gap-2">
+              <div key={a.id} style={{ background: C.ambarClaro, border: `1px solid ${alfa(C.ambar, 33)}`, borderRadius: 12 }} className="p-3 mb-2 flex items-center gap-2">
                 <Bell size={18} style={{ color: C.ambar }} /><div className="flex-1 text-sm"><b>Começa às {a.hora}:</b> {a.titulo}</div>
                 <button onClick={() => setAvisos((p) => p.filter((x) => x.id !== a.id))}><X size={16} style={{ color: C.cinza }} /></button>
               </div>
@@ -712,7 +722,7 @@ export default function App() {
             <RefreshCw size={18} style={{ flexShrink: 0 }} />
             <div className="flex-1" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2 }}>Nova versão disponível</div>
             <button onClick={() => setTemAtualizacao(false)} title="Agora não" style={{ color: "#ffffffcc", padding: 4 }}><X size={18} /></button>
-            <button onClick={atualizarAgora} style={{ background: "#fff", color: C.pastoEsc, borderRadius: 10, padding: "8px 16px", fontWeight: 700, fontSize: 14 }}>Atualizar</button>
+            <button onClick={atualizarAgora} style={{ background: C.card, color: C.pastoEsc, borderRadius: 10, padding: "8px 16px", fontWeight: 700, fontSize: 14 }}>Atualizar</button>
           </div>
         )}
         <InstalarPrompt />
@@ -837,7 +847,7 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
             <div className="relative">
               <button onClick={() => setAbrirResp((v) => !v)} title="Responsável (de quem é a tarefa)" style={{ background: C.pastoClaro, color: C.pastoEsc, borderRadius: 999, padding: "4px 11px", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><User size={13} /> {nomeUser(users, t.responsavelId)} <RefreshCw size={11} /></button>
               {abrirResp && (
-                <div style={{ position: "absolute", top: 34, left: 0, background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 6px 18px #0002", zIndex: 20, minWidth: 180, overflow: "hidden" }}>
+                <div style={{ position: "absolute", top: 34, left: 0, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 6px 18px #0002", zIndex: 20, minWidth: 180, overflow: "hidden" }}>
                   <div style={{ padding: "8px 12px", fontSize: 11, color: C.cinza, borderBottom: `1px solid ${C.linha}` }}>Passar para:</div>
                   {users.filter((u) => u.ativo !== false).map((u) => <button key={u.id} onClick={() => { onTrocar(t, u.id); setAbrirResp(false); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", fontSize: 14, background: t.responsavelId === u.id ? C.pastoClaro : "#fff" }}>{u.nome}</button>)}
                 </div>
@@ -941,7 +951,7 @@ function EstoqueView({ produtos, estoque, movs, users, onAjustar, onAbrirProduto
       <div style={{ background: C.pastoClaro, borderRadius: 14 }} className="p-3 mb-3">
         <div className="flex items-start justify-between gap-2">
           <div><div style={{ color: C.pastoEsc }} className="text-xs font-semibold uppercase">Controle de estoque</div><div style={{ color: C.terra }} className="text-sm mt-0.5">Entrada automática pelas compras. Registre aqui as saídas de consumo.</div></div>
-          <button onClick={onAbrirProdutos} style={{ background: "#fff", color: C.pastoEsc, border: `1px solid ${C.pasto}`, borderRadius: 999, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}><Tag size={14} /> Produtos</button>
+          <button onClick={onAbrirProdutos} style={{ background: C.card, color: C.pastoEsc, border: `1px solid ${C.pasto}`, borderRadius: 999, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}><Tag size={14} /> Produtos</button>
         </div>
         <div className="flex gap-2 mt-3">
           <button onClick={() => onMovimento("entrada")} style={{ flex: 1, background: C.pasto, color: "#fff", borderRadius: 10, padding: "11px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><ArrowDownToLine size={17} /> Entrada</button>
@@ -1324,7 +1334,7 @@ function PillToggle({ on, cor, onClick, disabled }) {
   return (
     <button onClick={onClick} disabled={disabled} title={on ? "desligar" : "ligar"}
       style={{ width: 52, height: 30, borderRadius: 999, background: on ? (cor || C.pasto) : "#c9c2b2", position: "relative", flexShrink: 0, border: "none", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}>
-      <span style={{ position: "absolute", top: 3, left: on ? 25 : 3, width: 24, height: 24, borderRadius: 999, background: "#fff", transition: "left .15s" }} />
+      <span style={{ position: "absolute", top: 3, left: on ? 25 : 3, width: 24, height: 24, borderRadius: 999, background: C.card, transition: "left .15s" }} />
     </button>
   );
 }
@@ -1500,7 +1510,7 @@ function CtrlArCompacto({ e, enviar }) {
   const min = a.min_temp != null ? a.min_temp : 16, max = a.max_temp != null ? a.max_temp : 30;
   const passo = a.target_temp_step || 1;
   const setTemp = (ev, delta) => { ev.stopPropagation(); if (alvo == null) return; let v = Math.round((alvo + delta * passo) * 10) / 10; v = Math.min(max, Math.max(min, v)); enviar("climate", "set_temperature", e.id, { temperature: v }); };
-  const mini = { width: 26, height: 26, borderRadius: 8, border: `1px solid ${C.linha}`, background: "#fff", color: C.terra, fontWeight: 700, fontSize: 15, lineHeight: "1", flexShrink: 0 };
+  const mini = { width: 26, height: 26, borderRadius: 8, border: `1px solid ${C.linha}`, background: C.card, color: C.terra, fontWeight: 700, fontSize: 15, lineHeight: "1", flexShrink: 0 };
   return (
     <div className="flex items-center gap-2">
       {ligado && alvo != null ? (
@@ -1541,7 +1551,7 @@ function EquipCard({ e, enviar, expandido, onExpandir }) {
     : (compactavel && !expandido) ? onExpandir : undefined;
   return (
     <div onClick={cardClick} role={cardClick ? "button" : undefined}
-      style={{ background: C.card, border: `1px solid ${ligado ? C.pasto + "66" : C.linha}`, borderRadius: 16, height: "100%", cursor: cardClick ? "pointer" : "default" }} className="p-3">
+      style={{ background: C.card, border: `1px solid ${ligado ? alfa(C.pasto, 40) : C.linha}`, borderRadius: 16, height: "100%", cursor: cardClick ? "pointer" : "default" }} className="p-3">
       <div className="flex items-center gap-2 mb-2" onClick={compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ cursor: compactavel ? "pointer" : "default" }}>
         <span style={{ fontSize: 20, flexShrink: 0 }}>{CTRL_EMOJI[e.tipo] || "●"}</span>
         <div className="flex-1 min-w-0 font-semibold truncate" style={{ fontSize: 14, color: C.terra }}>{e.nome}</div>
@@ -1569,15 +1579,15 @@ function SeletorAparelho({ ents, areas, usados, onEscolher, onFechar }) {
     <div style={{ border: `1px dashed ${LAGO}66`, borderRadius: 12, background: C.lagoClaro, padding: 10, marginTop: 8 }}>
       <div className="flex items-center gap-2 mb-2">
         <Search size={16} style={{ color: C.cinza }} />
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar por nome ou ambiente…" style={{ ...inpControle, background: "#fff" }} autoFocus />
-        <button onClick={onFechar} style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><X size={16} /></button>
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar por nome ou ambiente…" style={{ ...inpControle, background: C.card }} autoFocus />
+        <button onClick={onFechar} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><X size={16} /></button>
       </div>
       {Object.keys(ents).length === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Conecte-se ao Home Assistant (↻ no topo) para listar os aparelhos.</div>}
       {lista.length === 0 && Object.keys(ents).length > 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Nenhum aparelho novo encontrado.</div>}
       {areas === null && Object.keys(ents).length > 0 && <div style={{ color: C.cinzaClaro, fontSize: 11.5 }} className="pb-2 text-center">Carregando os ambientes do Home Assistant…</div>}
       <div style={{ maxHeight: 300, overflowY: "auto" }}>
         {lista.map((x) => (
-          <button key={x.id} onClick={() => onEscolher(x.id)} style={{ width: "100%", textAlign: "left", background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: "9px 11px", marginBottom: 6, cursor: "pointer" }}>
+          <button key={x.id} onClick={() => onEscolher(x.id)} style={{ width: "100%", textAlign: "left", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: "9px 11px", marginBottom: 6, cursor: "pointer" }}>
             <div className="flex items-center gap-2">
               <Plus size={15} style={{ color: C.pasto, flexShrink: 0 }} />
               <div className="min-w-0" style={{ flex: 1 }}>
@@ -1620,7 +1630,7 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
               </select>
             )}
             <button onClick={() => { setNome(amb.nome); setEditando(true); }} title="Renomear" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 9, padding: 8 }}><Pencil size={14} style={{ color: C.cinza }} /></button>
-            <button onClick={() => { if (window.confirm(`Excluir o cômodo "${amb.nome}"?`)) onExcluirAmb(amb.id); }} title="Excluir cômodo" style={{ background: C.vermelhoClaro, border: `1px solid ${C.vermelho}44`, borderRadius: 9, padding: 8 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
+            <button onClick={() => { if (window.confirm(`Excluir o cômodo "${amb.nome}"?`)) onExcluirAmb(amb.id); }} title="Excluir cômodo" style={{ background: C.vermelhoClaro, border: `1px solid ${alfa(C.vermelho, 27)}`, borderRadius: 9, padding: 8 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
           </>
         )}
       </div>
@@ -1669,7 +1679,7 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
 
         {abrindoSel
           ? <SeletorAparelho ents={ents} areas={areas} usados={usados} onEscolher={(entityId) => { onAddEquip(amb.id, entityId); }} onFechar={() => setAbrindoSel(false)} />
-          : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 2, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${C.pasto}33`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Adicionar aparelho</button>}
+          : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 2, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${alfa(C.pasto, 20)}`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Adicionar aparelho</button>}
       </div>)}
     </div>
   );
@@ -1697,7 +1707,7 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, ar
               <span style={{ fontSize: 11.5, color: C.cinza, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "1px 9px", flexShrink: 0 }}>{nDisp}</span>
             </button>
             <button onClick={() => { setNome(pav.nome); setEditando(true); }} title="Renomear pavimento" style={{ background: C.bg, border: `1px solid ${C.linha}`, borderRadius: 9, padding: 8 }}><Pencil size={15} style={{ color: C.cinza }} /></button>
-            <button onClick={() => { if (window.confirm(`Excluir o pavimento "${pav.nome}"? Os cômodos dele ficam "sem pavimento".`)) cbs.onExcluirPav(pav.id); }} title="Excluir pavimento" style={{ background: C.vermelhoClaro, border: `1px solid ${C.vermelho}44`, borderRadius: 9, padding: 8 }}><Trash2 size={15} style={{ color: C.vermelho }} /></button>
+            <button onClick={() => { if (window.confirm(`Excluir o pavimento "${pav.nome}"? Os cômodos dele ficam "sem pavimento".`)) cbs.onExcluirPav(pav.id); }} title="Excluir pavimento" style={{ background: C.vermelhoClaro, border: `1px solid ${alfa(C.vermelho, 27)}`, borderRadius: 9, padding: 8 }}><Trash2 size={15} style={{ color: C.vermelho }} /></button>
           </>
         )}
       </div>
@@ -2038,7 +2048,7 @@ function ControleApp({ eu, onVoltar }) {
         <main className="px-3 pt-3">
           {status === "carregando" && <div className="text-center py-16" style={{ color: C.cinza }}>Conectando ao Home Assistant…</div>}
           {status === "erro" && (
-            <div style={{ background: C.vermelhoClaro, border: `1px solid ${C.vermelho}55`, borderRadius: 14 }} className="p-4 mt-4">
+            <div style={{ background: C.vermelhoClaro, border: `1px solid ${alfa(C.vermelho, 33)}`, borderRadius: 14 }} className="p-4 mt-4">
               <div className="font-bold" style={{ color: C.vermelho }}>Não deu para conectar</div>
               <div style={{ color: C.terra }} className="text-sm mt-1">{erro}</div>
               <button onClick={() => setTentativa((t) => t + 1)} style={{ marginTop: 12, background: LAGO, color: "#fff", borderRadius: 10, padding: "10px 18px", fontWeight: 700 }}>Tentar de novo</button>
@@ -2150,9 +2160,9 @@ function PainelView({ tasks, users }) {
           ))}
         </div>
         <div className="flex items-center justify-between">
-          <button onClick={() => navegar(-1)} style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><ChevronLeft size={18} /></button>
+          <button onClick={() => navegar(-1)} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><ChevronLeft size={18} /></button>
           <div className="font-bold capitalize" style={{ color: C.pastoEsc }}>{label}</div>
-          <button onClick={() => navegar(1)} style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><ChevronRight size={18} /></button>
+          <button onClick={() => navegar(1)} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><ChevronRight size={18} /></button>
         </div>
       </div>
 
@@ -2215,7 +2225,7 @@ function ProdutoAutocomplete({ produtos, valorId, onSelecionar, onCadastrarTexto
         {selecionado && !aberto && <Check size={16} style={{ position: "absolute", right: 11, top: 13, color: C.pasto }} />}
       </div>
       {aberto && (
-        <div style={{ position: "absolute", top: 48, left: 0, right: 0, background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 24px #0002", zIndex: 30, maxHeight: 240, overflowY: "auto" }}>
+        <div style={{ position: "absolute", top: 48, left: 0, right: 0, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 24px #0002", zIndex: 30, maxHeight: 240, overflowY: "auto" }}>
           {matches.map((p) => (
             <button key={p.id} onMouseDown={(e) => e.preventDefault()} onClick={() => { setQ(p.nome); onSelecionar(p.id); setAberto(false); }}
               style={{ display: "flex", width: "100%", textAlign: "left", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderBottom: `1px solid ${C.bg}`, background: p.id === valorId ? C.pastoClaro : "#fff" }}>
@@ -2353,7 +2363,7 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
           <div style={lblSt}>Adicionar produto</div>
           <ProdutoAutocomplete key={addKey} produtos={produtos} valorId={addProdId} onSelecionar={setAddProdId} onCadastrarTexto={abrirCadastroTexto} />
           {novoProd && (
-            <div style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10 }} className="p-2.5 mt-2">
+            <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10 }} className="p-2.5 mt-2">
               <div className="text-xs font-semibold mb-2" style={{ color: C.cinza }}>Cadastrar novo produto</div>
               <input placeholder="Nome do produto" value={np.nome} onChange={(e) => setNp({ ...np, nome: e.target.value })} style={inpSt} className="mb-2" />
               <div className="flex gap-2 mb-2">
@@ -2374,7 +2384,7 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
             <div style={lblSt}>Itens da compra{itens.length > 0 ? ` (${itens.length})` : ""}</div>
             {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 13 }}>Nenhum item ainda. Adicione acima e a lista aparece aqui.</div>}
             {itens.map((it) => { const p = produtos.find((x) => x.id === it.produtoId); return (
-              <div key={it.id} style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10 }} className="p-2 mb-1.5 flex items-center gap-2">
+              <div key={it.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10 }} className="p-2 mb-1.5 flex items-center gap-2">
                 <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{p ? p.nome : "Produto"}</div>{p && <div style={{ color: C.cinzaClaro, fontSize: 11.5 }}>{p.subcategoria ? p.subcategoria + " · " : ""}{p.categoria}</div>}</div>
                 <b style={{ color: C.pastoEsc, whiteSpace: "nowrap" }}>{it.quantidade} {p?.unidade || ""}</b>
                 <button onClick={() => removerItem(it.id)} style={{ color: C.vermelho, padding: 4 }}><X size={16} /></button>
@@ -2486,7 +2496,7 @@ function MovimentoModal({ tipo, produtos, estoque, onAplicar, onFechar }) {
         <div style={lblSt}>{ehSaida ? "Saídas" : "Entradas"} a registrar{itens.length > 0 ? ` (${itens.length})` : ""}</div>
         {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 13 }}>Nenhum produto ainda. Adicione acima e a lista aparece aqui.</div>}
         {itens.map((it) => { const p = produtos.find((x) => x.id === it.produtoId); return (
-          <div key={it.id} style={{ background: "#fff", border: `1px solid ${C.linha}`, borderRadius: 10 }} className="p-2 mb-1.5 flex items-center gap-2">
+          <div key={it.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10 }} className="p-2 mb-1.5 flex items-center gap-2">
             <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{p ? p.nome : "Produto"}</div>{p && <div style={{ color: C.cinzaClaro, fontSize: 11.5 }}>{p.subcategoria ? p.subcategoria + " · " : ""}{p.categoria}</div>}</div>
             <b style={{ color: ehSaida ? C.vermelho : C.pastoEsc, whiteSpace: "nowrap" }}>{ehSaida ? "−" : "+"}{it.quantidade} {p?.unidade || ""}</b>
             <button onClick={() => remover(it.id)} style={{ color: C.vermelho, padding: 4 }}><X size={16} /></button>
@@ -2607,11 +2617,11 @@ function InfoModal({ onFechar }) {
 }
 
 /* ============================= BASE ============================= */
-const inpSt = { width: "100%", border: `1px solid ${C.linha}`, borderRadius: 10, padding: "11px 12px", fontSize: 15, background: "#fff", outline: "none", color: C.terra, boxSizing: "border-box", fontFamily: "inherit" };
+const inpSt = { width: "100%", border: `1px solid ${C.linha}`, borderRadius: 10, padding: "11px 12px", fontSize: 15, background: C.card, outline: "none", color: C.terra, boxSizing: "border-box", fontFamily: "inherit" };
 const lblSt = { fontSize: 12.5, fontWeight: 600, color: C.cinza, marginBottom: 5 };
 function Campo({ label, children }) { return <div className="mb-3"><div style={lblSt}>{label}</div>{children}</div>; }
-function Chip({ icon: Ic, texto, cor }) { return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: cor + "1a", color: cor, borderRadius: 999, padding: "3px 9px", fontSize: 12, fontWeight: 600 }}>{Ic && <Ic size={12} />}{texto}</span>; }
-function Toggle({ on, onToggle }) { return (<button onClick={onToggle} style={{ width: 46, height: 27, borderRadius: 999, background: on ? C.ambar : C.cinzaClaro, position: "relative" }}><span style={{ position: "absolute", top: 3, left: on ? 22 : 3, width: 21, height: 21, borderRadius: 999, background: "#fff" }} /></button>); }
+function Chip({ icon: Ic, texto, cor }) { return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: alfa(cor, 10), color: cor, borderRadius: 999, padding: "3px 9px", fontSize: 12, fontWeight: 600 }}>{Ic && <Ic size={12} />}{texto}</span>; }
+function Toggle({ on, onToggle }) { return (<button onClick={onToggle} style={{ width: 46, height: 27, borderRadius: 999, background: on ? C.ambar : C.cinzaClaro, position: "relative" }}><span style={{ position: "absolute", top: 3, left: on ? 22 : 3, width: 21, height: 21, borderRadius: 999, background: C.card }} /></button>); }
 function Vazio({ icon: Ic, titulo, texto }) { return (<div className="text-center py-10"><div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 999, width: 62, height: 62, display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}><Ic size={28} style={{ color: C.cinzaClaro }} /></div><div className="font-bold" style={{ color: C.terra }}>{titulo}</div><div style={{ color: C.cinza }} className="text-sm mt-1 px-6">{texto}</div></div>); }
 function DialogHost() {
   const [d, setD] = React.useState(null);
@@ -2620,7 +2630,7 @@ function DialogHost() {
   if (!d) return null;
   const fechar = (val) => { const r = d.resolve; setD(null); r(val); };
   return React.createElement("div", { style: { position: "fixed", inset: 0, background: "#0007", zIndex: 95, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }, onClick: () => fechar(d.tipo === "confirm" ? false : null) },
-    React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 360, padding: 18, boxShadow: "0 12px 34px #0004" } },
+    React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: C.card, borderRadius: 16, width: "100%", maxWidth: 360, padding: 18, boxShadow: "0 12px 34px #0004" } },
       d.titulo ? React.createElement("div", { style: { fontWeight: 700, fontSize: 17, marginBottom: 6, color: C.terra } }, d.titulo) : null,
       d.mensagem ? React.createElement("div", { style: { color: C.cinza, fontSize: 14, marginBottom: 14, lineHeight: 1.4 } }, d.mensagem) : null,
       d.tipo === "prompt" ? React.createElement("input", { autoFocus: true, value: texto, type: d.inputType || "text", onChange: (e) => setTexto(e.target.value), style: { ...inpSt, marginBottom: 14 } }) : null,
