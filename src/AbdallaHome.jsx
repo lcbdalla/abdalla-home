@@ -1542,23 +1542,26 @@ function CtrlPersianaCompacto({ e, enviar }) {
     </div>
   );
 }
-function EquipCard({ e, enviar, expandido, onExpandir }) {
+function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
   const st = haEstado(e.state, e.attributes);
   const ligado = e.disponivel && ["on", "open", "playing", "unlocked", "cool", "heat", "dry", "fan_only", "auto", "heat_cool"].includes(e.state);
   const compactavel = CTRL_COMPACTAVEL.includes(e.tipo);
+  const grande = e.tamanho === "g"; // ocupa 2 colunas e mostra o controle completo
+  const compacto = compactavel && !expandido && !grande;
   // Luz/tomada: tocar no quadro liga/desliga. Ar/persiana encolhidos: tocar amplia.
-  const cardClick = e.tipo === "interruptor" && e.disponivel ? () => enviar("homeassistant", "toggle", e.id)
-    : (compactavel && !expandido) ? onExpandir : undefined;
+  const cardClick = editando ? undefined
+    : e.tipo === "interruptor" && e.disponivel ? () => enviar("homeassistant", "toggle", e.id)
+      : compacto ? onExpandir : undefined;
   return (
     <div onClick={cardClick} role={cardClick ? "button" : undefined}
       style={{ background: C.card, border: `1px solid ${ligado ? alfa(C.pasto, 40) : C.linha}`, borderRadius: 16, height: "100%", cursor: cardClick ? "pointer" : "default" }} className="p-3">
-      <div className="flex items-center gap-2 mb-2" onClick={compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ cursor: compactavel ? "pointer" : "default" }}>
+      <div className="flex items-center gap-2 mb-2" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ cursor: compactavel && !editando ? "pointer" : "default" }}>
         <span style={{ fontSize: 20, flexShrink: 0 }}>{CTRL_EMOJI[e.tipo] || "●"}</span>
         <div className="flex-1 min-w-0 font-semibold truncate" style={{ fontSize: 14, color: C.terra }}>{e.nome}</div>
-        {compactavel && <span style={{ color: C.cinzaClaro, fontSize: 13, flexShrink: 0 }}>{expandido ? "▾" : "▸"}</span>}
+        {compactavel && !grande && !editando && <span style={{ color: C.cinzaClaro, fontSize: 13, flexShrink: 0 }}>{expandido ? "▾" : "▸"}</span>}
         <span style={{ width: 9, height: 9, borderRadius: 999, background: e.disponivel ? st.cor : "#c9c2b2", flexShrink: 0 }} />
       </div>
-      {compactavel && !expandido
+      {compacto
         ? (e.tipo === "ar" ? <CtrlArCompacto e={e} enviar={enviar} /> : <CtrlPersianaCompacto e={e} enviar={enviar} />)
         : <EquipControle e={e} enviar={enviar} cardClicavel={e.tipo === "interruptor" && !!cardClick} />}
     </div>
@@ -1761,7 +1764,7 @@ function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }
 
 // Grade de aparelhos de um cômodo, com "segurar para arrastar" (igual ao app Vitá):
 // segura 3s → o card flutua seguindo o dedo, os outros tremem e abrem vaga; solta e salva.
-function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onReordenar }) {
+function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onReordenar, editando, setEditando, onTamanho }) {
   const [ordem, setOrdem] = useState(() => itens.map((e) => e.dbId));
   const [arrastando, setArrastando] = useState(null);
   const [pos, setPos] = useState(null);
@@ -1781,7 +1784,7 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
 
   const byId = Object.fromEntries(itens.map((e) => [e.dbId, e]));
   const ordenados = ordem.map((id) => byId[id]).filter(Boolean);
-  const largoDe = (e) => CTRL_LARGO.includes(e.tipo) && (!CTRL_COMPACTAVEL.includes(e.tipo) || expandidos.has(e.dbId));
+  const largoDe = (e) => e.tamanho === "g" || (CTRL_LARGO.includes(e.tipo) && (!CTRL_COMPACTAVEL.includes(e.tipo) || expandidos.has(e.dbId)));
 
   function pegar() {
     const p = press.current; if (!p || arrastando != null) return;
@@ -1790,7 +1793,7 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
     const r = p.el.getBoundingClientRect();
     pega.current = { offX: p.x - r.left, offY: p.y - r.top, w: r.width, h: r.height };
     try { p.el.setPointerCapture?.(p.pid); } catch { /* ok */ }
-    arrastou.current = false; setPos({ x: p.x, y: p.y }); setArrastando(p.id);
+    arrastou.current = false; setPos({ x: p.x, y: p.y }); setArrastando(p.id); setEditando?.(true);
   }
   function aoPressionar(e, id) {
     if (!podeArrastar) return;
@@ -1837,7 +1840,7 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
             {naMao && <div style={{ gridColumn: largo ? "1 / -1" : "auto", height: pega.current?.h || 90, borderRadius: 16, border: `2px dashed ${C.cinzaClaro}`, background: "#00000008" }} />}
             <div
               ref={(el) => { itemRefs.current[e.dbId] = el; }}
-              className={podeArrastar && arrastando != null && !naMao ? "ah-jiggle" : ""}
+              className={editando && !naMao ? "ah-jiggle" : ""}
               onPointerDown={(ev) => aoPressionar(ev, e.dbId)}
               onPointerMove={aoMover}
               onPointerUp={aoSoltar}
@@ -1848,10 +1851,15 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
                 userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
                 ...(naMao && pega.current && pos
                   ? { position: "fixed", left: pos.x - pega.current.offX, top: pos.y - pega.current.offY, width: pega.current.w, height: pega.current.h, zIndex: 999, transform: "scale(1.04)", boxShadow: "0 22px 44px -16px rgba(0,0,0,0.5)", minWidth: 0 }
-                  : { gridColumn: largo ? "1 / -1" : "auto", minWidth: 0 }),
+                  : { gridColumn: largo ? "1 / -1" : "auto", minWidth: 0, position: "relative" }),
               }}
             >
-              <EquipCard e={e} enviar={enviar} expandido={expandidos.has(e.dbId)} onExpandir={() => toggleExpand(e.dbId)} />
+              {editando && !naMao && (
+                <button onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => { ev.stopPropagation(); onTamanho?.(e.dbId, e.tamanho === "g" ? "p" : "g"); }} title={e.tamanho === "g" ? "Deixar pequeno" : "Deixar grande"} style={{ position: "absolute", top: -7, right: -7, zIndex: 6, width: 30, height: 30, borderRadius: 999, background: LAGO, color: "#fff", border: `2px solid ${C.card}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, lineHeight: 1 }}>{e.tamanho === "g" ? "⤡" : "⤢"}</button>
+              )}
+              <div style={{ pointerEvents: editando ? "none" : "auto", height: "100%" }}>
+                <EquipCard e={e} enviar={enviar} expandido={expandidos.has(e.dbId)} onExpandir={() => toggleExpand(e.dbId)} editando={editando} />
+              </div>
             </div>
           </React.Fragment>
         );
@@ -1866,6 +1874,7 @@ function ControleApp({ eu, onVoltar }) {
   // Cards ampliados (ar/persiana). Começa vazio → ao abrir/recarregar o app, todos encolhidos.
   const [expandidos, setExpandidos] = useState(() => new Set());
   const toggleExpand = (id) => setExpandidos((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const [editando, setEditando] = useState(false);
   const [ents, setEnts] = useState({});
   const [areas, setAreas] = useState(null); // entity_id -> nome da área no Home Assistant
   const [tentativa, setTentativa] = useState(0);
@@ -2002,6 +2011,7 @@ function ControleApp({ eu, onVoltar }) {
       catch { setAviso({ erro: true, texto: "Não consegui salvar a nova ordem." }); }
       await carregarConfig();
     },
+    onTamanho: (id, tam) => salvar(supabase.from("controle_equipamentos").update({ tamanho: tam === "g" ? "g" : "p" }).eq("id", id)),
     onRotulo: (id, chave, valor) => {
       const q = equipamentos.find((x) => x.id === id);
       const rot = { ...(q?.rotulos || {}) };
@@ -2017,7 +2027,7 @@ function ControleApp({ eu, onVoltar }) {
     return {
       dbId: row.id, id: row.entity_id, tipo: row.tipo,
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
-      state, attributes: live?.attributes || {}, rotulos: row.rotulos || {},
+      state, attributes: live?.attributes || {}, rotulos: row.rotulos || {}, tamanho: row.tamanho === "g" ? "g" : "p",
       disponivel: state != null && !["unavailable", "unknown", "none", ""].includes(state),
     };
   };
@@ -2066,7 +2076,14 @@ function ControleApp({ eu, onVoltar }) {
             </div>
           )}
           {modo === "usar" && status === "ok" && souGestor && listaPav.length > 0 && (
-            <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1 mb-2 px-1"><Info size={12} /> Segure um aparelho (até vibrar) para arrastar e reposicionar.</div>
+            editando ? (
+              <div className="flex items-center gap-2 mb-3" style={{ background: C.pastoClaro, borderRadius: 10, padding: "8px 10px", position: "sticky", top: 6, zIndex: 20 }}>
+                <span style={{ flex: 1, fontSize: 12.5, color: C.pastoEsc, fontWeight: 600 }}>Arraste para reordenar · ⤢ muda o tamanho</span>
+                <button onClick={() => setEditando(false)} style={{ background: C.pasto, color: "#fff", borderRadius: 8, padding: "6px 16px", fontWeight: 700, fontSize: 13 }}>Concluir</button>
+              </div>
+            ) : (
+              <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1 mb-2 px-1"><Info size={12} /> Segure um aparelho (até vibrar) para arrastar, reposicionar e mudar o tamanho.</div>
+            )
           )}
           {modo === "usar" && status === "ok" && listaPav.map((pav) => (
             <div key={pav.id} style={{ marginBottom: 12 }}>
@@ -2082,7 +2099,7 @@ function ControleApp({ eu, onVoltar }) {
                     <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 14 }}>{aberto(c.id) ? "▾" : "▸"}</span>
                   </button>
                   {aberto(c.id) && (
-                    <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} />
+                    <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} editando={editando} setEditando={setEditando} onTamanho={cbs.onTamanho} />
                   )}
                 </div>
               ))}
