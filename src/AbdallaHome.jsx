@@ -1258,6 +1258,7 @@ const CTRL_TIPOS = [
 const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]));
 const CTRL_EMOJI = { interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
 const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao"]; // ocupam a linha inteira (têm mais botões)
+const CTRL_COMPACTAVEL = ["ar", "persiana"]; // começam pequenos; tocar no quadro amplia; encolhem ao recarregar
 
 // Só guardamos/ouvimos estes domínios: evita a enxurrada de eventos de câmeras,
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
@@ -1485,20 +1486,61 @@ function EquipControle({ e, enviar, cardClicavel }) {
   if (e.tipo === "sensor") return <CtrlSensor e={e} />;
   return <CtrlInterruptor e={e} enviar={enviar} cardClicavel={cardClicavel} />;
 }
-function EquipCard({ e, enviar }) {
+// Controle compacto do ar (quando o card está encolhido): liga/desliga + temperatura.
+function CtrlArCompacto({ e, enviar }) {
+  const ind = !e.disponivel; const a = e.attributes || {};
+  const ligado = !!e.state && e.state !== "off" && !ind;
+  const alvo = a.temperature;
+  const min = a.min_temp != null ? a.min_temp : 16, max = a.max_temp != null ? a.max_temp : 30;
+  const passo = a.target_temp_step || 1;
+  const setTemp = (ev, delta) => { ev.stopPropagation(); if (alvo == null) return; let v = Math.round((alvo + delta * passo) * 10) / 10; v = Math.min(max, Math.max(min, v)); enviar("climate", "set_temperature", e.id, { temperature: v }); };
+  const mini = { width: 26, height: 26, borderRadius: 8, border: `1px solid ${C.linha}`, background: "#fff", color: C.terra, fontWeight: 700, fontSize: 15, lineHeight: "1", flexShrink: 0 };
+  return (
+    <div className="flex items-center gap-2">
+      {ligado && alvo != null ? (
+        <div className="flex items-center gap-1">
+          <button onClick={(ev) => setTemp(ev, -1)} style={mini}>−</button>
+          <span style={{ fontWeight: 700, fontSize: 14, minWidth: 32, textAlign: "center" }}>{Math.round(alvo)}°</span>
+          <button onClick={(ev) => setTemp(ev, 1)} style={mini}>+</button>
+        </div>
+      ) : (
+        <div className="flex-1 text-xs" style={{ color: C.cinzaClaro }}>{ind ? "Indisponível" : "Desligado"}</div>
+      )}
+      <span style={{ marginLeft: "auto" }}><PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={(ev) => { ev.stopPropagation(); enviar("climate", ligado ? "turn_off" : "turn_on", e.id); }} /></span>
+    </div>
+  );
+}
+// Controle compacto de persiana/flap (encolhido): uma chave abrir/fechar.
+function CtrlPersianaCompacto({ e, enviar }) {
+  const ind = !e.disponivel; const inv = ehInvertido(e);
+  const aberto = inv ? e.state === "closed" : e.state === "open";
+  const toggle = (ev) => { ev.stopPropagation(); const svc = aberto ? (inv ? "open_cover" : "close_cover") : (inv ? "close_cover" : "open_cover"); enviar("cover", svc, e.id); };
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 text-xs" style={{ color: ind ? C.cinzaClaro : (aberto ? C.ambar : C.cinza), fontWeight: 600 }}>{ind ? "Indisponível" : (aberto ? "Aberto" : "Fechado")}</div>
+      <PillToggle on={aberto} cor={C.ambar} disabled={ind} onClick={toggle} />
+    </div>
+  );
+}
+function EquipCard({ e, enviar, expandido, onExpandir }) {
   const st = haEstado(e.state, e.attributes);
   const ligado = e.disponivel && ["on", "open", "playing", "unlocked", "cool", "heat", "dry", "fan_only", "auto", "heat_cool"].includes(e.state);
-  // Luz/tomada: tocar em qualquer lugar do quadro liga/desliga.
-  const cardClick = e.tipo === "interruptor" && e.disponivel ? () => enviar("homeassistant", "toggle", e.id) : undefined;
+  const compactavel = CTRL_COMPACTAVEL.includes(e.tipo);
+  // Luz/tomada: tocar no quadro liga/desliga. Ar/persiana encolhidos: tocar amplia.
+  const cardClick = e.tipo === "interruptor" && e.disponivel ? () => enviar("homeassistant", "toggle", e.id)
+    : (compactavel && !expandido) ? onExpandir : undefined;
   return (
     <div onClick={cardClick} role={cardClick ? "button" : undefined}
       style={{ background: C.card, border: `1px solid ${ligado ? C.pasto + "66" : C.linha}`, borderRadius: 16, height: "100%", cursor: cardClick ? "pointer" : "default" }} className="p-3">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-2" onClick={compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ cursor: compactavel ? "pointer" : "default" }}>
         <span style={{ fontSize: 20, flexShrink: 0 }}>{CTRL_EMOJI[e.tipo] || "●"}</span>
         <div className="flex-1 min-w-0 font-semibold truncate" style={{ fontSize: 14, color: C.terra }}>{e.nome}</div>
+        {compactavel && <span style={{ color: C.cinzaClaro, fontSize: 13, flexShrink: 0 }}>{expandido ? "▾" : "▸"}</span>}
         <span style={{ width: 9, height: 9, borderRadius: 999, background: e.disponivel ? st.cor : "#c9c2b2", flexShrink: 0 }} />
       </div>
-      <EquipControle e={e} enviar={enviar} cardClicavel={!!cardClick} />
+      {compactavel && !expandido
+        ? (e.tipo === "ar" ? <CtrlArCompacto e={e} enviar={enviar} /> : <CtrlPersianaCompacto e={e} enviar={enviar} />)
+        : <EquipControle e={e} enviar={enviar} cardClicavel={e.tipo === "interruptor" && !!cardClick} />}
     </div>
   );
 }
@@ -1672,6 +1714,9 @@ function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }
 function ControleApp({ eu, onVoltar }) {
   const [status, setStatus] = useState("carregando"); // carregando | ok | erro
   const [erro, setErro] = useState("");
+  // Cards ampliados (ar/persiana). Começa vazio → ao abrir/recarregar o app, todos encolhidos.
+  const [expandidos, setExpandidos] = useState(() => new Set());
+  const toggleExpand = (id) => setExpandidos((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [ents, setEnts] = useState({});
   const [areas, setAreas] = useState(null); // entity_id -> nome da área no Home Assistant
   const [tentativa, setTentativa] = useState(0);
@@ -1874,7 +1919,7 @@ function ControleApp({ eu, onVoltar }) {
                   </button>
                   {aberto(c.id) && (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
-                      {c.itens.map((e) => <div key={e.dbId} style={{ gridColumn: CTRL_LARGO.includes(e.tipo) ? "1 / -1" : "auto", minWidth: 0 }}><EquipCard e={e} enviar={enviar} /></div>)}
+                      {c.itens.map((e) => { const largo = CTRL_LARGO.includes(e.tipo) && (!CTRL_COMPACTAVEL.includes(e.tipo) || expandidos.has(e.dbId)); return <div key={e.dbId} style={{ gridColumn: largo ? "1 / -1" : "auto", minWidth: 0 }}><EquipCard e={e} enviar={enviar} expandido={expandidos.has(e.dbId)} onExpandir={() => toggleExpand(e.dbId)} /></div>; })}
                     </div>
                   )}
                 </div>
