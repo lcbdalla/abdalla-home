@@ -1358,15 +1358,24 @@ function CtrlInterruptor({ e, enviar, cardClicavel }) {
     </div>
   );
 }
+// Coberturas com aberto/fechado invertido (fiação/config trocada no HA), por nome.
+const HA_INVERTER = ["flap tv leo e pri"];
+function ehInvertido(e) {
+  const alvo = ((e?.nome || "") + " " + (e?.id || "")).toLowerCase();
+  return HA_INVERTER.some((n) => alvo.includes(n));
+}
 function CtrlPersiana({ e, enviar }) {
-  const ind = !e.disponivel; const st = haEstado(e.state, e.attributes);
+  const ind = !e.disponivel;
+  const inv = ehInvertido(e);
+  const estadoVis = inv ? (e.state === "open" ? "closed" : e.state === "closed" ? "open" : e.state) : e.state;
+  const st = haEstado(estadoVis, e.attributes);
   return (
     <div>
       <div className="text-sm mb-2" style={{ color: ind ? C.cinzaClaro : st.cor, fontWeight: 700 }}>{ind ? "Indisponível" : st.texto}</div>
       <div className="flex gap-2">
-        <BotaoAcao icon={ArrowUpFromLine} label="Abrir" cor={C.pasto} disabled={ind} onClick={() => enviar("cover", "open_cover", e.id)} />
+        <BotaoAcao icon={inv ? ArrowDownToLine : ArrowUpFromLine} label="Abrir" cor={C.pasto} disabled={ind} onClick={() => enviar("cover", inv ? "close_cover" : "open_cover", e.id)} />
         <BotaoAcao icon={X} label="Parar" cor={C.ambar} disabled={ind} onClick={() => enviar("cover", "stop_cover", e.id)} />
-        <BotaoAcao icon={ArrowDownToLine} label="Fechar" cor={C.cinza} disabled={ind} onClick={() => enviar("cover", "close_cover", e.id)} />
+        <BotaoAcao icon={inv ? ArrowUpFromLine : ArrowDownToLine} label="Fechar" cor={C.cinza} disabled={ind} onClick={() => enviar("cover", inv ? "open_cover" : "close_cover", e.id)} />
       </div>
     </div>
   );
@@ -1817,8 +1826,8 @@ function ControleApp({ eu, onVoltar }) {
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
-      <div className="mx-auto" style={{ maxWidth: 460, minHeight: "100vh", paddingBottom: 30 }}>
+    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "hidden", width: "100%" }}>
+      <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <header style={{ background: LAGO_ESC, color: "#fff", padding: "14px 16px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
           <div className="flex items-center gap-2">
             <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><ChevronLeft size={18} /></button>
@@ -1865,7 +1874,7 @@ function ControleApp({ eu, onVoltar }) {
                   </button>
                   {aberto(c.id) && (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
-                      {c.itens.map((e) => <div key={e.dbId} style={{ gridColumn: CTRL_LARGO.includes(e.tipo) ? "1 / -1" : "auto" }}><EquipCard e={e} enviar={enviar} /></div>)}
+                      {c.itens.map((e) => <div key={e.dbId} style={{ gridColumn: CTRL_LARGO.includes(e.tipo) ? "1 / -1" : "auto", minWidth: 0 }}><EquipCard e={e} enviar={enviar} /></div>)}
                     </div>
                   )}
                 </div>
