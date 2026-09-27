@@ -1802,9 +1802,12 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
               onPointerCancel={aoSoltar}
               onContextMenu={(ev) => ev.preventDefault()}
               onClickCapture={(ev) => { if (longPressed.current || arrastou.current) { ev.stopPropagation(); ev.preventDefault(); } }}
-              style={naMao && pega.current && pos
-                ? { position: "fixed", left: pos.x - pega.current.offX, top: pos.y - pega.current.offY, width: pega.current.w, height: pega.current.h, zIndex: 999, transform: "scale(1.04)", boxShadow: "0 22px 44px -16px rgba(0,0,0,0.5)", minWidth: 0 }
-                : { gridColumn: largo ? "1 / -1" : "auto", minWidth: 0 }}
+              style={{
+                userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
+                ...(naMao && pega.current && pos
+                  ? { position: "fixed", left: pos.x - pega.current.offX, top: pos.y - pega.current.offY, width: pega.current.w, height: pega.current.h, zIndex: 999, transform: "scale(1.04)", boxShadow: "0 22px 44px -16px rgba(0,0,0,0.5)", minWidth: 0 }
+                  : { gridColumn: largo ? "1 / -1" : "auto", minWidth: 0 }),
+              }}
             >
               <EquipCard e={e} enviar={enviar} expandido={expandidos.has(e.dbId)} onExpandir={() => toggleExpand(e.dbId)} />
             </div>
