@@ -67,7 +67,9 @@ const estaInstalado = () => {
 const APP_BUILD = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "dev";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const hojeISO = () => new Date().toISOString().slice(0, 10);
+// Data de HOJE no fuso do aparelho (Tocantins). toISOString() usaria UTC e, depois
+// das 21h, o app já consideraria "amanhã" (conclusões e tarefas no dia errado).
+const hojeISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 let _openDialog = null;
 const Dialog = {
@@ -329,7 +331,7 @@ export default function App() {
     // Se o meu próprio perfil sumiu ou foi desativado, cai para "Acesso removido".
     const meu = lista.find((u) => u.id === meIdRef.current);
     if (meIdRef.current && (!meu || meu.ativo === false)) setPerfil("removido");
-    else if (meu) setPerfil(meu);
+    else if (meu) setPerfil(meu.papel === "visitante" && meu.expiraEm && Date.now() > meu.expiraEm ? "expirado" : meu);
   }, []);
 
   const reloadProdutos = useCallback(async () => {
@@ -375,16 +377,26 @@ export default function App() {
 
   // ---------- Acesso por QR Code (visitante): loga sozinho a partir da hash #v= ----------
   useEffect(() => {
-    const m = (window.location.hash || "").match(/[#&]v=([^&]+)/);
-    if (!m) return;
-    try {
-      const dec = atob(decodeURIComponent(m[1]));
-      const i = dec.indexOf(":");
-      const email = dec.slice(0, i), senha = dec.slice(i + 1);
+    const entrarPeloQR = () => {
+      const m = (window.location.hash || "").match(/[#&]v=([^&]+)/);
+      if (!m) return;
+      let email = "", senha = "";
+      try { const dec = atob(decodeURIComponent(m[1])); const i = dec.indexOf(":"); email = dec.slice(0, i); senha = dec.slice(i + 1); } catch { /* QR inválido */ }
       history.replaceState(null, "", window.location.pathname + window.location.search); // tira a credencial da URL
-      if (email && senha) supabase.auth.signInWithPassword({ email, password: senha }).then(({ error }) => { if (error) setLogandoQR(false); });
-      else setLogandoQR(false);
-    } catch { setLogandoQR(false); }
+      if (!email || !senha) { setLogandoQR(false); return; }
+      setLogandoQR(true);
+      (async () => {
+        // Se já tem alguém logado neste celular, confirma antes de trocar para o visitante.
+        const { data } = await supabase.auth.getSession();
+        if (data.session && !window.confirm("Este QR Code é de um acesso de visitante. Entrar com ele vai sair da conta atual. Continuar?")) { setLogandoQR(false); return; }
+        const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+        if (error) { setLogandoQR(false); window.alert("Este QR Code não vale mais. Peça um novo ao administrador do rancho."); }
+      })();
+    };
+    entrarPeloQR();
+    // Também quando o app já está aberto e o link só troca o endereço (#v=...).
+    window.addEventListener("hashchange", entrarPeloQR);
+    return () => window.removeEventListener("hashchange", entrarPeloQR);
   }, []);
   useEffect(() => { if (session) setLogandoQR(false); }, [session]);
 
@@ -402,7 +414,8 @@ export default function App() {
 
   // ---------- Primeiro carregamento dos dados + Realtime ----------
   useEffect(() => {
-    if (!eu) return;
+    // Criança e visitante só usam o Controle: não carregam (nem veem) dados do app de tarefas.
+    if (!eu || eu.papel === "crianca" || eu.papel === "visitante") return;
     let vivo = true;
     (async () => {
       // Semeia a base de produtos apenas se a tabela estiver vazia.
@@ -433,6 +446,15 @@ export default function App() {
 
   const sair = async () => { await supabase.auth.signOut(); setPerfil(null); };
 
+  // Visitante: se o prazo vencer com o app aberto, bloqueia na hora.
+  useEffect(() => {
+    if (!eu?.expiraEm) return;
+    const conferir = () => { if (Date.now() > eu.expiraEm) setPerfil("expirado"); };
+    conferir();
+    const iv = setInterval(conferir, 60000);
+    return () => clearInterval(iv);
+  }, [eu?.expiraEm]);
+
   // ---------- Lembretes locais (15 min antes) ----------
   useEffect(() => {
     if (!carregado || !euId) return;
@@ -446,7 +468,13 @@ export default function App() {
         const diff = (inicio - agora) / 60000;
         if (diff <= 15 && diff >= -1 && !avisos.some((a) => a.id === t.id)) {
           setAvisos((p) => [...p, { id: t.id, titulo: t.titulo, hora: t.horaInicio }]);
-          if (typeof Notification !== "undefined" && Notification.permission === "granted") { try { new Notification("Abdalla Home — tarefa em breve", { body: `${t.titulo} às ${t.horaInicio}` }); } catch (e) {} }
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            const titulo = "Abdalla Home — tarefa em breve", corpo = `${t.titulo} às ${t.horaInicio}`;
+            // No Android, "new Notification" não funciona: a notificação precisa sair pelo service worker.
+            // Mesma "tag" do push do servidor, então as duas não aparecem repetidas.
+            const porSW = navigator.serviceWorker?.ready.then((reg) => reg.showNotification(titulo, { body: corpo, icon: "./icon-192.png", tag: "tarefa-" + t.id }));
+            if (!porSW) { try { new Notification(titulo, { body: corpo }); } catch { /* sem suporte */ } }
+          }
         }
       });
     };
@@ -517,19 +545,21 @@ export default function App() {
     const row = tarefaRow(dados);
     if (dados.id) {
       const { error } = await supabase.from("tarefas").update(row).eq("id", dados.id);
-      if (error) { showToast("Erro ao salvar"); return; }
+      if (error) { showToast("Não consegui salvar: " + error.message); return; }
       if (dados.ehCompra) {
-        await supabase.from("compra_itens").delete().eq("tarefa_id", dados.id);
+        const del = await supabase.from("compra_itens").delete().eq("tarefa_id", dados.id);
         const itens = itensDaCompra(dados).filter((i) => i.produtoId && parseFloat(i.quantidade) > 0);
-        if (itens.length) await supabase.from("compra_itens").insert(itens.map((i) => ({ tarefa_id: dados.id, produto_id: i.produtoId, quantidade: parseFloat(i.quantidade) })));
+        const ins = itens.length ? await supabase.from("compra_itens").insert(itens.map((i) => ({ tarefa_id: dados.id, produto_id: i.produtoId, quantidade: parseFloat(i.quantidade) }))) : { error: null };
+        if (del.error || ins.error) { showToast("Salvei a compra, mas os itens deram erro: " + (del.error || ins.error).message); reloadTarefas(); return; }
       }
       showToast("Tarefa atualizada");
     } else {
       const { data, error } = await supabase.from("tarefas").insert({ ...row, criado_por_id: euId, status: "pendente" }).select().single();
-      if (error) { showToast("Erro ao criar"); return; }
+      if (error) { showToast("Não consegui criar: " + error.message); return; }
       if (dados.ehCompra) {
         const itens = itensDaCompra(dados).filter((i) => i.produtoId && parseFloat(i.quantidade) > 0);
-        if (itens.length) await supabase.from("compra_itens").insert(itens.map((i) => ({ tarefa_id: data.id, produto_id: i.produtoId, quantidade: parseFloat(i.quantidade) })));
+        const ins = itens.length ? await supabase.from("compra_itens").insert(itens.map((i) => ({ tarefa_id: data.id, produto_id: i.produtoId, quantidade: parseFloat(i.quantidade) }))) : { error: null };
+        if (ins.error) { showToast("Criei a compra, mas os itens deram erro: " + ins.error.message); reloadTarefas(); setModal(null); return; }
       }
       showToast("Tarefa criada");
     }
@@ -539,18 +569,19 @@ export default function App() {
 
   async function concluirTarefa(t, fotoUrl) {
     const iso = hojeISO();
-    if (t.tipo === "unica") {
-      await supabase.from("tarefas").update({ status: "concluida", concluida_em: new Date().toISOString(), foto_conclusao_url: fotoUrl || t.fotoConclusaoUrl || null, concluida_por_id: euId }).eq("id", t.id);
-    } else {
-      await supabase.from("conclusoes").upsert({ tarefa_id: t.id, data: iso, user_id: euId, foto_url: fotoUrl || null }, { onConflict: "tarefa_id,data" });
-    }
+    const { error } = t.tipo === "unica"
+      ? await supabase.from("tarefas").update({ status: "concluida", concluida_em: new Date().toISOString(), foto_conclusao_url: fotoUrl || t.fotoConclusaoUrl || null, concluida_por_id: euId }).eq("id", t.id)
+      : await supabase.from("conclusoes").upsert({ tarefa_id: t.id, data: iso, user_id: euId, foto_url: fotoUrl || null }, { onConflict: "tarefa_id,data" });
+    if (error) { showToast("Não consegui concluir: " + error.message); return; }
     const itensC = t.ehCompra ? itensDaCompra(t) : [];
     if (itensC.length && t.darEntrada !== false) {
-      // Só entra no estoque na PRIMEIRA conclusão desta ordem de compra.
-      const { data: atual } = await supabase.from("tarefas").select("estoque_aplicado").eq("id", t.id).maybeSingle();
-      if (!atual?.estoque_aplicado) {
+      // Só entra no estoque na PRIMEIRA conclusão desta compra. A "reserva" é atômica:
+      // só quem virar a marca de não-aplicado para aplicado dá a entrada. Evita estoque
+      // em dobro com dois toques rápidos ou dois celulares ao mesmo tempo.
+      const { data: reserva, error: eRes } = await supabase.from("tarefas").update({ estoque_aplicado: true }).eq("id", t.id).or("estoque_aplicado.is.null,estoque_aplicado.eq.false").select("id");
+      if (eRes) showToast("Compra concluída, mas não consegui lançar no estoque: " + eRes.message);
+      else if (reserva && reserva.length) {
         await aplicarMovimentos(itensC.map((it) => ({ produtoId: it.produtoId, quantidade: it.quantidade })), "entrada", "compra");
-        await supabase.from("tarefas").update({ estoque_aplicado: true }).eq("id", t.id);
         showToast(itensC.length === 1 ? "Compra concluída • item no estoque" : `Compra concluída • ${itensC.length} itens no estoque`);
       } else {
         showToast("Compra concluída (já estava no estoque)");
@@ -564,40 +595,51 @@ export default function App() {
 
   async function reabrir(t) {
     const iso = hojeISO();
-    if (t.tipo === "unica") await supabase.from("tarefas").update({ status: "pendente", concluida_em: null, concluida_por_id: null }).eq("id", t.id);
-    else await supabase.from("conclusoes").delete().eq("tarefa_id", t.id).eq("data", iso);
+    const { error } = t.tipo === "unica"
+      ? await supabase.from("tarefas").update({ status: "pendente", concluida_em: null, concluida_por_id: null }).eq("id", t.id)
+      : await supabase.from("conclusoes").delete().eq("tarefa_id", t.id).eq("data", iso);
+    if (error) showToast("Não consegui reabrir: " + error.message);
     reloadTarefas();
   }
 
   async function excluirTarefa(id) {
     await supabase.from("compra_itens").delete().eq("tarefa_id", id);
     await supabase.from("conclusoes").delete().eq("tarefa_id", id);
-    await supabase.from("tarefas").delete().eq("id", id);
+    const { error } = await supabase.from("tarefas").delete().eq("id", id);
     reloadTarefas();
-    showToast("Tarefa excluída");
+    showToast(error ? "Não consegui excluir: " + error.message : "Tarefa excluída");
   }
 
   async function trocarResponsavel(t, novoId) {
-    await supabase.from("tarefas").update({ responsavel_id: novoId || null }).eq("id", t.id);
+    const { error } = await supabase.from("tarefas").update({ responsavel_id: novoId || null }).eq("id", t.id);
     reloadTarefas();
-    showToast("Responsável alterado");
+    showToast(error ? "Não consegui trocar: " + error.message : "Responsável alterado");
   }
 
-  // Move o estoque buscando a quantidade atual no banco (evita divergência entre celulares).
+  // Movimenta o estoque. Caminho principal: função "mover_estoque" no banco, que faz a
+  // conta de uma vez só (dois celulares ao mesmo tempo não se apagam). Se ela ainda não
+  // existir no banco, usa o cálculo antigo aqui no app.
   async function aplicarMovimento(produtoId, tipo, quantidade, origem) {
     const qtd = Math.abs(parseFloat(quantidade) || 0);
     if (!produtoId || qtd <= 0) return;
-    const { data } = await supabase.from("estoque").select("quantidade").eq("produto_id", produtoId).maybeSingle();
-    const atual = Number(data?.quantidade) || 0;
-    const novo = tipo === "saida" ? Math.max(0, atual - qtd) : atual + qtd;
-    await supabase.from("estoque").upsert({ produto_id: produtoId, quantidade: novo }, { onConflict: "produto_id" });
-    await supabase.from("movimentacoes").insert({ produto_id: produtoId, tipo, qtd: Math.abs(novo - atual) || qtd, origem: origem || "manual", user_id: euId });
-    reloadEstoque(); reloadMovs();
+    await aplicarMovimentos([{ produtoId, quantidade: qtd }], tipo, origem);
   }
 
   async function aplicarMovimentos(lista, tipo, origem) {
     const validos = (lista || []).filter((m) => m.produtoId && (parseFloat(m.quantidade) || 0) > 0);
     if (!validos.length) return;
+    let semFuncao = false;
+    for (const m of validos) {
+      const { error } = await supabase.rpc("mover_estoque", { p_produto: m.produtoId, p_tipo: tipo, p_qtd: Math.abs(parseFloat(m.quantidade)), p_origem: origem || "manual" });
+      if (error?.code === "PGRST202") { semFuncao = true; break; } // função ainda não criada no banco
+      if (error) { showToast("Não consegui atualizar o estoque: " + error.message); break; }
+    }
+    if (semFuncao) await aplicarMovimentosNoApp(validos, tipo, origem);
+    reloadEstoque(); reloadMovs();
+  }
+
+  // Cálculo antigo (lê, soma e grava) — só usado enquanto "mover_estoque" não existir.
+  async function aplicarMovimentosNoApp(validos, tipo, origem) {
     const ids = [...new Set(validos.map((m) => m.produtoId))];
     const { data } = await supabase.from("estoque").select("produto_id, quantidade").in("produto_id", ids);
     const cur = {}; (data || []).forEach((r) => { cur[r.produto_id] = Number(r.quantidade) || 0; });
@@ -608,9 +650,9 @@ export default function App() {
       ups[m.produtoId] = tipo === "saida" ? Math.max(0, base - qtd) : base + qtd;
       novasMovs.push({ produto_id: m.produtoId, tipo, qtd, origem: origem || "manual", user_id: euId });
     });
-    await supabase.from("estoque").upsert(Object.entries(ups).map(([produto_id, quantidade]) => ({ produto_id, quantidade })), { onConflict: "produto_id" });
+    const { error } = await supabase.from("estoque").upsert(Object.entries(ups).map(([produto_id, quantidade]) => ({ produto_id, quantidade })), { onConflict: "produto_id" });
+    if (error) { showToast("Não consegui atualizar o estoque: " + error.message); return; }
     if (novasMovs.length) await supabase.from("movimentacoes").insert(novasMovs);
-    reloadEstoque(); reloadMovs();
   }
 
   function saidaRapida(p) {
@@ -645,12 +687,11 @@ export default function App() {
   if (!session) return logandoQR ? <TelaCarregando /> : (<><LoginScreen /><DialogHost /></>);
   if (perfil === "removido") return (<><AcessoRemovido onSair={sair} /><DialogHost /></>);
   if (perfil === "expirado") return (<><AcessoExpirado onSair={sair} /><DialogHost /></>);
-  if (!carregado) return <TelaCarregando />;
-
-  // Criança e visitante: só o Controle da Casa, sem o app de tarefas.
+  // Criança e visitante: só o Controle da Casa, sem o app de tarefas (nem carregam os dados dele).
   if (souCrianca || souVisitante) {
     return <ControleApp eu={eu} onSair={sair} />;
   }
+  if (!carregado) return <TelaCarregando />;
 
   // App separado de Controle da Casa (mesmo login), aberto por #controle.
   if (rota === "controle") {
@@ -1113,7 +1154,7 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
               ) : (
                 <div style={{ flex: 1, fontWeight: 600, fontSize: 15 }}>{u.nome}</div>
               )}
-              <span style={{ color: C.cinzaClaro, fontSize: 12 }}>{inativo ? "Sem acesso" : papelLabel(u.papel)}</span>
+              <span style={{ color: C.cinzaClaro, fontSize: 12 }}>{inativo ? "Sem acesso" : (u.papel === "visitante" && u.expiraEm && Date.now() > u.expiraEm) ? "Visitante (expirado)" : papelLabel(u.papel)}</span>
               {souAdmin && u.id !== euId && (
                 inativo
                   ? <button onClick={() => definirAtivo(u, true)} title="Reativar" style={{ color: C.pasto, padding: 4 }}><RefreshCw size={16} /></button>
@@ -1163,10 +1204,12 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   );
 }
 
-// Senha fácil de ditar/digitar: palavra do rancho + 4 números.
-// ponytail: senha simples (~80 mil combinações) para usuários leigos; o login do Supabase limita tentativas.
+// Senha fácil de ditar/digitar: palavra do rancho + 6 números (~8 milhões de combinações).
+// ponytail: continua simples para usuários leigos; o login do Supabase limita tentativas.
 const PALAVRAS_SENHA = ["lago", "pasto", "serra", "ipe", "vento", "sol", "rio", "boi"];
-const gerarSenha = () => { const r = crypto.getRandomValues(new Uint32Array(2)); return PALAVRAS_SENHA[r[0] % PALAVRAS_SENHA.length] + String(r[1] % 10000).padStart(4, "0"); };
+const gerarSenha = () => { const r = crypto.getRandomValues(new Uint32Array(2)); return PALAVRAS_SENHA[r[0] % PALAVRAS_SENHA.length] + String(r[1] % 1000000).padStart(6, "0"); };
+// Senha forte e aleatória (ninguém digita: vai dentro do QR Code do visitante).
+const senhaForte = () => { const b = crypto.getRandomValues(new Uint8Array(18)); return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_"); };
 
 // Tira a mensagem real de dentro do erro da Edge Function (o supabase-js esconde o corpo da resposta).
 async function erroDaFuncao(error, data) {
@@ -1281,7 +1324,7 @@ function VisitanteSheet({ showToast, onCriado, onFechar }) {
     const d = Math.max(1, Math.min(90, parseInt(dias) || 1));
     setCriando(true); setErro("");
     const email = `visitante-${uid()}@convidado.local`;
-    const senha = (gerarSenha() + gerarSenha()).slice(0, 12);
+    const senha = senhaForte();
     const { data, error } = await supabase.functions.invoke("quick-service", {
       body: { nome: "Visitante", email, senha, telefone: "", papel: "colaborador", setor: "" },
     });
@@ -1436,6 +1479,7 @@ const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 // Só guardamos/ouvimos estes domínios: evita a enxurrada de eventos de câmeras,
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean"]);
+const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
 // Grupo de luz (entidade light que só junta outras) — não mostramos para não duplicar.
 const ehGrupoLuz = (id, attrs) => id.split(".")[0] === "light" && Array.isArray(attrs?.entity_id);
 // Domínios que aparecem para o gestor escolher (o resto é ruído).
@@ -1931,7 +1975,8 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
   const ESPERA_MS = 500, TOL = 10; // igual ao Vitá: casa com a vibração do toque longo
 
   // Re-sincroniza com o banco (tempo real) quando não está arrastando.
-  useEffect(() => { if (arrastando == null) setOrdem(itens.map((e) => e.dbId)); }, [itens, arrastando]);
+  useEffect(() => { if (arrastando == null) setOrdem((o) => { const n = itens.map((e) => e.dbId); return n.join() === o.join() ? o : n; }); }, [itens, arrastando]);
+  useEffect(() => () => clearTimeout(pressTimer.current), []); // não "pega" card depois de sair da tela
   // Enquanto arrasta, barra a rolagem da tela na unha.
   useEffect(() => {
     const el = gradeRef.current; if (!el || arrastando == null) return;
@@ -2044,6 +2089,11 @@ function ControleApp({ eu, onVoltar, onSair }) {
   const [fechados, setFechados] = useState({}); // id -> true = seção recolhida
   const wsRef = useRef(null);
   const idRef = useRef(1);
+  // Família (administrador com controle) fala direto com o Home Assistant: rápido e ao vivo.
+  // Os demais (colaborador, criança, visitante) passam pelo intermediário "controle-proxy",
+  // que guarda o token no servidor e só libera os aparelhos cadastrados.
+  const [usarProxy, setUsarProxy] = useState(() => !(eu?.papel === "admin" && (eu?.podeControle || eu?.podeGerirControle)));
+  const proxyRefresh = useRef(null);
   const souGestor = eu?.podeGerirControle === true;
   const aberto = (id) => !fechados[id];
   const alternar = (id) => setFechados((f) => ({ ...f, [id]: !f[id] }));
@@ -2073,7 +2123,27 @@ function ControleApp({ eu, onVoltar, onSair }) {
   // ---- Conexão ao vivo com o Home Assistant (WebSocket) ----
   useEffect(() => {
     let ativo = true, conectou = false, ws;
-    setStatus("carregando"); setErro(""); setAreas(null);
+    setStatus((s) => (s === "ok" ? "ok" : "carregando")); setErro(""); // reconexão mantém a tela
+    if (usarProxy) {
+      // Modo intermediário: pergunta os estados a cada 3 s (só com o app na tela).
+      let timer = null;
+      const buscar = async () => {
+        const { data, error } = await supabase.functions.invoke(PROXY_FN, { body: { acao: "estados" } });
+        if (!ativo) return;
+        if (error) {
+          if (error?.context?.status === 404) { setUsarProxy(false); return; } // intermediário ainda não publicado: conexão direta
+          let msg = ""; try { msg = (await error.context.json())?.error || ""; } catch { /* sem corpo */ }
+          setErro(msg || "Não consegui falar com o controle da casa."); setStatus("erro"); return;
+        }
+        const map = {};
+        (data?.estados || []).forEach((s) => { const dom = s.entity_id.split(".")[0]; if (HA_SHOW.has(dom) && !ehGrupoLuz(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
+        setEnts(map); setStatus("ok"); setErro("");
+      };
+      const ciclo = async () => { if (!ativo) return; if (document.visibilityState === "visible") await buscar(); if (ativo) timer = setTimeout(ciclo, 3000); };
+      proxyRefresh.current = buscar;
+      ciclo();
+      return () => { ativo = false; clearTimeout(timer); proxyRefresh.current = null; };
+    }
     const pend = {}; // id da requisição -> tipo (para saber qual resposta é qual)
     const reg = { areas: null, devices: null, entities: null };
     // Monta o mapa entity_id -> nome da área (ambiente do HA), via os "registries".
@@ -2132,12 +2202,35 @@ function ControleApp({ eu, onVoltar, onSair }) {
         }
       };
       ws.onerror = () => { if (ativo && !conectou) { setErro("Não consegui conectar. Confira se a Nabu Casa está ligada e o token está certo."); setStatus("erro"); } };
+      // Caiu (celular dormiu, trocou de rede...): reconecta sozinho.
+      ws.onclose = () => { if (ativo && conectou) setTimeout(() => { if (ativo) setTentativa((t) => t + 1); }, 1500); };
     })();
     return () => { ativo = false; try { ws && ws.close(); } catch { /* ok */ } };
-  }, [tentativa]);
+  }, [tentativa, usarProxy]);
+
+  // Ao voltar para o app: atualiza na hora (intermediário) ou reconecta se a conexão caiu (direto).
+  useEffect(() => {
+    const aoVoltar = () => {
+      if (document.visibilityState !== "visible") return;
+      if (usarProxy) proxyRefresh.current?.();
+      else if (!wsRef.current || wsRef.current.readyState > 1) setTentativa((t) => t + 1);
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => document.removeEventListener("visibilitychange", aoVoltar);
+  }, [usarProxy]);
 
   // ---- Envia um comando ao Home Assistant ----
   const enviar = (domain, service, entityId, serviceData) => {
+    if (usarProxy) {
+      setAviso({ texto: "Comando enviado…" });
+      supabase.functions.invoke(PROXY_FN, { body: { acao: "servico", domain, service, entity_id: entityId, data: serviceData || {} } }).then(async ({ error }) => {
+        if (error) { let msg = ""; try { msg = (await error.context.json())?.error || ""; } catch { /* sem corpo */ } setAviso({ erro: true, texto: "Não consegui executar: " + (msg || error.message) }); return; }
+        setTimeout(() => proxyRefresh.current?.(), 400);  // mostra o novo estado logo
+        setTimeout(() => proxyRefresh.current?.(), 1800); // e de novo (persiana e ar demoram)
+      });
+      setTimeout(() => setAviso((a) => (a && !a.erro ? null : a)), 2000);
+      return;
+    }
     const ws = wsRef.current;
     if (!ws || ws.readyState !== 1) { setAviso({ erro: true, texto: "A conexão com o Home Assistant caiu. Toque no ↻ (atualizar) no topo e tente de novo." }); return; }
     ws.send(JSON.stringify({ id: idRef.current++, type: "call_service", domain, service, target: { entity_id: entityId }, service_data: serviceData || {} }));
@@ -2495,7 +2588,7 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
     const files = Array.from(e.target.files || []); if (!files.length) return;
     setSalvandoImg(true);
     try { const urls = []; for (const file of files) urls.push(await uploadFoto(file)); setF((p) => ({ ...p, imagens: [...(p.imagens || []), ...urls] })); }
-    catch (err) { console.error("uploadFoto", err); window.alert("Não consegui salvar a foto.\n\nMotivo: " + (err?.message || err)); }
+    catch (err) { console.error("uploadFoto", err); window.alert("Não consegui salvar a foto. Confira a internet e tente de novo.\n\nDetalhe: " + (err?.message || err)); }
     setSalvandoImg(false); e.target.value = "";
   };
   const toggleDia = (d) => set("dias", f.dias.includes(d) ? f.dias.filter((x) => x !== d) : [...f.dias, d]);
@@ -2761,7 +2854,7 @@ function ConcluirModal({ task, produtos, showToast, onFechar, onConfirmar }) {
   const fileRef = useRef();
   const camRef = useRef();
   const itensC = itensDaCompra(task);
-  const escolher = async (e) => { const file = e.target.files?.[0]; if (!file) return; setSalvando(true); try { const u = await uploadFoto(file); setFoto(u); setUrl(u); } catch (err) { console.error("uploadFoto", err); window.alert("Não consegui salvar a foto.\n\nMotivo: " + (err?.message || err)); } setSalvando(false); };
+  const escolher = async (e) => { const file = e.target.files?.[0]; if (!file) return; setSalvando(true); try { const u = await uploadFoto(file); setFoto(u); setUrl(u); } catch (err) { console.error("uploadFoto", err); window.alert("Não consegui salvar a foto. Confira a internet e tente de novo.\n\nDetalhe: " + (err?.message || err)); } setSalvando(false); };
   return (
     <Sheet titulo="Concluir tarefa" onFechar={onFechar}>
       <div style={{ background: C.pastoClaro, borderRadius: 12 }} className="p-3 mb-3"><div className="font-semibold">{task.titulo}</div>{task.ehCompra && itensC.length > 0 && <div style={{ color: C.pastoEsc }} className="text-sm mt-1.5">Entrará no estoque:{itensC.map((it, i) => { const p = produtos.find((x) => x.id === it.produtoId); return (<div key={i}>• {it.quantidade} {p?.unidade || ""} de {p?.nome || "produto"}</div>); })}</div>}</div>
