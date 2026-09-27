@@ -1328,9 +1328,11 @@ function ControleApp({ onVoltar }) {
 
   const acionar = (e) => {
     const c = haComando(e); const ws = wsRef.current;
-    if (!c || !ws || ws.readyState !== 1) return;
-    setAviso(null);
+    if (!c) return;
+    if (!ws || ws.readyState !== 1) { setAviso({ erro: true, texto: "A conexão com o Home Assistant caiu. Toque no ↻ (atualizar) no topo e tente de novo." }); return; }
     ws.send(JSON.stringify({ id: idRef.current++, type: "call_service", domain: c.domain, service: c.service, target: { entity_id: e.id } }));
+    setAviso({ texto: "Comando enviado a " + e.nome + "…" });
+    setTimeout(() => setAviso((a) => (a && !a.erro ? null : a)), 2500);
   };
 
   const lista = Object.entries(ents).map(([id, v]) => ({ id, dom: id.split(".")[0], nome: v.attributes?.friendly_name || id, ...v }))
