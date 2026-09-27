@@ -1359,8 +1359,9 @@ function CtrlInterruptor({ e, enviar, cardClicavel }) {
     </div>
   );
 }
-// Coberturas com aberto/fechado invertido (fiação/config trocada no HA), por nome.
-const HA_INVERTER = ["flap tv leo e pri"];
+// Flap: cobertura com o comando físico invertido (abrir/fechar trocados no HA).
+// Regra: qualquer equipamento cujo nome contenha "flap" segue essa inversão.
+const HA_INVERTER = ["flap"];
 function ehInvertido(e) {
   const alvo = ((e?.nome || "") + " " + (e?.id || "")).toLowerCase();
   return HA_INVERTER.some((n) => alvo.includes(n));
@@ -1374,9 +1375,9 @@ function CtrlPersiana({ e, enviar }) {
     <div>
       <div className="text-sm mb-2" style={{ color: ind ? C.cinzaClaro : st.cor, fontWeight: 700 }}>{ind ? "Indisponível" : st.texto}</div>
       <div className="flex gap-2">
-        <BotaoAcao icon={inv ? ArrowDownToLine : ArrowUpFromLine} label="Abrir" cor={C.pasto} disabled={ind} onClick={() => enviar("cover", inv ? "close_cover" : "open_cover", e.id)} />
+        <BotaoAcao icon={ArrowUpFromLine} label="Abrir" cor={C.pasto} disabled={ind} onClick={() => enviar("cover", inv ? "close_cover" : "open_cover", e.id)} />
         <BotaoAcao icon={X} label="Parar" cor={C.ambar} disabled={ind} onClick={() => enviar("cover", "stop_cover", e.id)} />
-        <BotaoAcao icon={inv ? ArrowUpFromLine : ArrowDownToLine} label="Fechar" cor={C.cinza} disabled={ind} onClick={() => enviar("cover", inv ? "open_cover" : "close_cover", e.id)} />
+        <BotaoAcao icon={ArrowDownToLine} label="Fechar" cor={C.cinza} disabled={ind} onClick={() => enviar("cover", inv ? "open_cover" : "close_cover", e.id)} />
       </div>
     </div>
   );
@@ -1510,15 +1511,19 @@ function CtrlArCompacto({ e, enviar }) {
     </div>
   );
 }
-// Controle compacto de persiana/flap (encolhido): uma chave abrir/fechar.
+// Controle compacto de persiana/flap (encolhido): dois botões ↑ abrir / ↓ fechar.
 function CtrlPersianaCompacto({ e, enviar }) {
   const ind = !e.disponivel; const inv = ehInvertido(e);
-  const aberto = inv ? e.state === "closed" : e.state === "open";
-  const toggle = (ev) => { ev.stopPropagation(); const svc = aberto ? (inv ? "open_cover" : "close_cover") : (inv ? "close_cover" : "open_cover"); enviar("cover", svc, e.id); };
+  const estadoVis = inv ? (e.state === "open" ? "closed" : e.state === "closed" ? "open" : e.state) : e.state;
+  const st = haEstado(estadoVis, e.attributes);
+  const abrir = (ev) => { ev.stopPropagation(); enviar("cover", inv ? "close_cover" : "open_cover", e.id); };
+  const fechar = (ev) => { ev.stopPropagation(); enviar("cover", inv ? "open_cover" : "close_cover", e.id); };
+  const bt = { width: 34, height: 30, borderRadius: 9, border: "none", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: ind ? "default" : "pointer", opacity: ind ? 0.5 : 1 };
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 text-xs" style={{ color: ind ? C.cinzaClaro : (aberto ? C.ambar : C.cinza), fontWeight: 600 }}>{ind ? "Indisponível" : (aberto ? "Aberto" : "Fechado")}</div>
-      <PillToggle on={aberto} cor={C.ambar} disabled={ind} onClick={toggle} />
+      <div className="flex-1 text-xs truncate" style={{ color: ind ? C.cinzaClaro : st.cor, fontWeight: 600 }}>{ind ? "Indisponível" : st.texto}</div>
+      <button onClick={abrir} disabled={ind} title="Abrir" style={{ ...bt, background: C.pasto }}><ArrowUpFromLine size={16} /></button>
+      <button onClick={fechar} disabled={ind} title="Fechar" style={{ ...bt, background: C.cinza }}><ArrowDownToLine size={16} /></button>
     </div>
   );
 }
