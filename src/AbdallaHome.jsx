@@ -1244,8 +1244,9 @@ function InstalarPrompt() {
 }
 
 /* ===================== CONTROLE DA CASA (Home Assistant) ===================== */
-const HA_DOMINIOS = ["light", "switch", "fan", "cover", "lock", "climate", "media_player", "binary_sensor", "sensor"];
-const HA_TITULO = { light: "Luzes", switch: "Interruptores", fan: "Ventiladores", cover: "Portões / Cortinas", lock: "Fechaduras", climate: "Climatização", media_player: "Mídia", binary_sensor: "Sensores (aberto/fechado)", sensor: "Medidores" };
+// Mostramos só iluminação e alguns controláveis (ar-condicionado etc.).
+// Câmeras, UniFi, sensores e interruptores de rede ficam de fora (some ruído e lentidão).
+const HA_MOSTRAR = new Set(["light", "climate", "fan", "media_player", "cover", "lock"]);
 function haEstado(s, attrs) {
   const map = {
     on: ["Ligado", "#2f7d4f"], off: ["Desligado", "#a49c8c"],
@@ -1261,11 +1262,19 @@ function haEstado(s, attrs) {
 }
 
 // Aparelhos que dá para ligar/desligar (o resto é só leitura: sensores, medidores).
-const HA_CONTROLAVEIS = ["light", "switch", "fan", "cover", "input_boolean", "lock", "media_player"];
+const HA_CONTROLAVEIS = ["light", "switch", "fan", "cover", "input_boolean", "lock", "media_player", "climate"];
+function haLigado(e) {
+  if (e.dom === "cover") return e.state === "open";
+  if (e.dom === "lock") return e.state !== "locked";
+  if (e.dom === "climate") return e.state !== "off";
+  if (e.dom === "media_player") return !["off", "idle", "standby"].includes(e.state);
+  return e.state === "on";
+}
 function haComando(e) {
   const d = e.dom;
   if (["light", "switch", "fan", "cover", "input_boolean"].includes(d)) return { domain: d, service: "toggle" };
   if (d === "lock") return { domain: "lock", service: e.state === "locked" ? "unlock" : "lock" };
+  if (d === "climate") return { domain: "climate", service: e.state === "off" ? "turn_on" : "turn_off" };
   if (d === "media_player") return { domain: "media_player", service: ["off", "idle", "standby"].includes(e.state) ? "turn_on" : "turn_off" };
   return null;
 }
@@ -1287,6 +1296,7 @@ function ControleApp({ onVoltar }) {
   const [status, setStatus] = useState("carregando"); // carregando | ok | erro
   const [erro, setErro] = useState("");
   const [ents, setEnts] = useState({});
+  const [areas, setAreas] = useState(null); // entity_id -> nome do ambiente
   const [tentativa, setTentativa] = useState(0);
   const [aviso, setAviso] = useState(null);
   const wsRef = useRef(null);
@@ -1295,7 +1305,17 @@ function ControleApp({ onVoltar }) {
 
   useEffect(() => {
     let ativo = true, conectou = false, ws;
-    setStatus("carregando"); setErro("");
+    setStatus("carregando"); setErro(""); setAreas(null);
+    const pend = {}; // id da requisição -> tipo
+    const reg = { areas: null, devices: null, entities: null };
+    const montarAreas = () => {
+      if (!reg.areas || !reg.entities) return;
+      const areaNome = {}; reg.areas.forEach((a) => { areaNome[a.area_id] = a.name; });
+      const devArea = {}; (reg.devices || []).forEach((d) => { if (d.area_id) devArea[d.id] = d.area_id; });
+      const map = {};
+      reg.entities.forEach((en) => { const aid = en.area_id || (en.device_id ? devArea[en.device_id] : null); if (aid && areaNome[aid]) map[en.entity_id] = areaNome[aid]; });
+      if (ativo) setAreas(map);
+    };
     (async () => {
       const { data, error } = await supabase.from("ha_config").select("base_url, token").eq("id", "default").maybeSingle();
       if (!ativo) return;
@@ -1304,21 +1324,36 @@ function ControleApp({ onVoltar }) {
       const wsUrl = data.base_url.replace(/^http/, "ws").replace(/\/+$/, "") + "/api/websocket";
       try { ws = new WebSocket(wsUrl); } catch (e) { setErro("Não consegui abrir a conexão: " + (e?.message || e)); setStatus("erro"); return; }
       wsRef.current = ws;
-      const send = (o) => ws.send(JSON.stringify(o));
+      const send = (o) => { const id = idRef.current++; const tipo = o.tipo; delete o.tipo; if (tipo) pend[id] = tipo; ws.send(JSON.stringify({ id, ...o })); };
       ws.onmessage = (ev) => {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
-        if (m.type === "auth_required") return send({ type: "auth", access_token: data.token });
+        if (m.type === "auth_required") return ws.send(JSON.stringify({ type: "auth", access_token: data.token }));
         if (m.type === "auth_invalid") { setErro("O token foi recusado pelo Home Assistant. Gere um novo e atualize no Supabase."); setStatus("erro"); try { ws.close(); } catch { /* ok */ } return; }
-        if (m.type === "auth_ok") { conectou = true; send({ id: idRef.current++, type: "get_states" }); send({ id: idRef.current++, type: "subscribe_events", event_type: "state_changed" }); return; }
-        if (m.type === "result" && m.success === false) { if (ativo) setAviso({ erro: true, texto: "Não consegui executar: " + (m.error?.message || "erro do Home Assistant") }); return; }
-        if (m.type === "result" && Array.isArray(m.result)) {
-          const map = {}; m.result.forEach((s) => { map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
-          if (ativo) { setEnts(map); setStatus("ok"); }
+        if (m.type === "auth_ok") {
+          conectou = true;
+          send({ tipo: "states", type: "get_states" });
+          send({ tipo: "areas", type: "config/area_registry/list" });
+          send({ tipo: "devices", type: "config/device_registry/list" });
+          send({ tipo: "entities", type: "config/entity_registry/list" });
+          send({ type: "subscribe_events", event_type: "state_changed" });
+          return;
+        }
+        if (m.type === "result") {
+          const tipo = pend[m.id]; delete pend[m.id];
+          if (m.success === false) {
+            if (tipo === "states") { setErro("Falha ao ler estados: " + (m.error?.message || "")); setStatus("erro"); }
+            else if (ativo && !["areas", "devices", "entities"].includes(tipo)) setAviso({ erro: true, texto: "Não consegui executar: " + (m.error?.message || "erro do Home Assistant") });
+            return;
+          }
+          if (tipo === "states") { const map = {}; (m.result || []).forEach((s) => { if (HA_MOSTRAR.has(s.entity_id.split(".")[0])) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; }); if (ativo) { setEnts(map); setStatus("ok"); } return; }
+          if (tipo === "areas") { reg.areas = m.result || []; montarAreas(); return; }
+          if (tipo === "devices") { reg.devices = m.result || []; montarAreas(); return; }
+          if (tipo === "entities") { reg.entities = m.result || []; montarAreas(); return; }
           return;
         }
         if (m.type === "event" && m.event?.event_type === "state_changed") {
           const d = m.event.data;
-          if (d?.entity_id && d.new_state) setEnts((p) => ({ ...p, [d.entity_id]: { state: d.new_state.state, attributes: d.new_state.attributes || {} } }));
+          if (d?.entity_id && HA_MOSTRAR.has(d.entity_id.split(".")[0]) && d.new_state) setEnts((p) => ({ ...p, [d.entity_id]: { state: d.new_state.state, attributes: d.new_state.attributes || {} } }));
         }
       };
       ws.onerror = () => { if (ativo && !conectou) { setErro("Não consegui conectar. Confira se a Nabu Casa está ligada e o token está certo."); setStatus("erro"); } };
@@ -1335,11 +1370,15 @@ function ControleApp({ onVoltar }) {
     setTimeout(() => setAviso((a) => (a && !a.erro ? null : a)), 2500);
   };
 
+  // Aparelhos a mostrar: exclui grupos de luz (um grupo tem attributes.entity_id, uma lista de membros).
   const lista = Object.entries(ents).map(([id, v]) => ({ id, dom: id.split(".")[0], nome: v.attributes?.friendly_name || id, ...v }))
-    .filter((e) => HA_DOMINIOS.includes(e.dom) && !["unavailable", "unknown", "none", ""].includes(e.state))
+    .filter((e) => !(e.dom === "light" && Array.isArray(e.attributes?.entity_id)))
+    .filter((e) => !["unavailable", "unknown", "none", ""].includes(e.state))
+    .map((e) => ({ ...e, ambiente: (areas && areas[e.id]) || "Sem ambiente" }))
     .sort((a, b) => a.nome.localeCompare(b.nome));
-  const grupos = HA_DOMINIOS.map((d) => ({ dom: d, titulo: HA_TITULO[d], itens: lista.filter((e) => e.dom === d) })).filter((g) => g.itens.length);
-  const ligados = lista.filter((e) => e.state === "on").length;
+  const nomesAmb = [...new Set(lista.map((e) => e.ambiente))].sort((a, b) => (a === "Sem ambiente" ? 1 : b === "Sem ambiente" ? -1 : a.localeCompare(b)));
+  const grupos = nomesAmb.map((amb) => ({ amb, itens: lista.filter((e) => e.ambiente === amb) })).filter((g) => g.itens.length);
+  const ligados = lista.filter((e) => haLigado(e)).length;
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
@@ -1363,18 +1402,18 @@ function ControleApp({ onVoltar }) {
               <button onClick={() => setTentativa((t) => t + 1)} style={{ marginTop: 12, background: LAGO, color: "#fff", borderRadius: 10, padding: "10px 18px", fontWeight: 700 }}>Tentar de novo</button>
             </div>
           )}
-          {status === "ok" && grupos.length === 0 && <div className="text-center py-16" style={{ color: C.cinza }}>Conectado, mas não achei aparelhos para mostrar.</div>}
+          {status === "ok" && grupos.length === 0 && <div className="text-center py-16" style={{ color: C.cinza }}>Conectado, mas não achei iluminação para mostrar.</div>}
           {status === "ok" && grupos.map((g) => (
-            <div key={g.dom} className="mb-4">
-              <div style={{ color: C.cinza }} className="text-xs font-semibold uppercase mb-2">{g.titulo}</div>
+            <div key={g.amb} className="mb-4">
+              <div style={{ color: LAGO, display: "flex", alignItems: "center", gap: 6 }} className="text-xs font-semibold uppercase mb-2"><MapPin size={13} /> {g.amb}</div>
               {g.itens.map((e) => {
                 const st = haEstado(e.state, e.attributes);
                 const ctrl = HA_CONTROLAVEIS.includes(e.dom);
-                const ligado = ["on", "open", "unlocked", "playing", "home"].includes(e.state);
+                const ligado = haLigado(e);
                 const acao = e.dom === "cover" ? (ligado ? "fechar" : "abrir") : e.dom === "lock" ? (e.state === "locked" ? "destrancar" : "trancar") : (ligado ? "desligar" : "ligar");
                 return (
                   <button key={e.id} onClick={ctrl ? () => acionar(e) : undefined} disabled={!ctrl} style={{ width: "100%", textAlign: "left", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, cursor: ctrl ? "pointer" : "default" }} className="p-3 mb-2 flex items-center gap-3">
-                    <span style={{ width: 12, height: 12, borderRadius: 999, background: st.cor, flexShrink: 0 }} />
+                    <span style={{ width: 12, height: 12, borderRadius: 999, background: ligado ? st.cor : C.cinzaClaro, flexShrink: 0 }} />
                     <div className="flex-1 min-w-0"><div className="font-medium truncate" style={{ fontSize: 15 }}>{e.nome}</div>{ctrl && <div style={{ fontSize: 11.5, color: C.cinzaClaro }}>tocar para {acao}</div>}</div>
                     {ctrl ? (
                       <span style={{ width: 46, height: 27, borderRadius: 999, background: ligado ? st.cor : C.cinzaClaro, position: "relative", flexShrink: 0 }}><span style={{ position: "absolute", top: 3, left: ligado ? 22 : 3, width: 21, height: 21, borderRadius: 999, background: "#fff" }} /></span>
@@ -1386,7 +1425,7 @@ function ControleApp({ onVoltar }) {
             </div>
           ))}
           {aviso && <div style={{ background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, borderRadius: 12, fontSize: 13.5 }} className="p-3 mb-3">{aviso.texto}</div>}
-          {status === "ok" && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Toque no aparelho para ligar/desligar. Medidores e sensores são só leitura.</div>}
+          {status === "ok" && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Toque no aparelho para ligar/desligar.</div>}
         </main>
       </div>
     </div>
