@@ -1260,6 +1260,16 @@ function haEstado(s, attrs) {
   return { texto: u ? `${s} ${u}` : String(s), cor: "#2b7a8c" };
 }
 
+// Aparelhos que dá para ligar/desligar (o resto é só leitura: sensores, medidores).
+const HA_CONTROLAVEIS = ["light", "switch", "fan", "cover", "input_boolean", "lock", "media_player"];
+function haComando(e) {
+  const d = e.dom;
+  if (["light", "switch", "fan", "cover", "input_boolean"].includes(d)) return { domain: d, service: "toggle" };
+  if (d === "lock") return { domain: "lock", service: e.state === "locked" ? "unlock" : "lock" };
+  if (d === "media_player") return { domain: "media_player", service: ["off", "idle", "standby"].includes(e.state) ? "turn_on" : "turn_off" };
+  return null;
+}
+
 function ControleSemAcesso({ onVoltar }) {
   return (
     <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 20 }}>
@@ -1278,6 +1288,9 @@ function ControleApp({ onVoltar }) {
   const [erro, setErro] = useState("");
   const [ents, setEnts] = useState({});
   const [tentativa, setTentativa] = useState(0);
+  const [aviso, setAviso] = useState(null);
+  const wsRef = useRef(null);
+  const idRef = useRef(1);
   const LAGO = "#2b7a8c", LAGO_ESC = "#1f5c6b";
 
   useEffect(() => {
@@ -1290,13 +1303,14 @@ function ControleApp({ onVoltar }) {
       if (!data?.base_url || !data?.token) { setErro("Falta o endereço ou o token do Home Assistant no Supabase."); setStatus("erro"); return; }
       const wsUrl = data.base_url.replace(/^http/, "ws").replace(/\/+$/, "") + "/api/websocket";
       try { ws = new WebSocket(wsUrl); } catch (e) { setErro("Não consegui abrir a conexão: " + (e?.message || e)); setStatus("erro"); return; }
-      let idc = 1;
+      wsRef.current = ws;
       const send = (o) => ws.send(JSON.stringify(o));
       ws.onmessage = (ev) => {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
         if (m.type === "auth_required") return send({ type: "auth", access_token: data.token });
         if (m.type === "auth_invalid") { setErro("O token foi recusado pelo Home Assistant. Gere um novo e atualize no Supabase."); setStatus("erro"); try { ws.close(); } catch { /* ok */ } return; }
-        if (m.type === "auth_ok") { conectou = true; send({ id: idc++, type: "get_states" }); send({ id: idc++, type: "subscribe_events", event_type: "state_changed" }); return; }
+        if (m.type === "auth_ok") { conectou = true; send({ id: idRef.current++, type: "get_states" }); send({ id: idRef.current++, type: "subscribe_events", event_type: "state_changed" }); return; }
+        if (m.type === "result" && m.success === false) { if (ativo) setAviso({ erro: true, texto: "Não consegui executar: " + (m.error?.message || "erro do Home Assistant") }); return; }
         if (m.type === "result" && Array.isArray(m.result)) {
           const map = {}; m.result.forEach((s) => { map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
           if (ativo) { setEnts(map); setStatus("ok"); }
@@ -1312,8 +1326,15 @@ function ControleApp({ onVoltar }) {
     return () => { ativo = false; try { ws && ws.close(); } catch { /* ok */ } };
   }, [tentativa]);
 
+  const acionar = (e) => {
+    const c = haComando(e); const ws = wsRef.current;
+    if (!c || !ws || ws.readyState !== 1) return;
+    setAviso(null);
+    ws.send(JSON.stringify({ id: idRef.current++, type: "call_service", domain: c.domain, service: c.service, target: { entity_id: e.id } }));
+  };
+
   const lista = Object.entries(ents).map(([id, v]) => ({ id, dom: id.split(".")[0], nome: v.attributes?.friendly_name || id, ...v }))
-    .filter((e) => HA_DOMINIOS.includes(e.dom))
+    .filter((e) => HA_DOMINIOS.includes(e.dom) && !["unavailable", "unknown", "none", ""].includes(e.state))
     .sort((a, b) => a.nome.localeCompare(b.nome));
   const grupos = HA_DOMINIOS.map((d) => ({ dom: d, titulo: HA_TITULO[d], itens: lista.filter((e) => e.dom === d) })).filter((g) => g.itens.length);
   const ligados = lista.filter((e) => e.state === "on").length;
@@ -1344,16 +1365,26 @@ function ControleApp({ onVoltar }) {
           {status === "ok" && grupos.map((g) => (
             <div key={g.dom} className="mb-4">
               <div style={{ color: C.cinza }} className="text-xs font-semibold uppercase mb-2">{g.titulo}</div>
-              {g.itens.map((e) => { const st = haEstado(e.state, e.attributes); return (
-                <div key={e.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3 mb-2 flex items-center gap-3">
-                  <span style={{ width: 12, height: 12, borderRadius: 999, background: st.cor, flexShrink: 0 }} />
-                  <div className="flex-1 min-w-0"><div className="font-medium truncate" style={{ fontSize: 15 }}>{e.nome}</div></div>
-                  <span style={{ color: st.cor, fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap" }}>{st.texto}</span>
-                </div>
-              ); })}
+              {g.itens.map((e) => {
+                const st = haEstado(e.state, e.attributes);
+                const ctrl = HA_CONTROLAVEIS.includes(e.dom);
+                const ligado = ["on", "open", "unlocked", "playing", "home"].includes(e.state);
+                const acao = e.dom === "cover" ? (ligado ? "fechar" : "abrir") : e.dom === "lock" ? (e.state === "locked" ? "destrancar" : "trancar") : (ligado ? "desligar" : "ligar");
+                return (
+                  <button key={e.id} onClick={ctrl ? () => acionar(e) : undefined} disabled={!ctrl} style={{ width: "100%", textAlign: "left", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, cursor: ctrl ? "pointer" : "default" }} className="p-3 mb-2 flex items-center gap-3">
+                    <span style={{ width: 12, height: 12, borderRadius: 999, background: st.cor, flexShrink: 0 }} />
+                    <div className="flex-1 min-w-0"><div className="font-medium truncate" style={{ fontSize: 15 }}>{e.nome}</div>{ctrl && <div style={{ fontSize: 11.5, color: C.cinzaClaro }}>tocar para {acao}</div>}</div>
+                    {ctrl ? (
+                      <span style={{ width: 46, height: 27, borderRadius: 999, background: ligado ? st.cor : C.cinzaClaro, position: "relative", flexShrink: 0 }}><span style={{ position: "absolute", top: 3, left: ligado ? 22 : 3, width: 21, height: 21, borderRadius: 999, background: "#fff" }} /></span>
+                    ) : (
+                      <span style={{ color: st.cor, fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap" }}>{st.texto}</span>
+                    )}
+                  </button>
+                ); })}
             </div>
           ))}
-          {status === "ok" && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Por enquanto só leitura. Ligar/desligar vem na próxima etapa.</div>}
+          {aviso && <div style={{ background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, borderRadius: 12, fontSize: 13.5 }} className="p-3 mb-3">{aviso.texto}</div>}
+          {status === "ok" && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Toque no aparelho para ligar/desligar. Medidores e sensores são só leitura.</div>}
         </main>
       </div>
     </div>
