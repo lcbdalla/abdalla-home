@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
-  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images
+  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -159,7 +159,7 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -1039,6 +1039,13 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                 <div style={{ flex: 1, fontSize: 13, color: u.setor ? setorCor(u.setor) : C.cinzaClaro, fontWeight: u.setor ? 600 : 400 }}>{u.setor || "Sem setor"}</div>
               )}
             </div>
+            {souAdmin && (
+              <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
+                <Home size={13} style={{ color: C.cinzaClaro }} />
+                <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode controlar a casa</div>
+                <Toggle on={u.podeControle === true} onToggle={() => editar(u.id, "pode_controle", !(u.podeControle === true))} />
+              </div>
+            )}
           </div>
         );
       })}
