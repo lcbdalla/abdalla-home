@@ -30,15 +30,36 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
--- 2) Tabela de AMBIENTES (cômodos/áreas: Sala, Quarto, Varanda...).
-create table if not exists public.ambientes (
+-- 2a) Tabela de PAVIMENTOS (andares: Térreo, 1º Pavimento, Subsolo, Área Externa).
+create table if not exists public.pavimentos (
   id         uuid primary key default gen_random_uuid(),
   nome       text not null,
-  icone      text,
   ordem      int  not null default 0,
   criado_em  timestamptz not null default now()
 );
+alter table public.pavimentos enable row level security;
+
+drop policy if exists "pavimentos leitura" on public.pavimentos;
+create policy "pavimentos leitura" on public.pavimentos
+  for select to authenticated using (public.pode_ver_controle());
+
+drop policy if exists "pavimentos gestor escreve" on public.pavimentos;
+create policy "pavimentos gestor escreve" on public.pavimentos
+  for all to authenticated
+  using (public.is_gestor_controle()) with check (public.is_gestor_controle());
+
+-- 2b) Tabela de AMBIENTES (cômodos: Sala, Quarto, Varanda...), dentro de um pavimento.
+create table if not exists public.ambientes (
+  id           uuid primary key default gen_random_uuid(),
+  nome         text not null,
+  pavimento_id uuid references public.pavimentos(id) on delete set null,
+  icone        text,
+  ordem        int  not null default 0,
+  criado_em    timestamptz not null default now()
+);
 alter table public.ambientes enable row level security;
+-- (caso a tabela já exista de uma versão anterior, garante a coluna do pavimento)
+alter table public.ambientes add column if not exists pavimento_id uuid references public.pavimentos(id) on delete set null;
 
 drop policy if exists "ambientes leitura" on public.ambientes;
 create policy "ambientes leitura" on public.ambientes
@@ -75,9 +96,16 @@ create policy "equipamentos gestor escreve" on public.controle_equipamentos
 -- 4) Tempo real (o app atualiza sozinho quando algo muda). Ignora se já estiver ligado.
 do $$
 begin
+  begin execute 'alter publication supabase_realtime add table public.pavimentos'; exception when others then null; end;
   begin execute 'alter publication supabase_realtime add table public.ambientes'; exception when others then null; end;
   begin execute 'alter publication supabase_realtime add table public.controle_equipamentos'; exception when others then null; end;
 end $$;
+
+-- 4b) Já deixa os PAVIMENTOS do Rancho criados (só na primeira vez, se estiver vazio).
+insert into public.pavimentos (nome, ordem)
+select v.nome, v.ordem
+from (values ('1º Pavimento', 1), ('Térreo', 2), ('Subsolo', 3), ('Área Externa', 4)) as v(nome, ordem)
+where not exists (select 1 from public.pavimentos);
 
 -- 5) Concede o papel de GESTOR às duas contas do dono (Leonardo).
 --    (Só funciona para contas que já existem no login.)

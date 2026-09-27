@@ -1248,13 +1248,16 @@ function InstalarPrompt() {
 // Tipos de controle que o app entende (o gestor escolhe ao vincular o aparelho).
 const CTRL_TIPOS = [
   { id: "interruptor", nome: "Liga / Desliga", ajuda: "Luz, tomada, ventilador" },
-  { id: "persiana", nome: "Persiana / Cortina / Flap", ajuda: "Abrir · Parar · Fechar" },
+  { id: "persiana", nome: "Persiana / Cortina / Flap / Portão", ajuda: "Abrir · Parar · Fechar" },
   { id: "ar", nome: "Ar-condicionado", ajuda: "Temperatura, modo e vento" },
   { id: "tv", nome: "TV / Mídia", ajuda: "Liga, volume, play/pausa" },
+  { id: "irrigacao", nome: "Irrigação", ajuda: "Iniciar · Parar" },
   { id: "fechadura", nome: "Fechadura", ajuda: "Trancar / destrancar" },
   { id: "sensor", nome: "Só leitura (sensor)", ajuda: "Mostra o valor" },
 ];
 const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]));
+const CTRL_EMOJI = { interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
+const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao"]; // ocupam a linha inteira (têm mais botões)
 
 // Domínios do Home Assistant que aparecem para o gestor escolher (o resto é ruído).
 const HA_ESCOLHIVEIS = ["light", "switch", "fan", "cover", "climate", "media_player", "lock", "input_boolean", "sensor", "binary_sensor"];
@@ -1333,8 +1336,8 @@ function CtrlChip({ ativo, onClick, children, cor }) {
 function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      style={{ flex: 1, background: disabled ? C.bg : cor, color: disabled ? C.cinzaClaro : "#fff", borderRadius: 12, padding: "11px 6px", fontWeight: 700, fontSize: 13, border: "none", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-      {Icon && <Icon size={18} />}{label}
+      style={{ flex: 1, background: disabled ? C.bg : cor, color: disabled ? C.cinzaClaro : "#fff", borderRadius: 12, padding: "10px 6px", fontWeight: 700, fontSize: 13, border: "none", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      {Icon && <Icon size={17} />}{label}
     </button>
   );
 }
@@ -1433,6 +1436,18 @@ function CtrlTv({ e, enviar }) {
     </div>
   );
 }
+function CtrlIrrigacao({ e, enviar }) {
+  const ind = !e.disponivel; const ativo = e.state === "on";
+  return (
+    <div>
+      <div className="text-sm mb-2" style={{ color: ind ? C.cinzaClaro : (ativo ? LAGO : C.cinza), fontWeight: 700 }}>{ind ? "Indisponível" : (ativo ? "Irrigando…" : "Parada")}</div>
+      <div className="flex gap-2">
+        <BotaoAcao label="Iniciar" cor={C.pasto} disabled={ind} onClick={() => enviar("homeassistant", "turn_on", e.id)} />
+        <BotaoAcao label="Parar" cor={C.cinza} disabled={ind} onClick={() => enviar("homeassistant", "turn_off", e.id)} />
+      </div>
+    </div>
+  );
+}
 function CtrlFechadura({ e, enviar }) {
   const ind = !e.disponivel; const trancado = e.state === "locked";
   return (
@@ -1450,24 +1465,27 @@ function EquipControle({ e, enviar }) {
   if (e.tipo === "persiana") return <CtrlPersiana e={e} enviar={enviar} />;
   if (e.tipo === "ar") return <CtrlAr e={e} enviar={enviar} />;
   if (e.tipo === "tv") return <CtrlTv e={e} enviar={enviar} />;
+  if (e.tipo === "irrigacao") return <CtrlIrrigacao e={e} enviar={enviar} />;
   if (e.tipo === "fechadura") return <CtrlFechadura e={e} enviar={enviar} />;
   if (e.tipo === "sensor") return <CtrlSensor e={e} />;
   return <CtrlInterruptor e={e} enviar={enviar} />;
 }
 function EquipCard({ e, enviar }) {
   const st = haEstado(e.state, e.attributes);
+  const ligado = e.disponivel && ["on", "open", "playing", "unlocked", "cool", "heat", "dry", "fan_only", "auto", "heat_cool"].includes(e.state);
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3 mb-2">
+    <div style={{ background: C.card, border: `1px solid ${ligado ? C.pasto + "66" : C.linha}`, borderRadius: 16, height: "100%" }} className="p-3">
       <div className="flex items-center gap-2 mb-2">
-        <span style={{ width: 10, height: 10, borderRadius: 999, background: e.disponivel ? st.cor : "#c9c2b2", flexShrink: 0 }} />
-        <div className="font-semibold truncate" style={{ fontSize: 15, color: C.terra }}>{e.nome}</div>
+        <span style={{ fontSize: 20, flexShrink: 0 }}>{CTRL_EMOJI[e.tipo] || "●"}</span>
+        <div className="flex-1 min-w-0 font-semibold truncate" style={{ fontSize: 14, color: C.terra }}>{e.nome}</div>
+        <span style={{ width: 9, height: 9, borderRadius: 999, background: e.disponivel ? st.cor : "#c9c2b2", flexShrink: 0 }} />
       </div>
       <EquipControle e={e} enviar={enviar} />
     </div>
   );
 }
 
-/* ---- Modo GERENCIAR (só gestor): criar ambientes e vincular aparelhos ---- */
+/* ---- Modo GERENCIAR (só gestor) ---- */
 function SeletorAparelho({ ents, usados, onEscolher, onFechar }) {
   const [busca, setBusca] = useState("");
   const lista = Object.entries(ents)
@@ -1477,7 +1495,7 @@ function SeletorAparelho({ ents, usados, onEscolher, onFechar }) {
     .sort((a, b) => a.nome.localeCompare(b.nome))
     .slice(0, 60);
   return (
-    <div style={{ border: `1px dashed ${C.lago}66`, borderRadius: 12, background: C.lagoClaro, padding: 10, marginTop: 8 }}>
+    <div style={{ border: `1px dashed ${LAGO}66`, borderRadius: 12, background: C.lagoClaro, padding: 10, marginTop: 8 }}>
       <div className="flex items-center gap-2 mb-2">
         <Search size={16} style={{ color: C.cinza }} />
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar aparelho…" style={{ ...inpControle, background: "#fff" }} autoFocus />
@@ -1498,12 +1516,12 @@ function SeletorAparelho({ ents, usados, onEscolher, onFechar }) {
     </div>
   );
 }
-function AmbienteGerenciar({ amb, itens, ents, usados, onRenomearAmb, onExcluirAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip }) {
+function AmbienteGerenciar({ amb, pavimentos, itens, ents, usados, onRenomearAmb, onExcluirAmb, onMoverAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip }) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(amb.nome);
   const [abrindoSel, setAbrindoSel] = useState(false);
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, padding: 12, marginBottom: 12 }}>
+    <div style={{ background: C.bg, border: `1px solid ${C.linha}`, borderRadius: 12, padding: 11, marginBottom: 10 }}>
       <div className="flex items-center gap-2 mb-2">
         {editando ? (
           <>
@@ -1512,22 +1530,28 @@ function AmbienteGerenciar({ amb, itens, ents, usados, onRenomearAmb, onExcluirA
           </>
         ) : (
           <>
-            <div className="flex-1 font-bold truncate" style={{ fontSize: 16, color: C.terra }}>{amb.nome}</div>
-            <button onClick={() => { setNome(amb.nome); setEditando(true); }} title="Renomear" style={{ background: C.bg, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><Pencil size={15} style={{ color: C.cinza }} /></button>
-            <button onClick={() => { if (window.confirm(`Excluir o ambiente "${amb.nome}"? Os aparelhos dele voltam a ficar sem ambiente.`)) onExcluirAmb(amb.id); }} title="Excluir ambiente" style={{ background: C.vermelhoClaro, border: `1px solid ${C.vermelho}44`, borderRadius: 10, padding: 8 }}><Trash2 size={15} style={{ color: C.vermelho }} /></button>
+            <div className="flex-1 font-bold truncate" style={{ fontSize: 15, color: C.terra }}>{amb.nome}</div>
+            {pavimentos.length > 0 && (
+              <select value={amb.pavimento_id || ""} onChange={(e) => onMoverAmb(amb.id, e.target.value || null)} title="Mudar de pavimento" style={{ border: `1px solid ${C.linha}`, borderRadius: 9, padding: "6px 8px", fontSize: 12, background: C.card, color: C.cinza }}>
+                {pavimentos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+            )}
+            <button onClick={() => { setNome(amb.nome); setEditando(true); }} title="Renomear" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 9, padding: 8 }}><Pencil size={14} style={{ color: C.cinza }} /></button>
+            <button onClick={() => { if (window.confirm(`Excluir o cômodo "${amb.nome}"?`)) onExcluirAmb(amb.id); }} title="Excluir cômodo" style={{ background: C.vermelhoClaro, border: `1px solid ${C.vermelho}44`, borderRadius: 9, padding: 8 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
           </>
         )}
       </div>
 
-      {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="mb-2">Nenhum aparelho ainda neste ambiente.</div>}
+      {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 12.5 }} className="mb-2">Nenhum aparelho ainda neste cômodo.</div>}
       {itens.map((q) => {
         const live = ents[q.entity_id];
         const rotulo = q.nome || live?.attributes?.friendly_name || q.entity_id;
         return (
-          <div key={q.id} style={{ border: `1px solid ${C.linha}`, borderRadius: 10, padding: 9, marginBottom: 7 }}>
+          <div key={q.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 9, marginBottom: 7 }}>
             <div className="flex items-center gap-2 mb-2">
-              <div className="flex-1 min-w-0 truncate" style={{ fontWeight: 600, fontSize: 14, color: C.terra }}>{rotulo}</div>
-              <button onClick={() => onDelEquip(q.id)} title="Remover do ambiente" style={{ background: C.vermelhoClaro, borderRadius: 9, padding: 7 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
+              <span style={{ fontSize: 16 }}>{CTRL_EMOJI[q.tipo] || "●"}</span>
+              <div className="flex-1 min-w-0 truncate" style={{ fontWeight: 600, fontSize: 13.5, color: C.terra }}>{rotulo}</div>
+              <button onClick={() => onDelEquip(q.id)} title="Remover do cômodo" style={{ background: C.vermelhoClaro, borderRadius: 9, padding: 7 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
             </div>
             <div className="flex items-center gap-2">
               <select value={q.tipo} onChange={(e) => onTipoEquip(q.id, e.target.value)} style={{ ...inpControle, flex: "0 0 auto", padding: "8px 10px" }}>
@@ -1541,30 +1565,73 @@ function AmbienteGerenciar({ amb, itens, ents, usados, onRenomearAmb, onExcluirA
 
       {abrindoSel
         ? <SeletorAparelho ents={ents} usados={usados} onEscolher={(entityId) => { onAddEquip(amb.id, entityId); }} onFechar={() => setAbrindoSel(false)} />
-        : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 4, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${C.pasto}33`, borderRadius: 10, padding: "9px 12px", fontWeight: 700, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={16} /> Adicionar aparelho</button>}
+        : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 2, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${C.pasto}33`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Adicionar aparelho</button>}
     </div>
   );
 }
-function GerenciarView({ ambientes, equipamentos, ents, onCriarAmb, onRenomearAmb, onExcluirAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip }) {
-  const [novo, setNovo] = useState("");
+function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, usados, cbs }) {
+  const [editando, setEditando] = useState(false);
+  const [nome, setNome] = useState(pav.nome);
+  const [novoAmb, setNovoAmb] = useState("");
+  const meus = ambientes.filter((a) => a.pavimento_id === pav.id).sort((a, b) => a.ordem - b.ordem);
+  return (
+    <div style={{ border: `1px solid ${C.linha}`, borderRadius: 16, background: C.card, padding: 12, marginBottom: 14 }}>
+      <div className="flex items-center gap-2 mb-3">
+        {editando ? (
+          <>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} style={inpControle} autoFocus />
+            <button onClick={() => { if (nome.trim()) cbs.onRenomearPav(pav.id, nome.trim()); setEditando(false); }} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: 9 }}><Check size={16} /></button>
+          </>
+        ) : (
+          <>
+            <div className="flex-1 font-bold truncate" style={{ fontSize: 17, color: C.terra }}>🏢 {pav.nome}</div>
+            <button onClick={() => { setNome(pav.nome); setEditando(true); }} title="Renomear pavimento" style={{ background: C.bg, border: `1px solid ${C.linha}`, borderRadius: 9, padding: 8 }}><Pencil size={15} style={{ color: C.cinza }} /></button>
+            <button onClick={() => { if (window.confirm(`Excluir o pavimento "${pav.nome}"? Os cômodos dele ficam "sem pavimento".`)) cbs.onExcluirPav(pav.id); }} title="Excluir pavimento" style={{ background: C.vermelhoClaro, border: `1px solid ${C.vermelho}44`, borderRadius: 9, padding: 8 }}><Trash2 size={15} style={{ color: C.vermelho }} /></button>
+          </>
+        )}
+      </div>
+      {meus.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="mb-2">Nenhum cômodo neste pavimento ainda.</div>}
+      {meus.map((a) => (
+        <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} usados={usados}
+          itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
+          onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
+          onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} />
+      ))}
+      <div className="flex gap-2 mt-1">
+        <input value={novoAmb} onChange={(e) => setNovoAmb(e.target.value)} placeholder="Novo cômodo (ex.: Sala TV)" style={inpControle} />
+        <button onClick={() => { if (novoAmb.trim()) { cbs.onCriarAmb(pav.id, novoAmb.trim()); setNovoAmb(""); } }} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: "0 16px", fontWeight: 700 }}>Criar</button>
+      </div>
+    </div>
+  );
+}
+function GerenciarView({ pavimentos, ambientes, equipamentos, ents, cbs }) {
+  const [novoPav, setNovoPav] = useState("");
   const usados = new Set(equipamentos.map((q) => q.entity_id));
+  const orfaos = ambientes.filter((a) => !a.pavimento_id || !pavimentos.some((p) => p.id === a.pavimento_id));
   return (
     <div>
       <div className="mb-3" style={{ background: C.lagoClaro, border: `1px solid ${LAGO}33`, borderRadius: 12, padding: "10px 12px", fontSize: 12.5, color: LAGO_ESC }}>
-        Organize a casa: crie ambientes e escolha quais aparelhos aparecem em cada um. Só você (gestor) vê esta tela.
+        Organize a casa: dentro de cada pavimento crie os cômodos e escolha quais aparelhos aparecem. Só você (gestor) vê esta tela.
       </div>
       <div className="flex gap-2 mb-4">
-        <input value={novo} onChange={(e) => setNovo(e.target.value)} placeholder="Novo ambiente (ex.: Sala)" style={inpControle} />
-        <button onClick={() => { if (novo.trim()) { onCriarAmb(novo.trim()); setNovo(""); } }} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: "0 16px", fontWeight: 700 }}>Criar</button>
+        <input value={novoPav} onChange={(e) => setNovoPav(e.target.value)} placeholder="Novo pavimento (ex.: Térreo)" style={inpControle} />
+        <button onClick={() => { if (novoPav.trim()) { cbs.onCriarPav(novoPav.trim()); setNovoPav(""); } }} style={{ background: LAGO, color: "#fff", borderRadius: 10, padding: "0 16px", fontWeight: 700 }}>Criar</button>
       </div>
-      {ambientes.length === 0 && <div className="text-center py-10" style={{ color: C.cinza }}>Nenhum ambiente ainda. Crie o primeiro acima. 🏠</div>}
-      {ambientes.map((amb) => (
-        <AmbienteGerenciar key={amb.id} amb={amb}
-          itens={equipamentos.filter((q) => q.ambiente_id === amb.id).sort((a, b) => a.ordem - b.ordem)}
-          ents={ents} usados={usados}
-          onRenomearAmb={onRenomearAmb} onExcluirAmb={onExcluirAmb}
-          onAddEquip={onAddEquip} onTipoEquip={onTipoEquip} onNomeEquip={onNomeEquip} onDelEquip={onDelEquip} />
+      {pavimentos.length === 0 && orfaos.length === 0 && <div className="text-center py-10" style={{ color: C.cinza }}>Nenhum pavimento ainda. Crie o primeiro acima. 🏢</div>}
+      {pavimentos.map((pav) => (
+        <PavimentoGerenciar key={pav.id} pav={pav} pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} usados={usados} cbs={cbs} />
       ))}
+      {orfaos.length > 0 && (
+        <div style={{ border: `1px dashed ${C.linha}`, borderRadius: 16, padding: 12, marginBottom: 14 }}>
+          <div className="font-bold mb-3" style={{ fontSize: 15, color: C.cinza }}>Sem pavimento</div>
+          {orfaos.map((a) => (
+            <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} usados={usados}
+              itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
+              onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
+              onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1575,19 +1642,25 @@ function ControleApp({ eu, onVoltar }) {
   const [ents, setEnts] = useState({});
   const [tentativa, setTentativa] = useState(0);
   const [aviso, setAviso] = useState(null);
+  const [pavimentos, setPavimentos] = useState([]);
   const [ambientes, setAmbientes] = useState([]);
   const [equipamentos, setEquipamentos] = useState([]);
   const [modo, setModo] = useState("usar"); // usar | gerenciar
+  const [fechados, setFechados] = useState({}); // id -> true = seção recolhida
   const wsRef = useRef(null);
   const idRef = useRef(1);
   const souGestor = eu?.podeGerirControle === true;
+  const aberto = (id) => !fechados[id];
+  const alternar = (id) => setFechados((f) => ({ ...f, [id]: !f[id] }));
 
-  // ---- Carrega ambientes/equipamentos do Supabase (+ tempo real) ----
+  // ---- Carrega pavimentos/ambientes/equipamentos do Supabase (+ tempo real) ----
   const carregarConfig = useCallback(async () => {
-    const [a, e] = await Promise.all([
+    const [p, a, e] = await Promise.all([
+      supabase.from("pavimentos").select("*").order("ordem"),
       supabase.from("ambientes").select("*").order("ordem"),
       supabase.from("controle_equipamentos").select("*").order("ordem"),
     ]);
+    if (!p.error) setPavimentos(p.data || []);
     if (!a.error) setAmbientes(a.data || []);
     if (!e.error) setEquipamentos(e.data || []);
   }, []);
@@ -1595,6 +1668,7 @@ function ControleApp({ eu, onVoltar }) {
   useEffect(() => {
     carregarConfig();
     const canal = supabase.channel("controle-config")
+      .on("postgres_changes", { event: "*", schema: "public", table: "pavimentos" }, carregarConfig)
       .on("postgres_changes", { event: "*", schema: "public", table: "ambientes" }, carregarConfig)
       .on("postgres_changes", { event: "*", schema: "public", table: "controle_equipamentos" }, carregarConfig)
       .subscribe();
@@ -1651,15 +1725,21 @@ function ControleApp({ eu, onVoltar }) {
     await carregarConfig();
     if (okTxt) { setAviso({ texto: okTxt }); setTimeout(() => setAviso((a) => (a && !a.erro ? null : a)), 2200); }
   };
-  const onCriarAmb = (nome) => salvar(supabase.from("ambientes").insert({ nome, ordem: ambientes.length }), "Ambiente criado");
-  const onRenomearAmb = (id, nome) => salvar(supabase.from("ambientes").update({ nome }).eq("id", id));
-  const onExcluirAmb = (id) => salvar(supabase.from("ambientes").delete().eq("id", id), "Ambiente excluído");
-  const onAddEquip = (ambienteId, entityId) => salvar(supabase.from("controle_equipamentos").insert({ ambiente_id: ambienteId, entity_id: entityId, tipo: tipoSugerido(entityId), ordem: equipamentos.filter((q) => q.ambiente_id === ambienteId).length }), "Aparelho adicionado");
-  const onTipoEquip = (id, tipo) => salvar(supabase.from("controle_equipamentos").update({ tipo }).eq("id", id));
-  const onNomeEquip = (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id));
-  const onDelEquip = (id) => salvar(supabase.from("controle_equipamentos").delete().eq("id", id));
+  const cbs = {
+    onCriarPav: (nome) => salvar(supabase.from("pavimentos").insert({ nome, ordem: pavimentos.length }), "Pavimento criado"),
+    onRenomearPav: (id, nome) => salvar(supabase.from("pavimentos").update({ nome }).eq("id", id)),
+    onExcluirPav: (id) => salvar(supabase.from("pavimentos").delete().eq("id", id), "Pavimento excluído"),
+    onCriarAmb: (pavimentoId, nome) => salvar(supabase.from("ambientes").insert({ nome, pavimento_id: pavimentoId, ordem: ambientes.filter((a) => a.pavimento_id === pavimentoId).length }), "Cômodo criado"),
+    onRenomearAmb: (id, nome) => salvar(supabase.from("ambientes").update({ nome }).eq("id", id)),
+    onExcluirAmb: (id) => salvar(supabase.from("ambientes").delete().eq("id", id), "Cômodo excluído"),
+    onMoverAmb: (id, pavimentoId) => salvar(supabase.from("ambientes").update({ pavimento_id: pavimentoId }).eq("id", id)),
+    onAddEquip: (ambienteId, entityId) => salvar(supabase.from("controle_equipamentos").insert({ ambiente_id: ambienteId, entity_id: entityId, tipo: tipoSugerido(entityId), ordem: equipamentos.filter((q) => q.ambiente_id === ambienteId).length }), "Aparelho adicionado"),
+    onTipoEquip: (id, tipo) => salvar(supabase.from("controle_equipamentos").update({ tipo }).eq("id", id)),
+    onNomeEquip: (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id)),
+    onDelEquip: (id) => salvar(supabase.from("controle_equipamentos").delete().eq("id", id)),
+  };
 
-  // ---- Monta a lista para o modo "usar" ----
+  // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
   const mkEquip = (row) => {
     const live = ents[row.entity_id];
     const state = live?.state;
@@ -1670,10 +1750,14 @@ function ControleApp({ eu, onVoltar }) {
       disponivel: state != null && !["unavailable", "unknown", "none", ""].includes(state),
     };
   };
-  const porAmbiente = ambientes.map((amb) => ({
-    id: amb.id, nome: amb.nome,
-    itens: equipamentos.filter((q) => q.ambiente_id === amb.id).sort((a, b) => a.ordem - b.ordem).map(mkEquip),
-  })).filter((g) => g.itens.length > 0 || modo === "gerenciar");
+  const semPav = { id: "__sem__", nome: "Outros", ordem: 99999 };
+  const listaPav = [...pavimentos, semPav].map((p) => ({
+    id: p.id, nome: p.nome, ordem: p.ordem,
+    comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id).sort((a, b) => a.ordem - b.ordem).map((a) => ({
+      id: a.id, nome: a.nome,
+      itens: equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip),
+    })).filter((c) => c.itens.length > 0),
+  })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
@@ -1700,26 +1784,40 @@ function ControleApp({ eu, onVoltar }) {
           )}
 
           {modo === "gerenciar" && souGestor && (
-            <GerenciarView ambientes={ambientes} equipamentos={equipamentos} ents={ents}
-              onCriarAmb={onCriarAmb} onRenomearAmb={onRenomearAmb} onExcluirAmb={onExcluirAmb}
-              onAddEquip={onAddEquip} onTipoEquip={onTipoEquip} onNomeEquip={onNomeEquip} onDelEquip={onDelEquip} />
+            <GerenciarView pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} cbs={cbs} />
           )}
 
-          {modo === "usar" && status === "ok" && ambientes.length === 0 && (
+          {modo === "usar" && status === "ok" && listaPav.length === 0 && (
             <div className="text-center py-16" style={{ color: C.cinza }}>
               Nenhum ambiente organizado ainda.
               {souGestor && <div className="mt-3"><button onClick={() => setModo("gerenciar")} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: "10px 18px", fontWeight: 700 }}>Organizar agora</button></div>}
             </div>
           )}
-          {modo === "usar" && status === "ok" && porAmbiente.map((g) => (
-            <div key={g.id} className="mb-4">
-              <div style={{ color: C.cinza }} className="text-xs font-semibold uppercase mb-2">{g.nome}</div>
-              {g.itens.map((e) => <EquipCard key={e.dbId} e={e} enviar={enviar} />)}
+          {modo === "usar" && status === "ok" && listaPav.map((pav) => (
+            <div key={pav.id} style={{ marginBottom: 12 }}>
+              <button onClick={() => alternar(pav.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "6px 2px", cursor: "pointer" }}>
+                <span style={{ fontWeight: 800, fontSize: 16, color: C.terra }}>{pav.nome}</span>
+                <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 15 }}>{aberto(pav.id) ? "▾" : "▸"}</span>
+              </button>
+              {aberto(pav.id) && pav.comodos.map((c) => (
+                <div key={c.id} style={{ border: `1px solid ${C.linha}`, borderRadius: 16, background: C.card, padding: 10, marginBottom: 10 }}>
+                  <button onClick={() => alternar(c.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "4px 2px 8px", cursor: "pointer" }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: C.terra }}>{c.nome}</span>
+                    <span style={{ fontSize: 11, color: C.cinza, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "2px 8px" }}>{c.itens.length}</span>
+                    <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 14 }}>{aberto(c.id) ? "▾" : "▸"}</span>
+                  </button>
+                  {aberto(c.id) && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+                      {c.itens.map((e) => <div key={e.dbId} style={{ gridColumn: CTRL_LARGO.includes(e.tipo) ? "1 / -1" : "auto" }}><EquipCard e={e} enviar={enviar} /></div>)}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           ))}
 
           {aviso && <div style={{ background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, borderRadius: 12, fontSize: 13.5 }} className="p-3 mb-3">{aviso.texto}</div>}
-          {modo === "usar" && status === "ok" && ambientes.length > 0 && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Cada aparelho tem os controles do seu tipo.</div>}
+          {modo === "usar" && status === "ok" && listaPav.length > 0 && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Cada aparelho tem os controles do seu tipo.</div>}
         </main>
       </div>
     </div>

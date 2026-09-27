@@ -55,12 +55,18 @@ conclusoes (id, tarefa_id, data, user_id, foto_url).
   ao HA por WebSocket (endereço+token na tabela ha_config).
 - Permissões em perfis: `pode_controle` (usar) e `pode_gerir_controle` (GESTOR:
   criar ambientes e vincular aparelhos — só o dono). RLS trava a escrita ao gestor.
-- Tabelas: `ambientes` (nome, ordem) e `controle_equipamentos` (ambiente_id,
-  entity_id do HA, nome/apelido, tipo). Roteiro: supabase/sql/ha-ambientes.sql.
+- Estrutura em 2 níveis: `pavimentos` (andares) > `ambientes` (cômodos, com
+  pavimento_id) > `controle_equipamentos` (ambiente_id, entity_id do HA,
+  nome/apelido, tipo). Roteiro: supabase/sql/ha-ambientes.sql (já cria os
+  pavimentos: 1º Pavimento, Térreo, Subsolo, Área Externa).
 - Cada aparelho tem controle por TIPO: interruptor (liga/desliga), persiana
-  (abrir/parar/fechar — serve p/ cortina e flap), ar (climate: on/off, temp+/-,
-  modo, vento), tv (media_player: on/off, volume, play/pausa), fechadura, sensor.
-- Modo "Gerenciar" (ícone chave inglesa no topo) aparece só para o gestor.
+  (abrir/parar/fechar — serve p/ cortina, flap e portão), ar (climate: on/off,
+  temp+/-, modo, vento), tv (media_player: on/off, volume, play/pausa), irrigacao
+  (iniciar/parar), fechadura, sensor.
+- Tela "usar": tema claro do rancho, agrupada por pavimento > cômodo (seções que
+  abrem/fecham), cartões em 2 colunas (aparelhos com muitos botões ocupam a linha).
+- Modo "Gerenciar" (ícone chave inglesa no topo) aparece só para o gestor: cria
+  pavimentos, cômodos e vincula aparelhos do HA escolhendo o tipo.
 
 ## O que FALTA (próximos passos)
 1. **Cadastro de equipe pelo app (PRIORIDADE):** ativar o botão "Adicionar
