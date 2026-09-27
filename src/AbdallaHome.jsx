@@ -73,7 +73,7 @@ const Dialog = {
   confirm: (o) => new Promise((res) => { if (_openDialog) _openDialog({ tipo: "confirm", ...o, resolve: res }); else res(false); }),
   prompt: (o) => new Promise((res) => { if (_openDialog) _openDialog({ tipo: "prompt", ...o, resolve: res }); else res(null); }),
 };
-const papelLabel = (p) => (p === "admin" ? "Administrador" : "Colaborador");
+const papelLabel = (p) => (p === "admin" ? "Administrador" : p === "crianca" ? "Criança" : "Colaborador");
 const norm = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 // ---------- Imagem: redimensiona e devolve um Blob para subir ao Storage ----------
@@ -305,6 +305,7 @@ export default function App() {
   const eu = perfil && typeof perfil === "object" ? perfil : null;
   const euId = eu?.id || null;
   const souAdmin = eu?.papel === "admin";
+  const souCrianca = eu?.papel === "crianca";
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
 
   // ---------- Recarregadores (usados no primeiro load e no realtime) ----------
@@ -617,6 +618,11 @@ export default function App() {
   if (!session) return (<><LoginScreen /><DialogHost /></>);
   if (perfil === "removido") return (<><AcessoRemovido onSair={sair} /><DialogHost /></>);
   if (!carregado) return <TelaCarregando />;
+
+  // Criança: só o Controle da Casa, sem o app de tarefas.
+  if (souCrianca) {
+    return <ControleApp eu={eu} onSair={sair} />;
+  }
 
   // App separado de Controle da Casa (mesmo login), aberto por #controle.
   if (rota === "controle") {
@@ -1004,6 +1010,7 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
     onRecarregar();
   };
   const alternarPapel = async (u) => {
+    if (u.papel === "crianca") { showToast("Conta de criança: mude a função pelo campo, se precisar."); return; }
     const { error } = await supabase.from("perfis").update({ papel: u.papel === "admin" ? "colaborador" : "admin" }).eq("id", u.id);
     if (error) { showToast("Erro ao salvar: " + error.message); return; }
     onRecarregar();
@@ -1102,9 +1109,14 @@ function NovaPessoaSheet({ showToast, onCriado, onFechar }) {
     setCriando(true);
     // A função "criar-usuario" foi criada pelo painel e ficou com o endereço "quick-service".
     const { data, error } = await supabase.functions.invoke("quick-service", {
-      body: { nome, email, senha: f.senha, telefone, papel: f.papel, setor: f.papel === "admin" ? "" : f.setor },
+      body: { nome, email, senha: f.senha, telefone, papel: f.papel === "crianca" ? "colaborador" : f.papel, setor: (f.papel === "admin" || f.papel === "crianca") ? "" : f.setor },
     });
     if (error || data?.error) { setErro(await erroDaFuncao(error, data)); setCriando(false); return; }
+    // Criança: só controle da casa, sem tarefas. Ajusta o perfil recém-criado.
+    if (f.papel === "crianca" && data?.id) {
+      const { error: e2 } = await supabase.from("perfis").update({ papel: "crianca", pode_controle: true, setor: null }).eq("id", data.id);
+      if (e2) { setErro("Usuário criado, mas não consegui marcar como Criança: " + e2.message); setCriando(false); return; }
+    }
     setCriando(false);
     setCriado({ nome, email, senha: f.senha, telefone });
     onCriado();
@@ -1148,12 +1160,13 @@ function NovaPessoaSheet({ showToast, onCriado, onFechar }) {
       <Campo label="Nome"><input autoFocus value={f.nome} onChange={(e) => set("nome", e.target.value)} placeholder="Ex.: João da Silva" style={inpSt} /></Campo>
       <Campo label="WhatsApp (opcional)"><input type="tel" inputMode="tel" value={f.telefone} onChange={(e) => set("telefone", e.target.value)} placeholder="Ex.: 63 99999-0000" style={inpSt} /></Campo>
       <Campo label="Função">
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           {opcao(f.papel === "colaborador", () => set("papel", "colaborador"), "Colaborador", "Faz as tarefas e pede compras", "c")}
           {opcao(f.papel === "admin", () => set("papel", "admin"), "Administrador", "Cria e organiza tudo", "a")}
+          {opcao(f.papel === "crianca", () => set("papel", "crianca"), "Criança", "Só o controle da casa (sem tarefas)", "k")}
         </div>
       </Campo>
-      {f.papel !== "admin" && (
+      {f.papel === "colaborador" && (
         <Campo label="Setor">
           <div className="flex gap-2">{SETORES.map((s) => opcao(f.setor === s.id, () => set("setor", s.id), s.id, null, s.id))}</div>
         </Campo>
@@ -1868,7 +1881,7 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
   );
 }
 
-function ControleApp({ eu, onVoltar }) {
+function ControleApp({ eu, onVoltar, onSair }) {
   const [status, setStatus] = useState("carregando"); // carregando | ok | erro
   const [erro, setErro] = useState("");
   // Cards ampliados (ar/persiana). Começa vazio → ao abrir/recarregar o app, todos encolhidos.
@@ -2046,7 +2059,11 @@ function ControleApp({ eu, onVoltar }) {
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}"}</style>
         <header style={{ background: LAGO_ESC, color: "#fff", padding: "14px 16px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
           <div className="flex items-center gap-2">
-            <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><ChevronLeft size={18} /></button>
+            {onVoltar
+              ? <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><ChevronLeft size={18} /></button>
+              : onSair
+                ? <button onClick={() => { if (window.confirm("Deseja sair?")) onSair(); }} title="Sair" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><LogOut size={18} /></button>
+                : null}
             <div style={{ background: "#ffffff22", borderRadius: 12, padding: 7 }}><Home size={20} /></div>
             <div className="flex-1"><div className="font-bold text-lg leading-tight">Controle da Casa</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">{modo === "gerenciar" ? "Organizando ambientes" : "Rancho Abdalla"}</div></div>
             {souGestor && <button onClick={() => setModo((m) => (m === "usar" ? "gerenciar" : "usar"))} title={modo === "usar" ? "Gerenciar ambientes" : "Voltar a usar"} style={{ background: modo === "gerenciar" ? "#ffffff44" : "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}>{modo === "usar" ? <Wrench size={18} /> : <Check size={18} />}</button>}
@@ -2138,7 +2155,7 @@ function PainelView({ tasks, users }) {
   const stats = {};
   const ensure = (id) => stats[id] || (stats[id] = { metaCount: 0, metaMin: 0, feitoCount: 0, feitoMin: 0 });
   // O painel avalia só colaboradores; administradores não entram na conta.
-  const colabIds = new Set(users.filter((u) => u.papel !== "admin").map((u) => u.id));
+  const colabIds = new Set(users.filter((u) => u.papel === "colaborador").map((u) => u.id));
   let totalTarefas = 0, totalMin = 0;
   tasks.forEach((t) => {
     if (t.ehCompra) return; // compras não entram no painel de trabalho
