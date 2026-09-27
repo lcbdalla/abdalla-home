@@ -1716,6 +1716,105 @@ function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }
   );
 }
 
+// Grade de aparelhos de um cômodo, com "segurar para arrastar" (igual ao app Vitá):
+// segura 3s → o card flutua seguindo o dedo, os outros tremem e abrem vaga; solta e salva.
+function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onReordenar }) {
+  const [ordem, setOrdem] = useState(() => itens.map((e) => e.dbId));
+  const [arrastando, setArrastando] = useState(null);
+  const [pos, setPos] = useState(null);
+  const pressTimer = useRef(null), press = useRef(null), longPressed = useRef(false);
+  const pega = useRef(null), itemRefs = useRef({}), arrastou = useRef(false), gradeRef = useRef(null);
+  const ESPERA_MS = 3000, TOL = 10;
+
+  // Re-sincroniza com o banco (tempo real) quando não está arrastando.
+  useEffect(() => { if (arrastando == null) setOrdem(itens.map((e) => e.dbId)); }, [itens, arrastando]);
+  // Enquanto arrasta, barra a rolagem da tela na unha.
+  useEffect(() => {
+    const el = gradeRef.current; if (!el || arrastando == null) return;
+    const barrar = (ev) => ev.preventDefault();
+    el.addEventListener("touchmove", barrar, { passive: false });
+    return () => el.removeEventListener("touchmove", barrar);
+  }, [arrastando]);
+
+  const byId = Object.fromEntries(itens.map((e) => [e.dbId, e]));
+  const ordenados = ordem.map((id) => byId[id]).filter(Boolean);
+  const largoDe = (e) => CTRL_LARGO.includes(e.tipo) && (!CTRL_COMPACTAVEL.includes(e.tipo) || expandidos.has(e.dbId));
+
+  function pegar() {
+    const p = press.current; if (!p || arrastando != null) return;
+    press.current = null; clearTimeout(pressTimer.current);
+    longPressed.current = true;
+    const r = p.el.getBoundingClientRect();
+    pega.current = { offX: p.x - r.left, offY: p.y - r.top, w: r.width, h: r.height };
+    try { p.el.setPointerCapture?.(p.pid); } catch { /* ok */ }
+    arrastou.current = false; setPos({ x: p.x, y: p.y }); setArrastando(p.id);
+    try { navigator.vibrate?.(25); } catch { /* ok */ }
+  }
+  function aoPressionar(e, id) {
+    if (!podeArrastar) return;
+    longPressed.current = false;
+    press.current = { id, pid: e.pointerId, el: e.currentTarget, x: e.clientX, y: e.clientY };
+    clearTimeout(pressTimer.current);
+    pressTimer.current = setTimeout(pegar, ESPERA_MS);
+  }
+  function aoMover(e) {
+    if (arrastando == null) {
+      const p = press.current;
+      if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > TOL) { clearTimeout(pressTimer.current); press.current = null; }
+      return;
+    }
+    arrastou.current = true; setPos({ x: e.clientX, y: e.clientY }); reordenar(e.clientX, e.clientY);
+  }
+  function aoSoltar() {
+    clearTimeout(pressTimer.current); press.current = null;
+    if (arrastando != null) {
+      const ids = ordem.slice();
+      setArrastando(null); setPos(null); pega.current = null;
+      onReordenar?.(ids);
+      setTimeout(() => { arrastou.current = false; longPressed.current = false; }, 0);
+    }
+  }
+  function reordenar(x, y) {
+    const outros = ordem.filter((id) => id !== arrastando);
+    let alvo = 0;
+    for (const id of outros) {
+      const el = itemRefs.current[id]; if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (y > r.bottom || (y > r.top && x > r.left + r.width / 2)) alvo++;
+    }
+    const nova = outros.slice(); nova.splice(alvo, 0, arrastando);
+    if (nova.join() !== ordem.join()) setOrdem(nova);
+  }
+
+  return (
+    <div ref={gradeRef} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, touchAction: arrastando != null ? "none" : "auto" }}>
+      {ordenados.map((e) => {
+        const largo = largoDe(e); const naMao = arrastando === e.dbId;
+        return (
+          <React.Fragment key={e.dbId}>
+            {naMao && <div style={{ gridColumn: largo ? "1 / -1" : "auto", height: pega.current?.h || 90, borderRadius: 16, border: `2px dashed ${C.cinzaClaro}`, background: "#00000008" }} />}
+            <div
+              ref={(el) => { itemRefs.current[e.dbId] = el; }}
+              className={podeArrastar && arrastando != null && !naMao ? "ah-jiggle" : ""}
+              onPointerDown={(ev) => aoPressionar(ev, e.dbId)}
+              onPointerMove={aoMover}
+              onPointerUp={aoSoltar}
+              onPointerCancel={aoSoltar}
+              onContextMenu={(ev) => ev.preventDefault()}
+              onClickCapture={(ev) => { if (longPressed.current || arrastou.current) { ev.stopPropagation(); ev.preventDefault(); } }}
+              style={naMao && pega.current && pos
+                ? { position: "fixed", left: pos.x - pega.current.offX, top: pos.y - pega.current.offY, width: pega.current.w, height: pega.current.h, zIndex: 999, transform: "scale(1.04)", boxShadow: "0 22px 44px -16px rgba(0,0,0,0.5)", minWidth: 0 }
+                : { gridColumn: largo ? "1 / -1" : "auto", minWidth: 0 }}
+            >
+              <EquipCard e={e} enviar={enviar} expandido={expandidos.has(e.dbId)} onExpandir={() => toggleExpand(e.dbId)} />
+            </div>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 function ControleApp({ eu, onVoltar }) {
   const [status, setStatus] = useState("carregando"); // carregando | ok | erro
   const [erro, setErro] = useState("");
@@ -1853,6 +1952,11 @@ function ControleApp({ eu, onVoltar }) {
     onTipoEquip: (id, tipo) => salvar(supabase.from("controle_equipamentos").update({ tipo }).eq("id", id)),
     onNomeEquip: (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id)),
     onDelEquip: (id) => salvar(supabase.from("controle_equipamentos").delete().eq("id", id)),
+    onReordenar: async (ids) => {
+      try { await Promise.all(ids.map((id, i) => supabase.from("controle_equipamentos").update({ ordem: i }).eq("id", id))); }
+      catch { setAviso({ erro: true, texto: "Não consegui salvar a nova ordem." }); }
+      await carregarConfig();
+    },
   };
 
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
@@ -1878,6 +1982,7 @@ function ControleApp({ eu, onVoltar }) {
   return (
     <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "hidden", width: "100%" }}>
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
+        <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}"}</style>
         <header style={{ background: LAGO_ESC, color: "#fff", padding: "14px 16px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
           <div className="flex items-center gap-2">
             <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><ChevronLeft size={18} /></button>
@@ -1909,6 +2014,9 @@ function ControleApp({ eu, onVoltar }) {
               {souGestor && <div className="mt-3"><button onClick={() => setModo("gerenciar")} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: "10px 18px", fontWeight: 700 }}>Organizar agora</button></div>}
             </div>
           )}
+          {modo === "usar" && status === "ok" && souGestor && listaPav.length > 0 && (
+            <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1 mb-2 px-1"><Info size={12} /> Segure 3 segundos num aparelho para arrastar e reposicionar.</div>
+          )}
           {modo === "usar" && status === "ok" && listaPav.map((pav) => (
             <div key={pav.id} style={{ marginBottom: 12 }}>
               <button onClick={() => alternar(pav.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "6px 2px", cursor: "pointer" }}>
@@ -1923,9 +2031,7 @@ function ControleApp({ eu, onVoltar }) {
                     <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 14 }}>{aberto(c.id) ? "▾" : "▸"}</span>
                   </button>
                   {aberto(c.id) && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
-                      {c.itens.map((e) => { const largo = CTRL_LARGO.includes(e.tipo) && (!CTRL_COMPACTAVEL.includes(e.tipo) || expandidos.has(e.dbId)); return <div key={e.dbId} style={{ gridColumn: largo ? "1 / -1" : "auto", minWidth: 0 }}><EquipCard e={e} enviar={enviar} expandido={expandidos.has(e.dbId)} onExpandir={() => toggleExpand(e.dbId)} /></div>; })}
-                    </div>
+                    <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} />
                   )}
                 </div>
               ))}
