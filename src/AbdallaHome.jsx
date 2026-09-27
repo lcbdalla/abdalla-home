@@ -284,6 +284,8 @@ export default function App() {
   const [infoAberto, setInfoAberto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [temAtualizacao, setTemAtualizacao] = useState(false);
+  const [rota, setRota] = useState(() => (window.location.hash || "").replace(/^#/, ""));
+  useEffect(() => { const h = () => setRota((window.location.hash || "").replace(/^#/, "")); window.addEventListener("hashchange", h); return () => window.removeEventListener("hashchange", h); }, []);
   const [produtosAberto, setProdutosAberto] = useState(false);
   const [avisos, setAvisos] = useState([]);
 
@@ -607,6 +609,13 @@ export default function App() {
   if (perfil === "removido") return (<><AcessoRemovido onSair={sair} /><DialogHost /></>);
   if (!carregado) return <TelaCarregando />;
 
+  // App separado de Controle da Casa (mesmo login), aberto por #controle.
+  if (rota === "controle") {
+    return eu?.podeControle
+      ? <ControleApp onVoltar={() => { window.location.hash = ""; }} />
+      : <ControleSemAcesso onVoltar={() => { window.location.hash = ""; }} />;
+  }
+
   const ABAS = [
     { id: "tarefas", nome: "Tarefas", icon: ListTodo },
     { id: "agenda", nome: "Agenda", icon: CalendarDays },
@@ -634,6 +643,7 @@ export default function App() {
                   <div style={{ position: "absolute", top: 42, right: 0, background: "#fff", color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 22px #0003", zIndex: 45, minWidth: 210, overflow: "hidden" }}>
                     {[
                       ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => { setMenuAberto(false); _installOpen.fn && _installOpen.fn(); } }] : []),
+                      ...(eu?.podeControle ? [{ key: "controle", icon: Home, cor: C.lago, txt: "Controle da casa", on: () => { setMenuAberto(false); window.location.hash = "controle"; } }] : []),
                       ...(souAdmin ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: () => { setMenuAberto(false); setInfoAberto(true); } }] : []),
                       { key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { setMenuAberto(false); if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) sair(); } },
                     ].map((it, i) => { const Ic = it.icon; return (
@@ -1228,6 +1238,123 @@ function InstalarPrompt() {
           {!ajuda && <button onClick={instalar} className="flex items-center justify-center gap-2" style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}><ArrowDownToLine size={18} /> {iOS ? "Como instalar" : "Instalar"}</button>}
           {ajuda && <button onClick={dispensar} style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}>Entendi</button>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===================== CONTROLE DA CASA (Home Assistant) ===================== */
+const HA_DOMINIOS = ["light", "switch", "fan", "cover", "lock", "climate", "media_player", "binary_sensor", "sensor"];
+const HA_TITULO = { light: "Luzes", switch: "Interruptores", fan: "Ventiladores", cover: "Portões / Cortinas", lock: "Fechaduras", climate: "Climatização", media_player: "Mídia", binary_sensor: "Sensores (aberto/fechado)", sensor: "Medidores" };
+function haEstado(s, attrs) {
+  const map = {
+    on: ["Ligado", "#2f7d4f"], off: ["Desligado", "#a49c8c"],
+    open: ["Aberto", "#c8862a"], closed: ["Fechado", "#a49c8c"],
+    locked: ["Trancado", "#2f7d4f"], unlocked: ["Destrancado", "#c8862a"],
+    home: ["Em casa", "#2f7d4f"], not_home: ["Fora", "#a49c8c"],
+    playing: ["Tocando", "#2b7a8c"], paused: ["Pausado", "#a49c8c"], idle: ["Parado", "#a49c8c"], standby: ["Repouso", "#a49c8c"],
+    unavailable: ["Indisponível", "#c9c2b2"], unknown: ["—", "#c9c2b2"],
+  };
+  if (map[s]) return { texto: map[s][0], cor: map[s][1] };
+  const u = attrs?.unit_of_measurement;
+  return { texto: u ? `${s} ${u}` : String(s), cor: "#2b7a8c" };
+}
+
+function ControleSemAcesso({ onVoltar }) {
+  return (
+    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", padding: 20 }}>
+      <div className="text-center" style={{ maxWidth: 360 }}>
+        <div style={{ background: C.vermelhoClaro, borderRadius: 18, width: 66, height: 66, display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}><Lock size={30} style={{ color: C.vermelho }} /></div>
+        <div className="font-bold text-xl" style={{ color: C.terra }}>Sem acesso ao Controle</div>
+        <div style={{ color: C.cinza }} className="text-sm mt-2">Você não tem permissão para controlar a casa. Fale com um administrador.</div>
+        <button onClick={onVoltar} style={{ marginTop: 20, background: C.pasto, color: "#fff", borderRadius: 12, padding: "12px 22px", fontWeight: 700 }}>Voltar ao app</button>
+      </div>
+    </div>
+  );
+}
+
+function ControleApp({ onVoltar }) {
+  const [status, setStatus] = useState("carregando"); // carregando | ok | erro
+  const [erro, setErro] = useState("");
+  const [ents, setEnts] = useState({});
+  const [tentativa, setTentativa] = useState(0);
+  const LAGO = "#2b7a8c", LAGO_ESC = "#1f5c6b";
+
+  useEffect(() => {
+    let ativo = true, conectou = false, ws;
+    setStatus("carregando"); setErro("");
+    (async () => {
+      const { data, error } = await supabase.from("ha_config").select("base_url, token").eq("id", "default").maybeSingle();
+      if (!ativo) return;
+      if (error) { setErro("Não consegui ler a configuração: " + error.message); setStatus("erro"); return; }
+      if (!data?.base_url || !data?.token) { setErro("Falta o endereço ou o token do Home Assistant no Supabase."); setStatus("erro"); return; }
+      const wsUrl = data.base_url.replace(/^http/, "ws").replace(/\/+$/, "") + "/api/websocket";
+      try { ws = new WebSocket(wsUrl); } catch (e) { setErro("Não consegui abrir a conexão: " + (e?.message || e)); setStatus("erro"); return; }
+      let idc = 1;
+      const send = (o) => ws.send(JSON.stringify(o));
+      ws.onmessage = (ev) => {
+        let m; try { m = JSON.parse(ev.data); } catch { return; }
+        if (m.type === "auth_required") return send({ type: "auth", access_token: data.token });
+        if (m.type === "auth_invalid") { setErro("O token foi recusado pelo Home Assistant. Gere um novo e atualize no Supabase."); setStatus("erro"); try { ws.close(); } catch { /* ok */ } return; }
+        if (m.type === "auth_ok") { conectou = true; send({ id: idc++, type: "get_states" }); send({ id: idc++, type: "subscribe_events", event_type: "state_changed" }); return; }
+        if (m.type === "result" && Array.isArray(m.result)) {
+          const map = {}; m.result.forEach((s) => { map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
+          if (ativo) { setEnts(map); setStatus("ok"); }
+          return;
+        }
+        if (m.type === "event" && m.event?.event_type === "state_changed") {
+          const d = m.event.data;
+          if (d?.entity_id && d.new_state) setEnts((p) => ({ ...p, [d.entity_id]: { state: d.new_state.state, attributes: d.new_state.attributes || {} } }));
+        }
+      };
+      ws.onerror = () => { if (ativo && !conectou) { setErro("Não consegui conectar. Confira se a Nabu Casa está ligada e o token está certo."); setStatus("erro"); } };
+    })();
+    return () => { ativo = false; try { ws && ws.close(); } catch { /* ok */ } };
+  }, [tentativa]);
+
+  const lista = Object.entries(ents).map(([id, v]) => ({ id, dom: id.split(".")[0], nome: v.attributes?.friendly_name || id, ...v }))
+    .filter((e) => HA_DOMINIOS.includes(e.dom))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+  const grupos = HA_DOMINIOS.map((d) => ({ dom: d, titulo: HA_TITULO[d], itens: lista.filter((e) => e.dom === d) })).filter((g) => g.itens.length);
+  const ligados = lista.filter((e) => e.state === "on").length;
+
+  return (
+    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
+      <div className="mx-auto" style={{ maxWidth: 460, minHeight: "100vh", paddingBottom: 30 }}>
+        <header style={{ background: LAGO_ESC, color: "#fff", padding: "14px 16px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
+          <div className="flex items-center gap-2">
+            <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><ChevronLeft size={18} /></button>
+            <div style={{ background: "#ffffff22", borderRadius: 12, padding: 7 }}><Home size={20} /></div>
+            <div className="flex-1"><div className="font-bold text-lg leading-tight">Controle da Casa</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">Rancho Abdalla</div></div>
+            <button onClick={() => setTentativa((t) => t + 1)} title="Atualizar" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><RefreshCw size={18} /></button>
+          </div>
+          {status === "ok" && <div className="mt-3 text-sm" style={{ background: "#ffffff1a", borderRadius: 12, padding: "8px 12px" }}>{lista.length} aparelhos · <b>{ligados} ligados</b> · ao vivo</div>}
+        </header>
+
+        <main className="px-3 pt-3">
+          {status === "carregando" && <div className="text-center py-16" style={{ color: C.cinza }}>Conectando ao Home Assistant…</div>}
+          {status === "erro" && (
+            <div style={{ background: C.vermelhoClaro, border: `1px solid ${C.vermelho}55`, borderRadius: 14 }} className="p-4 mt-4">
+              <div className="font-bold" style={{ color: C.vermelho }}>Não deu para conectar</div>
+              <div style={{ color: C.terra }} className="text-sm mt-1">{erro}</div>
+              <button onClick={() => setTentativa((t) => t + 1)} style={{ marginTop: 12, background: LAGO, color: "#fff", borderRadius: 10, padding: "10px 18px", fontWeight: 700 }}>Tentar de novo</button>
+            </div>
+          )}
+          {status === "ok" && grupos.length === 0 && <div className="text-center py-16" style={{ color: C.cinza }}>Conectado, mas não achei aparelhos para mostrar.</div>}
+          {status === "ok" && grupos.map((g) => (
+            <div key={g.dom} className="mb-4">
+              <div style={{ color: C.cinza }} className="text-xs font-semibold uppercase mb-2">{g.titulo}</div>
+              {g.itens.map((e) => { const st = haEstado(e.state, e.attributes); return (
+                <div key={e.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14 }} className="p-3 mb-2 flex items-center gap-3">
+                  <span style={{ width: 12, height: 12, borderRadius: 999, background: st.cor, flexShrink: 0 }} />
+                  <div className="flex-1 min-w-0"><div className="font-medium truncate" style={{ fontSize: 15 }}>{e.nome}</div></div>
+                  <span style={{ color: st.cor, fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap" }}>{st.texto}</span>
+                </div>
+              ); })}
+            </div>
+          ))}
+          {status === "ok" && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Por enquanto só leitura. Ligar/desligar vem na próxima etapa.</div>}
+        </main>
       </div>
     </div>
   );
