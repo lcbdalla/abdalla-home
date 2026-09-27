@@ -1259,6 +1259,11 @@ const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]))
 const CTRL_EMOJI = { interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
 const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao"]; // ocupam a linha inteira (têm mais botões)
 const CTRL_COMPACTAVEL = ["ar", "persiana"]; // começam pequenos; tocar no quadro amplia; encolhem ao recarregar
+// Botões de ação que dá para renomear, por tipo de aparelho. [chave, nome padrão].
+const ROTULOS_POR_TIPO = {
+  persiana: [["abrir", "Abrir"], ["parar", "Parar"], ["fechar", "Fechar"]],
+};
+const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 
 // Só guardamos/ouvimos estes domínios: evita a enxurrada de eventos de câmeras,
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
@@ -1375,9 +1380,9 @@ function CtrlPersiana({ e, enviar }) {
     <div>
       <div className="text-sm mb-2" style={{ color: ind ? C.cinzaClaro : st.cor, fontWeight: 700 }}>{ind ? "Indisponível" : st.texto}</div>
       <div className="flex gap-2">
-        <BotaoAcao icon={ArrowUpFromLine} label="Abrir" cor={C.pasto} disabled={ind} onClick={() => enviar("cover", inv ? "close_cover" : "open_cover", e.id)} />
-        <BotaoAcao icon={X} label="Parar" cor={C.ambar} disabled={ind} onClick={() => enviar("cover", "stop_cover", e.id)} />
-        <BotaoAcao icon={ArrowDownToLine} label="Fechar" cor={C.cinza} disabled={ind} onClick={() => enviar("cover", inv ? "open_cover" : "close_cover", e.id)} />
+        <BotaoAcao icon={ArrowUpFromLine} label={rotulo(e, "abrir", "Abrir")} cor={C.pasto} disabled={ind} onClick={() => enviar("cover", inv ? "close_cover" : "open_cover", e.id)} />
+        <BotaoAcao icon={X} label={rotulo(e, "parar", "Parar")} cor={C.ambar} disabled={ind} onClick={() => enviar("cover", "stop_cover", e.id)} />
+        <BotaoAcao icon={ArrowDownToLine} label={rotulo(e, "fechar", "Fechar")} cor={C.cinza} disabled={ind} onClick={() => enviar("cover", inv ? "open_cover" : "close_cover", e.id)} />
       </div>
     </div>
   );
@@ -1522,8 +1527,8 @@ function CtrlPersianaCompacto({ e, enviar }) {
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 text-xs truncate" style={{ color: ind ? C.cinzaClaro : st.cor, fontWeight: 600 }}>{ind ? "Indisponível" : st.texto}</div>
-      <button onClick={abrir} disabled={ind} title="Abrir" style={{ ...bt, background: C.pasto }}><ArrowUpFromLine size={16} /></button>
-      <button onClick={fechar} disabled={ind} title="Fechar" style={{ ...bt, background: C.cinza }}><ArrowDownToLine size={16} /></button>
+      <button onClick={abrir} disabled={ind} title={rotulo(e, "abrir", "Abrir")} style={{ ...bt, background: C.pasto }}><ArrowUpFromLine size={16} /></button>
+      <button onClick={fechar} disabled={ind} title={rotulo(e, "fechar", "Fechar")} style={{ ...bt, background: C.cinza }}><ArrowDownToLine size={16} /></button>
     </div>
   );
 }
@@ -1589,7 +1594,7 @@ function SeletorAparelho({ ents, areas, usados, onEscolher, onFechar }) {
     </div>
   );
 }
-function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onRenomearAmb, onExcluirAmb, onMoverAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip }) {
+function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onRenomearAmb, onExcluirAmb, onMoverAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip, onRotulo }) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(amb.nome);
   const [abrindoSel, setAbrindoSel] = useState(false);
@@ -1645,6 +1650,19 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
                   {CTRL_TIPOS.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
                 </select>
               </div>
+              {ROTULOS_POR_TIPO[q.tipo] && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 4 }}>Nomes dos botões (aparecem no controle)</div>
+                  <div className="flex gap-2">
+                    {ROTULOS_POR_TIPO[q.tipo].map(([chave, padrao]) => (
+                      <div key={chave} style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 10, color: C.cinzaClaro, marginBottom: 2 }}>{padrao}</div>
+                        <input defaultValue={(q.rotulos && q.rotulos[chave]) || ""} onBlur={(ev) => { const v = ev.target.value.trim(); if (v !== ((q.rotulos && q.rotulos[chave]) || "")) onRotulo(q.id, chave, v); }} placeholder={padrao} style={{ ...inpControle, width: "100%", boxSizing: "border-box" }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -1689,7 +1707,7 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, ar
           <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
             itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
             onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
-            onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} />
+            onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} onRotulo={cbs.onRotulo} />
         ))}
         <div className="flex gap-2 mt-1">
           <input value={novoAmb} onChange={(e) => setNovoAmb(e.target.value)} placeholder="Novo cômodo (ex.: Sala TV)" style={inpControle} />
@@ -1723,7 +1741,7 @@ function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }
             <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
               itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
               onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
-              onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} />
+              onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} onRotulo={cbs.onRotulo} />
           ))}
         </div>
       )}
@@ -1974,6 +1992,12 @@ function ControleApp({ eu, onVoltar }) {
       catch { setAviso({ erro: true, texto: "Não consegui salvar a nova ordem." }); }
       await carregarConfig();
     },
+    onRotulo: (id, chave, valor) => {
+      const q = equipamentos.find((x) => x.id === id);
+      const rot = { ...(q?.rotulos || {}) };
+      if (valor && valor.trim()) rot[chave] = valor.trim(); else delete rot[chave];
+      return salvar(supabase.from("controle_equipamentos").update({ rotulos: rot }).eq("id", id));
+    },
   };
 
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
@@ -1983,7 +2007,7 @@ function ControleApp({ eu, onVoltar }) {
     return {
       dbId: row.id, id: row.entity_id, tipo: row.tipo,
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
-      state, attributes: live?.attributes || {},
+      state, attributes: live?.attributes || {}, rotulos: row.rotulos || {},
       disponivel: state != null && !["unavailable", "unknown", "none", ""].includes(state),
     };
   };
