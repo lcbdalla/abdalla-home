@@ -1259,8 +1259,13 @@ const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]))
 const CTRL_EMOJI = { interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
 const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao"]; // ocupam a linha inteira (têm mais botões)
 
-// Domínios do Home Assistant que aparecem para o gestor escolher (o resto é ruído).
-const HA_ESCOLHIVEIS = ["light", "switch", "fan", "cover", "climate", "media_player", "lock", "input_boolean", "sensor", "binary_sensor"];
+// Só guardamos/ouvimos estes domínios: evita a enxurrada de eventos de câmeras,
+// sensores e switches de rede (isso causava lentidão / "lag" na tela).
+const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean"]);
+// Grupo de luz (entidade light que só junta outras) — não mostramos para não duplicar.
+const ehGrupoLuz = (id, attrs) => id.split(".")[0] === "light" && Array.isArray(attrs?.entity_id);
+// Domínios que aparecem para o gestor escolher (o resto é ruído).
+const HA_ESCOLHIVEIS = ["light", "switch", "fan", "cover", "climate", "media_player", "lock", "input_boolean"];
 
 // Sugere um tipo de controle a partir do identificador do aparelho (ex.: climate.sala).
 function tipoSugerido(entityId) {
@@ -1695,13 +1700,18 @@ function ControleApp({ eu, onVoltar }) {
         if (m.type === "auth_ok") { conectou = true; send({ id: idRef.current++, type: "get_states" }); send({ id: idRef.current++, type: "subscribe_events", event_type: "state_changed" }); return; }
         if (m.type === "result" && m.success === false) { if (ativo) setAviso({ erro: true, texto: "Não consegui executar: " + (m.error?.message || "erro do Home Assistant") }); return; }
         if (m.type === "result" && Array.isArray(m.result)) {
-          const map = {}; m.result.forEach((s) => { map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
+          const map = {};
+          m.result.forEach((s) => {
+            const dom = s.entity_id.split(".")[0];
+            if (HA_SHOW.has(dom) && !ehGrupoLuz(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} };
+          });
           if (ativo) { setEnts(map); setStatus("ok"); }
           return;
         }
         if (m.type === "event" && m.event?.event_type === "state_changed") {
           const d = m.event.data;
-          if (d?.entity_id && d.new_state) setEnts((p) => ({ ...p, [d.entity_id]: { state: d.new_state.state, attributes: d.new_state.attributes || {} } }));
+          const dom = d?.entity_id ? d.entity_id.split(".")[0] : "";
+          if (d?.entity_id && HA_SHOW.has(dom) && d.new_state && !ehGrupoLuz(d.entity_id, d.new_state.attributes)) setEnts((p) => ({ ...p, [d.entity_id]: { state: d.new_state.state, attributes: d.new_state.attributes || {} } }));
         }
       };
       ws.onerror = () => { if (ativo && !conectou) { setErro("Não consegui conectar. Confira se a Nabu Casa está ligada e o token está certo."); setStatus("erro"); } };
