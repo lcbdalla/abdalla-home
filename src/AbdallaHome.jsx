@@ -4,6 +4,7 @@ import {
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun
 } from "lucide-react";
+import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
 
 /* ============================================================
@@ -73,7 +74,7 @@ const Dialog = {
   confirm: (o) => new Promise((res) => { if (_openDialog) _openDialog({ tipo: "confirm", ...o, resolve: res }); else res(false); }),
   prompt: (o) => new Promise((res) => { if (_openDialog) _openDialog({ tipo: "prompt", ...o, resolve: res }); else res(null); }),
 };
-const papelLabel = (p) => (p === "admin" ? "Administrador" : p === "crianca" ? "Criança" : "Colaborador");
+const papelLabel = (p) => (p === "admin" ? "Administrador" : p === "crianca" ? "Criança" : p === "visitante" ? "Visitante" : "Colaborador");
 const norm = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 // ---------- Imagem: redimensiona e devolve um Blob para subir ao Storage ----------
@@ -170,7 +171,7 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -277,6 +278,7 @@ function produtosSeed() {
 export default function App() {
   // --- Autenticação ---
   const [session, setSession] = useState(undefined); // undefined = carregando; null = deslogado
+  const [logandoQR, setLogandoQR] = useState(() => /[#&]v=/.test((typeof window !== "undefined" && window.location.hash) || ""));
   const [perfil, setPerfil] = useState(undefined);   // undefined = carregando; "removido" = sem acesso; objeto = ok
 
   // --- Dados ---
@@ -315,6 +317,7 @@ export default function App() {
   const euId = eu?.id || null;
   const souAdmin = eu?.papel === "admin";
   const souCrianca = eu?.papel === "crianca";
+  const souVisitante = eu?.papel === "visitante";
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
 
   // ---------- Recarregadores (usados no primeiro load e no realtime) ----------
@@ -370,6 +373,21 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // ---------- Acesso por QR Code (visitante): loga sozinho a partir da hash #v= ----------
+  useEffect(() => {
+    const m = (window.location.hash || "").match(/[#&]v=([^&]+)/);
+    if (!m) return;
+    try {
+      const dec = atob(decodeURIComponent(m[1]));
+      const i = dec.indexOf(":");
+      const email = dec.slice(0, i), senha = dec.slice(i + 1);
+      history.replaceState(null, "", window.location.pathname + window.location.search); // tira a credencial da URL
+      if (email && senha) supabase.auth.signInWithPassword({ email, password: senha }).then(({ error }) => { if (error) setLogandoQR(false); });
+      else setLogandoQR(false);
+    } catch { setLogandoQR(false); }
+  }, []);
+  useEffect(() => { if (session) setLogandoQR(false); }, [session]);
+
   // ---------- Carrega o perfil da pessoa logada ----------
   useEffect(() => {
     if (session === undefined) return;
@@ -378,7 +396,7 @@ export default function App() {
     (async () => {
       const { data } = await supabase.from("perfis").select("*").eq("id", session.user.id).maybeSingle();
       if (!data || data.ativo === false) setPerfil("removido");
-      else setPerfil(mapPerfil(data));
+      else { const pf = mapPerfil(data); if (pf.papel === "visitante" && pf.expiraEm && Date.now() > pf.expiraEm) setPerfil("expirado"); else setPerfil(pf); }
     })();
   }, [session]);
 
@@ -624,12 +642,13 @@ export default function App() {
 
   // ---------- Telas de porta de entrada ----------
   if (session === undefined || perfil === undefined) return <TelaCarregando />;
-  if (!session) return (<><LoginScreen /><DialogHost /></>);
+  if (!session) return logandoQR ? <TelaCarregando /> : (<><LoginScreen /><DialogHost /></>);
   if (perfil === "removido") return (<><AcessoRemovido onSair={sair} /><DialogHost /></>);
+  if (perfil === "expirado") return (<><AcessoExpirado onSair={sair} /><DialogHost /></>);
   if (!carregado) return <TelaCarregando />;
 
-  // Criança: só o Controle da Casa, sem o app de tarefas.
-  if (souCrianca) {
+  // Criança e visitante: só o Controle da Casa, sem o app de tarefas.
+  if (souCrianca || souVisitante) {
     return <ControleApp eu={eu} onSair={sair} />;
   }
 
@@ -798,6 +817,19 @@ function AcessoRemovido({ onSair }) {
         <div style={{ background: C.vermelhoClaro, borderRadius: 18, width: 66, height: 66, display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}><Lock size={30} style={{ color: C.vermelho }} /></div>
         <div className="font-bold text-2xl" style={{ color: C.terra }}>Acesso removido</div>
         <div style={{ color: C.cinza }} className="text-sm mt-2 px-2">Sua conta não faz mais parte da equipe ou foi desativada. Fale com o administrador do Rancho Abdalla para liberar o acesso novamente.</div>
+        <button onClick={onSair} style={{ marginTop: 22, background: C.pasto, color: "#fff", borderRadius: 12, padding: "13px 22px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 8 }}><LogOut size={17} /> Sair</button>
+      </div>
+    </div>
+  );
+}
+
+function AcessoExpirado({ onSair }) {
+  return (
+    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, sans-serif", color: C.terra, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+      <div className="mx-auto w-full px-5 text-center" style={{ maxWidth: 400 }}>
+        <div style={{ background: C.ambarClaro, borderRadius: 18, width: 66, height: 66, display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}><Clock size={30} style={{ color: C.ambar }} /></div>
+        <div className="font-bold text-2xl" style={{ color: C.terra }}>Acesso expirado</div>
+        <div style={{ color: C.cinza }} className="text-sm mt-2 px-2">O prazo do seu acesso de visitante terminou. Peça um novo QR Code ao administrador do Rancho Abdalla.</div>
         <button onClick={onSair} style={{ marginTop: 22, background: C.pasto, color: "#fff", borderRadius: 12, padding: "13px 22px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 8 }}><LogOut size={17} /> Sair</button>
       </div>
     </div>
@@ -1044,6 +1076,7 @@ function EstoqueView({ produtos, estoque, movs, users, onAjustar, onAbrirProduto
 /* ============================= EQUIPE ============================= */
 function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   const [novo, setNovo] = useState(false);
+  const [visitante, setVisitante] = useState(false);
   const editar = async (id, campo, valor) => {
     const { error } = await supabase.from("perfis").update({ [campo]: valor }).eq("id", id);
     if (error) { showToast("Erro ao salvar: " + error.message); return; }
@@ -1067,7 +1100,8 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   return (
     <div>
       <div style={{ background: C.lagoClaro, borderRadius: 14 }} className="p-3 mb-3"><div style={{ color: C.lago }} className="text-xs font-semibold uppercase">Equipe do rancho</div><div style={{ color: C.terra }} className="text-sm mt-0.5">Administradores criam e organizam. Colaboradores executam e pedem compras. {souAdmin ? "Para dar acesso a alguém, toque em Adicionar pessoa." : "Somente administradores podem alterar a equipe."}</div></div>
-      {souAdmin && <button onClick={() => setNovo(true)} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}><UserPlus size={19} /> Adicionar pessoa</button>}
+      {souAdmin && <button onClick={() => setNovo(true)} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}><UserPlus size={19} /> Adicionar pessoa</button>}
+      {souAdmin && <button onClick={() => setVisitante(true)} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 12, fontWeight: 700, fontSize: 15 }}><Clock size={18} /> Gerar acesso de visitante (QR Code)</button>}
       {users.map((u) => {
         const inativo = u.ativo === false;
         return (
@@ -1112,16 +1146,19 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                 <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode controlar a casa</div>
                 <Toggle on={u.podeControle === true} onToggle={() => editar(u.id, "pode_controle", !(u.podeControle === true))} />
               </div>
-              <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
-                <Wrench size={13} style={{ color: C.cinzaClaro }} />
-                <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode configurar o controle</div>
-                <Toggle on={u.podeGerirControle === true} onToggle={async () => { const novo = !(u.podeGerirControle === true); const { error } = await supabase.from("perfis").update(novo ? { pode_gerir_controle: true, pode_controle: true } : { pode_gerir_controle: false }).eq("id", u.id); if (error) { showToast("Erro ao salvar: " + error.message); return; } onRecarregar(); }} />
-              </div>
+              {u.papel === "admin" && (
+                <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
+                  <Wrench size={13} style={{ color: C.cinzaClaro }} />
+                  <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode configurar o controle</div>
+                  <Toggle on={u.podeGerirControle === true} onToggle={async () => { const novo = !(u.podeGerirControle === true); const { error } = await supabase.from("perfis").update(novo ? { pode_gerir_controle: true, pode_controle: true } : { pode_gerir_controle: false }).eq("id", u.id); if (error) { showToast("Erro ao salvar: " + error.message); return; } onRecarregar(); }} />
+                </div>
+              )}
             </>)}
           </div>
         );
       })}
       {novo && <NovaPessoaSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setNovo(false)} />}
+      {visitante && <VisitanteSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setVisitante(false)} />}
     </div>
   );
 }
@@ -1229,6 +1266,69 @@ function NovaPessoaSheet({ showToast, onCriado, onFechar }) {
       </div>
       {erro && <div style={{ background: C.vermelhoClaro, color: C.vermelho, borderRadius: 10, fontSize: 14 }} className="p-3 mb-3">{erro}</div>}
       <button onClick={criar} disabled={criando} style={{ width: "100%", background: criando ? C.cinzaClaro : C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>{criando ? "Criando acesso…" : "Criar acesso"}</button>
+    </Sheet>
+  );
+}
+
+// Acesso de visitante: cria um perfil temporário (só controle) e um QR Code de entrada rápida.
+function VisitanteSheet({ showToast, onCriado, onFechar }) {
+  const [dias, setDias] = useState("1");
+  const [criando, setCriando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [pronto, setPronto] = useState(null); // { qr, url, dias, ate }
+
+  const gerar = async () => {
+    const d = Math.max(1, Math.min(90, parseInt(dias) || 1));
+    setCriando(true); setErro("");
+    const email = `visitante-${uid()}@convidado.local`;
+    const senha = (gerarSenha() + gerarSenha()).slice(0, 12);
+    const { data, error } = await supabase.functions.invoke("quick-service", {
+      body: { nome: "Visitante", email, senha, telefone: "", papel: "colaborador", setor: "" },
+    });
+    if (error || data?.error) { setErro(await erroDaFuncao(error, data)); setCriando(false); return; }
+    const ate = new Date(Date.now() + d * 86400000);
+    if (data?.id) {
+      const { error: e2 } = await supabase.from("perfis").update({ papel: "visitante", pode_controle: true, expira_em: ate.toISOString(), nome: `Visitante · ${d}d` }).eq("id", data.id);
+      if (e2) { setErro("Criado, mas não consegui marcar como visitante: " + e2.message); setCriando(false); return; }
+    }
+    const url = new URL(import.meta.env.BASE_URL, window.location.href).href + "#v=" + encodeURIComponent(btoa(email + ":" + senha));
+    let qr = null;
+    try { qr = await QRCode.toDataURL(url, { width: 320, margin: 1, errorCorrectionLevel: "M" }); } catch { /* sem imagem de QR */ }
+    setPronto({ qr, url, dias: d, ate });
+    setCriando(false);
+    onCriado();
+  };
+
+  if (pronto) {
+    const copiar = async () => { try { await navigator.clipboard.writeText(pronto.url); showToast("Link copiado"); } catch { showToast("Não foi possível copiar"); } };
+    return (
+      <Sheet titulo="Acesso de visitante" onFechar={onFechar}>
+        <div className="text-center">
+          <div style={{ color: C.cinza }} className="text-sm mb-3">Peça para o visitante ler este QR Code com a câmera do celular. Ele entra direto no Controle, sem senha.</div>
+          {pronto.qr
+            ? <img src={pronto.qr} alt="QR Code de acesso" style={{ width: 260, height: 260, maxWidth: "100%", borderRadius: 14, border: `1px solid ${C.linha}`, background: "#fff", padding: 8, display: "inline-block" }} />
+            : <div style={{ color: C.vermelho }} className="text-sm">Não consegui gerar a imagem do QR. Use o link abaixo.</div>}
+          <div style={{ background: C.pastoClaro, color: C.pastoEsc, borderRadius: 999, fontSize: 13, fontWeight: 700 }} className="inline-block px-4 py-1.5 mt-3">Válido por {pronto.dias} {pronto.dias === 1 ? "dia" : "dias"} · até {pronto.ate.toLocaleDateString("pt-BR")}</div>
+        </div>
+        <button onClick={copiar} className="flex items-center justify-center gap-2 mt-4" style={{ width: "100%", background: C.card, color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, padding: 13, fontWeight: 600 }}><Copy size={17} /> Copiar link de acesso</button>
+        <button onClick={onFechar} style={{ width: "100%", color: C.cinza, padding: 12, fontWeight: 600 }}>Concluir</button>
+        <div style={{ color: C.cinzaClaro, fontSize: 11.5 }} className="text-center mt-1 flex items-center justify-center gap-1"><Info size={12} /> Quando o prazo acabar, gere um novo QR Code.</div>
+      </Sheet>
+    );
+  }
+
+  return (
+    <Sheet titulo="Acesso de visitante" onFechar={onFechar}>
+      <div style={{ color: C.cinza }} className="text-sm mb-3">Gera um acesso temporário que abre <b>só o Controle da Casa</b> (sem tarefas), por QR Code — sem precisar de e-mail e senha.</div>
+      <Campo label="Quantos dias de acesso?">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setDias((v) => String(Math.max(1, (parseInt(v) || 1) - 1)))} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${C.linha}`, background: C.card, color: C.terra, fontSize: 20, fontWeight: 700 }}>−</button>
+          <input type="number" inputMode="numeric" value={dias} onChange={(e) => setDias(e.target.value)} style={{ ...inpSt, textAlign: "center", fontWeight: 700, fontSize: 18 }} />
+          <button onClick={() => setDias((v) => String(Math.min(90, (parseInt(v) || 1) + 1)))} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${C.linha}`, background: C.card, color: C.terra, fontSize: 20, fontWeight: 700 }}>+</button>
+        </div>
+      </Campo>
+      {erro && <div style={{ background: C.vermelhoClaro, color: C.vermelho, borderRadius: 10, fontSize: 14 }} className="p-3 mb-3">{erro}</div>}
+      <button onClick={gerar} disabled={criando} style={{ width: "100%", background: criando ? C.cinzaClaro : C.lago, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>{criando ? "Gerando…" : "Gerar QR Code"}</button>
     </Sheet>
   );
 }
