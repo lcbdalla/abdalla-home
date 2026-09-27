@@ -1348,12 +1348,13 @@ function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
 }
 
 /* ---- Controles por tipo de aparelho ---- */
-function CtrlInterruptor({ e, enviar }) {
+function CtrlInterruptor({ e, enviar, cardClicavel }) {
   const on = e.state === "on"; const ind = !e.disponivel;
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (on ? C.pasto : C.cinza), fontWeight: 600 }}>{ind ? "Indisponível" : (on ? "Ligado" : "Desligado")}</div>
-      <PillToggle on={on} cor={C.pasto} disabled={ind} onClick={() => enviar("homeassistant", "toggle", e.id)} />
+      {/* Quando o quadro inteiro já é clicável, a chave é só um indicador visual. */}
+      <PillToggle on={on} cor={C.pasto} disabled={ind} onClick={cardClicavel ? undefined : () => enviar("homeassistant", "toggle", e.id)} />
     </div>
   );
 }
@@ -1466,26 +1467,29 @@ function CtrlSensor({ e }) {
   const st = haEstado(e.state, e.attributes);
   return <div className="text-right"><span style={{ color: e.disponivel ? st.cor : C.cinzaClaro, fontWeight: 700, fontSize: 15 }}>{e.disponivel ? st.texto : "Indisponível"}</span></div>;
 }
-function EquipControle({ e, enviar }) {
+function EquipControle({ e, enviar, cardClicavel }) {
   if (e.tipo === "persiana") return <CtrlPersiana e={e} enviar={enviar} />;
   if (e.tipo === "ar") return <CtrlAr e={e} enviar={enviar} />;
   if (e.tipo === "tv") return <CtrlTv e={e} enviar={enviar} />;
   if (e.tipo === "irrigacao") return <CtrlIrrigacao e={e} enviar={enviar} />;
   if (e.tipo === "fechadura") return <CtrlFechadura e={e} enviar={enviar} />;
   if (e.tipo === "sensor") return <CtrlSensor e={e} />;
-  return <CtrlInterruptor e={e} enviar={enviar} />;
+  return <CtrlInterruptor e={e} enviar={enviar} cardClicavel={cardClicavel} />;
 }
 function EquipCard({ e, enviar }) {
   const st = haEstado(e.state, e.attributes);
   const ligado = e.disponivel && ["on", "open", "playing", "unlocked", "cool", "heat", "dry", "fan_only", "auto", "heat_cool"].includes(e.state);
+  // Luz/tomada: tocar em qualquer lugar do quadro liga/desliga.
+  const cardClick = e.tipo === "interruptor" && e.disponivel ? () => enviar("homeassistant", "toggle", e.id) : undefined;
   return (
-    <div style={{ background: C.card, border: `1px solid ${ligado ? C.pasto + "66" : C.linha}`, borderRadius: 16, height: "100%" }} className="p-3">
+    <div onClick={cardClick} role={cardClick ? "button" : undefined}
+      style={{ background: C.card, border: `1px solid ${ligado ? C.pasto + "66" : C.linha}`, borderRadius: 16, height: "100%", cursor: cardClick ? "pointer" : "default" }} className="p-3">
       <div className="flex items-center gap-2 mb-2">
         <span style={{ fontSize: 20, flexShrink: 0 }}>{CTRL_EMOJI[e.tipo] || "●"}</span>
         <div className="flex-1 min-w-0 font-semibold truncate" style={{ fontSize: 14, color: C.terra }}>{e.nome}</div>
         <span style={{ width: 9, height: 9, borderRadius: 999, background: e.disponivel ? st.cor : "#c9c2b2", flexShrink: 0 }} />
       </div>
-      <EquipControle e={e} enviar={enviar} />
+      <EquipControle e={e} enviar={enviar} cardClicavel={!!cardClick} />
     </div>
   );
 }
@@ -1558,19 +1562,26 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
       {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 12.5 }} className="mb-2">Nenhum aparelho ainda neste cômodo.</div>}
       {itens.map((q) => {
         const live = ents[q.entity_id];
-        const rotulo = q.nome || live?.attributes?.friendly_name || q.entity_id;
+        const original = live?.attributes?.friendly_name || q.entity_id; // nome de referência (vem do HA)
         return (
-          <div key={q.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 9, marginBottom: 7 }}>
-            <div className="flex items-center gap-2 mb-2">
-              <span style={{ fontSize: 16 }}>{CTRL_EMOJI[q.tipo] || "●"}</span>
-              <div className="flex-1 min-w-0 truncate" style={{ fontWeight: 600, fontSize: 13.5, color: C.terra }}>{rotulo}</div>
-              <button onClick={() => onDelEquip(q.id)} title="Remover do cômodo" style={{ background: C.vermelhoClaro, borderRadius: 9, padding: 7 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
+          <div key={q.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 10, marginBottom: 7 }}>
+            <div className="flex items-start gap-2 mb-2">
+              <span style={{ fontSize: 16, lineHeight: "18px" }}>{CTRL_EMOJI[q.tipo] || "●"}</span>
+              <div className="flex-1 min-w-0">
+                <div className="truncate" style={{ fontWeight: 600, fontSize: 13.5, color: C.terra }}>{q.nome || original}</div>
+                <div className="truncate" style={{ fontSize: 10.5, color: C.cinzaClaro }}>{q.entity_id}</div>
+              </div>
+              <button onClick={() => onDelEquip(q.id)} title="Remover do cômodo" style={{ background: C.vermelhoClaro, borderRadius: 9, padding: 7, flexShrink: 0 }}><Trash2 size={14} style={{ color: C.vermelho }} /></button>
             </div>
-            <div className="flex items-center gap-2">
-              <select value={q.tipo} onChange={(e) => onTipoEquip(q.id, e.target.value)} style={{ ...inpControle, flex: "0 0 auto", padding: "8px 10px" }}>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 3 }}>Nome que aparece no controle</div>
+              <input defaultValue={q.nome || ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (q.nome || "")) onNomeEquip(q.id, v); }} placeholder={original} style={{ ...inpControle, width: "100%" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 3 }}>Como controla</div>
+              <select value={q.tipo} onChange={(e) => onTipoEquip(q.id, e.target.value)} style={{ ...inpControle, width: "100%" }}>
                 {CTRL_TIPOS.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
               </select>
-              <input defaultValue={q.nome || ""} onBlur={(e) => { const v = e.target.value.trim(); if (v !== (q.nome || "")) onNomeEquip(q.id, v); }} placeholder="Apelido (opcional)" style={inpControle} />
             </div>
           </div>
         );
