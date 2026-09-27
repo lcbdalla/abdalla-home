@@ -138,6 +138,15 @@ function isConcluida(t, iso = hojeISO()) {
   if (t.tipo === "unica") return t.status === "concluida";
   return !!(t.conclusoes && t.conclusoes[iso]);
 }
+// A tarefa foi concluída em algum dia do período [de, ate] (datas ISO)?
+function concluidaEntre(t, de, ate) {
+  if (t.tipo === "unica") {
+    if (t.status !== "concluida" || !t.concluidaEm) return false;
+    const iso = isoLocal(t.concluidaEm);
+    return iso >= de && iso <= ate;
+  }
+  return Object.keys(t.conclusoes || {}).some((iso) => iso >= de && iso <= ate);
+}
 
 // ---------- Ajudantes do Painel (dashboard) ----------
 const duracaoMin = (t) => {
@@ -797,13 +806,26 @@ function AcessoRemovido({ onSair }) {
 
 /* ============================= TAREFAS ============================= */
 function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }) {
+  const [periodoFeitas, setPeriodoFeitas] = useState("hoje"); // hoje | semana
   let lista = tasks.filter((t) => !t.ehCompra);
   // Colaborador só enxerga o próprio setor (e o que estiver no nome dele).
   if (!souAdmin) lista = lista.filter((t) => (meuSetor && t.setor === meuSetor) || t.responsavelId === euId);
   if (filtro === "minhas") lista = lista.filter((t) => t.responsavelId === euId);
   else if (filtro.startsWith("setor:")) { const s = filtro.slice(6); lista = lista.filter((t) => t.setor === s); }
   const pendentes = lista.filter((t) => !isConcluida(t));
-  const feitas = lista.filter((t) => isConcluida(t));
+  const hoje = hojeISO();
+  const feitasHoje = lista.filter((t) => concluidaEntre(t, hoje, hoje));
+  // Histórico da semana: cada conclusão (dia + quem fez) desta semana.
+  const segIso = isoLocal(inicioSemana(new Date()));
+  const historicoSemana = [];
+  lista.forEach((t) => {
+    if (t.tipo === "unica") {
+      if (t.status === "concluida" && t.concluidaEm) { const iso = isoLocal(t.concluidaEm); if (iso >= segIso && iso <= hoje) historicoSemana.push({ t, iso, userId: t.concluidaPorId || t.responsavelId }); }
+    } else {
+      Object.entries(t.conclusoes || {}).forEach(([iso, c]) => { if (iso >= segIso && iso <= hoje) historicoSemana.push({ t, iso, userId: c.userId || t.responsavelId }); });
+    }
+  });
+  historicoSemana.sort((a, b) => b.iso.localeCompare(a.iso));
   const filtros = souAdmin
     ? [{ id: "todas", n: "Todas" }, { id: "minhas", n: "Minhas" }, ...SETORES.map((s) => ({ id: "setor:" + s.id, n: s.id }))]
     : [{ id: "todas", n: "Todas" }, { id: "minhas", n: "Minhas" }];
@@ -816,7 +838,25 @@ function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro
       </div>
       {lista.length === 0 && <Vazio icon={ListTodo} titulo="Nenhuma tarefa ainda" texto="Toque em “Nova tarefa” para começar a organizar o rancho." />}
       {pendentes.map((t) => <CardTarefa key={t.id} {...{ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }} />)}
-      {feitas.length > 0 && (<div className="mt-4"><div style={{ color: C.cinza }} className="text-xs font-semibold mb-2 uppercase">Concluídas hoje</div>{feitas.map((t) => <CardTarefa key={t.id} {...{ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }} />)}</div>)}
+      {(feitasHoje.length > 0 || historicoSemana.length > 0) && (
+        <div className="mt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div style={{ color: C.cinza }} className="text-xs font-semibold uppercase flex-1">Concluídas</div>
+            {[{ id: "hoje", n: "Hoje" }, { id: "semana", n: "Na semana" }].map((o) => (
+              <button key={o.id} onClick={() => setPeriodoFeitas(o.id)} style={{ background: periodoFeitas === o.id ? C.pasto : C.card, color: periodoFeitas === o.id ? "#fff" : C.cinza, border: `1px solid ${periodoFeitas === o.id ? C.pasto : C.linha}`, borderRadius: 999, padding: "4px 12px", fontWeight: 600, fontSize: 12 }}>{o.n}</button>
+            ))}
+          </div>
+          {periodoFeitas === "hoje"
+            ? (feitasHoje.length ? feitasHoje.map((t) => <CardTarefa key={t.id} {...{ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }} />) : <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="px-1 pb-2">Nenhuma tarefa concluída hoje.</div>)
+            : (historicoSemana.length ? historicoSemana.map((h, i) => (
+                <div key={h.t.id + h.iso + i} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12 }} className="p-3 mb-2 flex items-center gap-3">
+                  <div style={{ width: 26, height: 26, borderRadius: 999, background: C.pasto, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Check size={15} color="#fff" strokeWidth={3} /></div>
+                  <div className="flex-1 min-w-0"><div className="font-medium truncate" style={{ fontSize: 14.5, color: C.terra }}>{h.t.titulo}</div><div style={{ color: C.cinzaClaro, fontSize: 12 }}>Feito por {nomeUser(users, h.userId)}</div></div>
+                  <span style={{ color: C.cinza, fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>{fmtData(h.iso)}</span>
+                </div>
+              )) : <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="px-1 pb-2">Nenhuma tarefa concluída nesta semana.</div>)}
+        </div>
+      )}
     </div>
   );
 }
@@ -2325,7 +2365,9 @@ function ProdutosModal({ produtos, onCadastrar, onRemover, onRenomear, onFechar 
 /* ============================= MODAL: TAREFA ============================= */
 function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarProduto, showToast, onFechar, onSalvar }) {
   const souAdmin = eu?.papel === "admin";
-  const [f, setF] = useState(() => task || { titulo: "", descricao: "", responsavelId: eu?.id, setor: eu?.setor || "", tipo: "unica", freq: "diaria", dias: [], intervaloSemanas: 1, data: hojeISO(), dataInicio: hojeISO(), horaInicio: "", horaFim: "", imagemUrl: null, imagens: [], ehCompra: !!ehCompraInicial, darEntrada: true, compra: { itens: [] } });
+  // Para colaborador, o responsável padrão é a Ana Carolina (se existir); senão, ele mesmo.
+  const respPadrao = (eu?.papel === "colaborador" && users.find((u) => u.ativo !== false && norm(u.nome).startsWith("ana carolina"))?.id) || eu?.id;
+  const [f, setF] = useState(() => task || { titulo: "", descricao: "", responsavelId: respPadrao, setor: eu?.setor || "", tipo: "unica", freq: "diaria", dias: [], intervaloSemanas: 1, data: hojeISO(), dataInicio: hojeISO(), horaInicio: "", horaFim: "", imagemUrl: null, imagens: [], ehCompra: !!ehCompraInicial, darEntrada: true, compra: { itens: [] } });
   const [salvandoImg, setSalvandoImg] = useState(false);
   const [novoProd, setNovoProd] = useState(false);
   const [np, setNp] = useState({ nome: "", categoria: "Supermercado", subcategoria: "", unidade: "un" });
