@@ -1724,7 +1724,7 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
   const [pos, setPos] = useState(null);
   const pressTimer = useRef(null), press = useRef(null), longPressed = useRef(false);
   const pega = useRef(null), itemRefs = useRef({}), arrastou = useRef(false), gradeRef = useRef(null);
-  const ESPERA_MS = 3000, TOL = 10;
+  const ESPERA_MS = 500, TOL = 10; // igual ao Vitá: casa com a vibração do toque longo
 
   // Re-sincroniza com o banco (tempo real) quando não está arrastando.
   useEffect(() => { if (arrastando == null) setOrdem(itens.map((e) => e.dbId)); }, [itens, arrastando]);
@@ -1748,7 +1748,6 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
     pega.current = { offX: p.x - r.left, offY: p.y - r.top, w: r.width, h: r.height };
     try { p.el.setPointerCapture?.(p.pid); } catch { /* ok */ }
     arrastou.current = false; setPos({ x: p.x, y: p.y }); setArrastando(p.id);
-    try { navigator.vibrate?.(25); } catch { /* ok */ }
   }
   function aoPressionar(e, id) {
     if (!podeArrastar) return;
@@ -1800,7 +1799,7 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
               onPointerMove={aoMover}
               onPointerUp={aoSoltar}
               onPointerCancel={aoSoltar}
-              onContextMenu={(ev) => ev.preventDefault()}
+              onContextMenu={(ev) => { ev.preventDefault(); pegar(); }}
               onClickCapture={(ev) => { if (longPressed.current || arrastou.current) { ev.stopPropagation(); ev.preventDefault(); } }}
               style={{
                 userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
@@ -2018,7 +2017,7 @@ function ControleApp({ eu, onVoltar }) {
             </div>
           )}
           {modo === "usar" && status === "ok" && souGestor && listaPav.length > 0 && (
-            <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1 mb-2 px-1"><Info size={12} /> Segure 3 segundos num aparelho para arrastar e reposicionar.</div>
+            <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1 mb-2 px-1"><Info size={12} /> Segure um aparelho (até vibrar) para arrastar e reposicionar.</div>
           )}
           {modo === "usar" && status === "ok" && listaPav.map((pav) => (
             <div key={pav.id} style={{ marginBottom: 12 }}>
