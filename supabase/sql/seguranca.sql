@@ -3,6 +3,9 @@
 -- Tudo aqui só APERTA regras (políticas "restritivas", que somam ao que já existe);
 -- nada abre acesso novo. Pode rodar de novo sem problema.
 
+-- 0) Garante a coluna de validade do visitante (caso visitante.sql não tenha rodado).
+alter table public.perfis add column if not exists expira_em timestamptz;
+
 -- 1) Funções de apoio --------------------------------------------------------
 -- Equipe = administrador ou colaborador ativo (quem usa o app de tarefas).
 create or replace function public.is_equipe()
