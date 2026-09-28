@@ -1247,7 +1247,12 @@ function NovaPessoaSheet({ showToast, onCriado, onFechar }) {
     // Criança: só controle da casa, sem tarefas. Ajusta o perfil recém-criado.
     if (f.papel === "crianca" && data?.id) {
       const { error: e2 } = await supabase.from("perfis").update({ papel: "crianca", pode_controle: true, setor: null }).eq("id", data.id);
-      if (e2) { setErro("Usuário criado, mas não consegui marcar como Criança: " + e2.message); setCriando(false); return; }
+      if (e2) {
+        // Não deixa a conta como colaborador (com acesso às tarefas) se não virou criança.
+        await supabase.from("perfis").update({ ativo: false }).eq("id", data.id);
+        onCriado();
+        setErro("Não consegui criar a conta de criança: " + e2.message); setCriando(false); return;
+      }
     }
     setCriando(false);
     setCriado({ nome, email, senha: f.senha, telefone });
