@@ -1697,9 +1697,10 @@ function CtrlPersiana({ e, enviar }) {
   return (
     <div>
       <div className="flex gap-2">
-        <BotaoAcao icon={ArrowUpFromLine} label={rotulo(e, "abrir", "Abrir")} cor={C.pasto} disabled={ind} onClick={() => enviar("cover", inv ? "close_cover" : "open_cover", e.id)} />
+        {/* Flap: setas trocadas também (abrir ↓ / fechar ↑), acompanhando os comandos invertidos. */}
+        <BotaoAcao icon={inv ? ArrowDownToLine : ArrowUpFromLine} label={rotulo(e, "abrir", "Abrir")} cor={C.pasto} disabled={ind} onClick={() => enviar("cover", inv ? "close_cover" : "open_cover", e.id)} />
         <BotaoAcao icon={X} label={rotulo(e, "parar", "Parar")} cor={C.ambar} disabled={ind} onClick={() => enviar("cover", "stop_cover", e.id)} />
-        <BotaoAcao icon={ArrowDownToLine} label={rotulo(e, "fechar", "Fechar")} cor={C.cinza} disabled={ind} onClick={() => enviar("cover", inv ? "open_cover" : "close_cover", e.id)} />
+        <BotaoAcao icon={inv ? ArrowUpFromLine : ArrowDownToLine} label={rotulo(e, "fechar", "Fechar")} cor={C.cinza} disabled={ind} onClick={() => enviar("cover", inv ? "open_cover" : "close_cover", e.id)} />
       </div>
     </div>
   );
@@ -1844,8 +1845,8 @@ function CtrlPersianaCompacto({ e, enviar }) {
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 text-xs truncate" style={{ color: ind ? C.cinzaClaro : st.cor, fontWeight: 600 }}>{ind ? "Indisponível" : st.texto}</div>
-      <button onClick={abrir} disabled={ind} title={rotulo(e, "abrir", "Abrir")} style={{ ...bt, background: C.pasto }}><ArrowUpFromLine size={16} /></button>
-      <button onClick={fechar} disabled={ind} title={rotulo(e, "fechar", "Fechar")} style={{ ...bt, background: alfa(C.cinza, 20), color: C.terra }}><ArrowDownToLine size={16} /></button>
+      <button onClick={abrir} disabled={ind} title={rotulo(e, "abrir", "Abrir")} style={{ ...bt, background: C.pasto }}>{inv ? <ArrowDownToLine size={16} /> : <ArrowUpFromLine size={16} />}</button>
+      <button onClick={fechar} disabled={ind} title={rotulo(e, "fechar", "Fechar")} style={{ ...bt, background: alfa(C.cinza, 20), color: C.terra }}>{inv ? <ArrowUpFromLine size={16} /> : <ArrowDownToLine size={16} />}</button>
     </div>
   );
 }
