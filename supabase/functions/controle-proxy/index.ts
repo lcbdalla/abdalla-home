@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
   if (errQuem || !quem?.user) return json({ error: "Sua sessão expirou. Saia e entre de novo no app." }, 401);
   const { data: p } = await admin
     .from("perfis")
-    .select("ativo, pode_controle, pode_gerir_controle, expira_em")
+    .select("ativo, papel, pode_controle, pode_gerir_controle, expira_em")
     .eq("id", quem.user.id)
     .maybeSingle();
   if (!p || p.ativo === false || !(p.pode_controle || p.pode_gerir_controle)) {
@@ -62,8 +62,16 @@ Deno.serve(async (req) => {
   if (!cfg?.base_url || !cfg?.token) return json({ error: "O controle da casa ainda não foi configurado." }, 500);
   const base = String(cfg.base_url).replace(/\/+$/, "");
   const cabecalho = { Authorization: "Bearer " + cfg.token, "Content-Type": "application/json" };
-  const { data: eqs } = await admin.from("controle_equipamentos").select("entity_id");
-  const cadastrados = new Set((eqs || []).map((q: { entity_id: string }) => q.entity_id));
+  const { data: eqs } = await admin.from("controle_equipamentos").select("entity_id, ambiente_id");
+  let lista = eqs || [];
+  if (p.papel === "visitante") {
+    // Visitante: só os cômodos com "Visitantes podem usar" ligado.
+    const { data: ambs, error: errAmb } = await admin.from("ambientes").select("id").eq("visitante", true);
+    if (errAmb) return json({ error: "Falta rodar o SQL visitante-ambientes.sql no Supabase." }, 500);
+    const liberados = new Set((ambs || []).map((a: { id: string }) => a.id));
+    lista = lista.filter((q: { ambiente_id: string }) => liberados.has(q.ambiente_id));
+  }
+  const cadastrados = new Set(lista.map((q: { entity_id: string }) => q.entity_id));
 
   // 3a) Estados atuais — só dos aparelhos cadastrados.
   if (body?.acao === "estados") {

@@ -1827,7 +1827,7 @@ function SeletorAparelho({ ents, areas, usados, onEscolher, onFechar }) {
     </div>
   );
 }
-function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onRenomearAmb, onExcluirAmb, onMoverAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip, onRotulo }) {
+function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onRenomearAmb, onExcluirAmb, onMoverAmb, onVisitanteAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip, onRotulo }) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(amb.nome);
   const [abrindoSel, setAbrindoSel] = useState(false);
@@ -1857,6 +1857,12 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
           </>
         )}
       </div>
+      {!editando && (
+        <div className="flex items-center gap-2 mt-2" style={{ fontSize: 12.5, color: C.cinza }}>
+          <Clock size={13} style={{ flexShrink: 0 }} /><span className="flex-1">Visitantes podem usar</span>
+          <Toggle on={amb.visitante !== false} onToggle={() => onVisitanteAmb(amb.id, amb.visitante === false)} />
+        </div>
+      )}
 
       {aberto && (<div className="mt-3">
         {itens.length === 0 && <div style={{ color: C.cinzaClaro, fontSize: 12.5 }} className="mb-2">Nenhum aparelho ainda neste cômodo.</div>}
@@ -1939,7 +1945,7 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, ar
         {meus.map((a) => (
           <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
             itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
-            onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
+            onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb} onVisitanteAmb={cbs.onVisitanteAmb}
             onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} onRotulo={cbs.onRotulo} />
         ))}
         <div className="flex gap-2 mt-1">
@@ -1973,7 +1979,7 @@ function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }
           {orfaos.map((a) => (
             <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
               itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
-              onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb}
+              onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb} onVisitanteAmb={cbs.onVisitanteAmb}
               onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} onRotulo={cbs.onRotulo} />
           ))}
         </div>
@@ -2282,6 +2288,7 @@ function ControleApp({ eu, onVoltar, onSair }) {
     onRenomearAmb: (id, nome) => salvar(supabase.from("ambientes").update({ nome }).eq("id", id)),
     onExcluirAmb: (id) => salvar(supabase.from("ambientes").delete().eq("id", id), "Cômodo excluído"),
     onMoverAmb: (id, pavimentoId) => salvar(supabase.from("ambientes").update({ pavimento_id: pavimentoId }).eq("id", id)),
+    onVisitanteAmb: (id, liberar) => salvar(supabase.from("ambientes").update({ visitante: liberar }).eq("id", id), liberar ? "Liberado para visitantes" : "Escondido dos visitantes"),
     onAddEquip: (ambienteId, entityId) => salvar(supabase.from("controle_equipamentos").insert({ ambiente_id: ambienteId, entity_id: entityId, tipo: tipoSugerido(entityId), ordem: equipamentos.filter((q) => q.ambiente_id === ambienteId).length }), "Aparelho adicionado"),
     onTipoEquip: (id, tipo) => salvar(supabase.from("controle_equipamentos").update({ tipo }).eq("id", id)),
     onNomeEquip: (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id)),
@@ -2314,7 +2321,8 @@ function ControleApp({ eu, onVoltar, onSair }) {
   const semPav = { id: "__sem__", nome: "Outros", ordem: 99999 };
   const listaPav = [...pavimentos, semPav].map((p) => ({
     id: p.id, nome: p.nome, ordem: p.ordem,
-    comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id).sort((a, b) => a.ordem - b.ordem).map((a) => ({
+    // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
+    comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
       itens: equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip),
     })).filter((c) => c.itens.length > 0),
