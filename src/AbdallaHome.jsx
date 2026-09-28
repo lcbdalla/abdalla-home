@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
-  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun
+  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -1589,6 +1589,39 @@ function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
   );
 }
 
+/* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
+// Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
+const ehDesligavel = (e) => !["persiana", "fechadura", "sensor"].includes(e.tipo);
+const estaLigado = (e) => {
+  if (!e.disponivel) return false;
+  if (e.tipo === "ar") return e.state !== "off";
+  if (e.tipo === "tv") return !["off", "idle", "standby"].includes(e.state);
+  return e.state === "on";
+};
+const servicoDesligar = (e) => (e.tipo === "ar" ? ["climate", "turn_off"] : e.tipo === "tv" ? ["media_player", "turn_off"] : ["homeassistant", "turn_off"]);
+const contarLigados = (itens) => { const d = itens.filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
+
+// Cabeçalho de pavimento/cômodo: nome · [Desligar tudo] · ligados/total ▾ (tocar abre/fecha).
+function CabecalhoNivel({ nome, grande, aberto, onAlternar, itens, onDesligarTudo }) {
+  const { on, total } = contarLigados(itens);
+  const btn = { background: "none", border: "none", cursor: "pointer", padding: grande ? "6px 2px" : "4px 2px 8px" };
+  return (
+    <div className="flex items-center gap-2">
+      <button onClick={onAlternar} className="flex-1 min-w-0 text-left truncate" style={{ ...btn, fontWeight: grande ? 800 : 700, fontSize: grande ? 16 : 14, color: C.terra }}>{nome}</button>
+      {total > 0 && (
+        <button onClick={() => onDesligarTudo(itens)} disabled={on === 0} title="Desligar tudo"
+          className="flex items-center gap-1" style={{ flexShrink: 0, border: `1px solid ${on ? alfa(C.vermelho, 40) : C.linha}`, background: on ? C.vermelhoClaro : "transparent", color: on ? C.vermelho : C.cinzaClaro, borderRadius: 999, padding: "4px 10px", fontSize: 11.5, fontWeight: 700, cursor: on ? "pointer" : "default", marginBottom: grande ? 0 : 4 }}>
+          <Power size={12} /> Desligar tudo
+        </button>
+      )}
+      <button onClick={onAlternar} className="flex items-center gap-2" style={{ ...btn, flexShrink: 0 }}>
+        {total > 0 && <span style={{ fontSize: 12.5, fontWeight: 700, color: on ? C.pasto : C.cinza, fontVariantNumeric: "tabular-nums" }}>{on}/{total}</span>}
+        <span style={{ color: C.cinza, fontSize: grande ? 15 : 14 }}>{aberto ? "▾" : "▸"}</span>
+      </button>
+    </div>
+  );
+}
+
 /* ---- Controles por tipo de aparelho ---- */
 function CtrlInterruptor({ e, enviar, cardClicavel }) {
   const on = e.state === "on"; const ind = !e.disponivel;
@@ -2290,6 +2323,19 @@ function ControleApp({ eu, onVoltar, onSair }) {
     return () => document.removeEventListener("visibilitychange", aoVoltar);
   }, [usarProxy]);
 
+  // ---- Desligar tudo de um pavimento/cômodo: um aparelho por vez, 600 ms entre cada ----
+  const desligarTudo = async (itens, nivel) => {
+    const alvo = itens.filter((e) => ehDesligavel(e) && estaLigado(e));
+    if (!alvo.length) return;
+    const ok = await Dialog.confirm({ titulo: "Desligar tudo", mensagem: `Tem certeza que quer desligar tudo em ${nivel}? (${alvo.length} ${alvo.length === 1 ? "aparelho ligado" : "aparelhos ligados"})`, okLabel: "Desligar tudo", perigo: true });
+    if (!ok) return;
+    for (let i = 0; i < alvo.length; i++) {
+      const [dom, serv] = servicoDesligar(alvo[i]);
+      enviar(dom, serv, alvo[i].id);
+      if (i < alvo.length - 1) await new Promise((r) => setTimeout(r, 600));
+    }
+  };
+
   // ---- Envia um comando ao Home Assistant ----
   const enviar = (domain, service, entityId, serviceData) => {
     if (usarProxy) {
@@ -2368,6 +2414,7 @@ function ControleApp({ eu, onVoltar, onSair }) {
     <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "hidden", width: "100%" }}>
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}"}</style>
+        <DialogHost />
         <header style={{ background: LAGO_ESC, color: "#fff", padding: "14px 16px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
           <div className="flex items-center gap-2">
             {onVoltar
@@ -2415,17 +2462,12 @@ function ControleApp({ eu, onVoltar, onSair }) {
           )}
           {modo === "usar" && status === "ok" && listaPav.map((pav) => (
             <div key={pav.id} style={{ marginBottom: 12 }}>
-              <button onClick={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "6px 2px", cursor: "pointer" }}>
-                <span style={{ fontWeight: 800, fontSize: 16, color: C.terra }}>{pav.nome}</span>
-                <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 15 }}>{pavAberto(pav.id) ? "▾" : "▸"}</span>
-              </button>
+              <CabecalhoNivel nome={pav.nome} grande aberto={pavAberto(pav.id)} onAlternar={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))}
+                itens={pav.comodos.flatMap((c) => c.itens)} onDesligarTudo={(itens) => desligarTudo(itens, pav.nome)} />
               {pavAberto(pav.id) && pav.comodos.map((c) => (
                 <div key={c.id} style={{ border: `1px solid ${C.linha}`, borderRadius: 16, background: C.card, padding: 10, marginBottom: 10 }}>
-                  <button onClick={() => alternarAmb(c.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "4px 2px 8px", cursor: "pointer" }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: C.terra }}>{c.nome}</span>
-                    <span style={{ fontSize: 11, color: C.cinza, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "2px 8px" }}>{c.itens.length}</span>
-                    <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 14 }}>{abertos.amb === c.id ? "▾" : "▸"}</span>
-                  </button>
+                  <CabecalhoNivel nome={c.nome} aberto={abertos.amb === c.id} onAlternar={() => alternarAmb(c.id)}
+                    itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} />
                   {abertos.amb === c.id && (
                     <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} editando={editando} setEditando={setEditando} onTamanho={cbs.onTamanho} />
                   )}
