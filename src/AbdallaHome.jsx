@@ -1137,12 +1137,14 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
     if (error) { showToast("Erro ao salvar: " + error.message); return; }
     onRecarregar();
   };
-  const definirAtivo = (u, ativo) => {
-    Dialog.confirm({ titulo: ativo ? "Reativar acesso" : "Remover acesso", mensagem: ativo ? "Liberar novamente o acesso de " + u.nome + "?" : "Remover o acesso de " + u.nome + "? A pessoa deixará de entrar no app.", okLabel: ativo ? "Reativar" : "Remover", perigo: !ativo }).then(async (ok) => {
+  // Remover = ativo:false. A pessoa some da equipe, mas o histórico (quem fez o quê) continua.
+  const remover = (u) => {
+    Dialog.confirm({ titulo: "Remover pessoa", mensagem: "Remover " + u.nome + " da equipe? A pessoa deixa de entrar no app e sai desta lista.", okLabel: "Remover", perigo: true }).then(async (ok) => {
       if (!ok) return;
-      await supabase.from("perfis").update({ ativo }).eq("id", u.id);
+      const { error } = await supabase.from("perfis").update({ ativo: false }).eq("id", u.id);
+      if (error) { showToast("Não consegui remover: " + error.message); return; }
       onRecarregar();
-      showToast(ativo ? "Acesso reativado" : "Acesso removido");
+      showToast(u.nome + " foi removido(a)");
     });
   };
 
@@ -1151,10 +1153,9 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
       <div style={{ background: C.lagoClaro, borderRadius: 14 }} className="p-3 mb-3"><div style={{ color: C.lago }} className="text-xs font-semibold uppercase">Equipe do rancho</div><div style={{ color: C.terra }} className="text-sm mt-0.5">Administradores criam e organizam. Colaboradores executam e pedem compras. {souAdmin ? "Para dar acesso a alguém, toque em Adicionar pessoa." : "Somente administradores podem alterar a equipe."}</div></div>
       {souAdmin && <button onClick={() => setNovo(true)} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}><UserPlus size={19} /> Adicionar pessoa</button>}
       {souAdmin && <button onClick={() => setVisitante(true)} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 12, fontWeight: 700, fontSize: 15 }}><Clock size={18} /> Gerar acesso de visitante (QR Code)</button>}
-      {users.map((u) => {
-        const inativo = u.ativo === false;
+      {users.filter((u) => u.ativo !== false).map((u) => {
         return (
-          <div key={u.id} style={{ background: C.card, border: `1px solid ${u.id === euId ? C.pasto : C.linha}`, borderRadius: 14, opacity: inativo ? 0.6 : 1 }} className="p-3 mb-2">
+          <div key={u.id} style={{ background: C.card, border: `1px solid ${u.id === euId ? C.pasto : C.linha}`, borderRadius: 14 }} className="p-3 mb-2">
             <div className="flex items-center gap-2">
               <button onClick={() => souAdmin && alternarPapel(u)} title="Trocar função" disabled={!souAdmin} style={{ background: u.papel === "admin" ? C.ambarClaro : C.pastoClaro, borderRadius: 9, padding: 7 }}>{u.papel === "admin" ? <Star size={17} style={{ color: C.ambar }} /> : <User size={17} style={{ color: C.pasto }} />}</button>
               {souAdmin ? (
@@ -1162,12 +1163,8 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
               ) : (
                 <div style={{ flex: 1, fontWeight: 600, fontSize: 15 }}>{u.nome}</div>
               )}
-              <span style={{ color: C.cinzaClaro, fontSize: 12 }}>{inativo ? "Sem acesso" : (u.papel === "visitante" && u.expiraEm && Date.now() > u.expiraEm) ? "Visitante (expirado)" : papelLabel(u.papel)}</span>
-              {souAdmin && u.id !== euId && (
-                inativo
-                  ? <button onClick={() => definirAtivo(u, true)} title="Reativar" style={{ color: C.pasto, padding: 4 }}><RefreshCw size={16} /></button>
-                  : <button onClick={() => definirAtivo(u, false)} title="Remover acesso" style={{ color: C.vermelho, padding: 4 }}><Trash2 size={16} /></button>
-              )}
+              <span style={{ color: C.cinzaClaro, fontSize: 12 }}>{(u.papel === "visitante" && u.expiraEm && Date.now() > u.expiraEm) ? "Visitante (expirado)" : papelLabel(u.papel)}</span>
+              {souAdmin && u.id !== euId && <button onClick={() => remover(u)} title="Remover pessoa" style={{ color: C.vermelho, padding: 4 }}><Trash2 size={16} /></button>}
             </div>
             <div className="flex items-center gap-2 mt-1" style={{ paddingLeft: 40 }}>
               <Smartphone size={13} style={{ color: C.cinzaClaro }} />
