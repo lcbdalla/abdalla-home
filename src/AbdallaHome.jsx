@@ -1497,6 +1497,7 @@ const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 // Só guardamos/ouvimos estes domínios: evita a enxurrada de eventos de câmeras,
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean"]);
+const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
 // Grupo de luz (entidade light que só junta outras) — não mostramos para não duplicar.
 const ehGrupoLuz = (id, attrs) => id.split(".")[0] === "light" && Array.isArray(attrs?.entity_id);
@@ -2110,7 +2111,17 @@ function ControleApp({ eu, onVoltar, onSair }) {
   const [ambientes, setAmbientes] = useState([]);
   const [equipamentos, setEquipamentos] = useState([]);
   const [modo, setModo] = useState("usar"); // usar | gerenciar
-  const [fechados, setFechados] = useState({}); // id -> true = seção recolhida
+  // O que está aberto: pavimentos abertos + UM cômodo por vez. Começa tudo fechado e
+  // volta a fechar depois de 8h sem uso (guardado no aparelho para valer entre aberturas).
+  const [abertos, setAbertos] = useState(() => {
+    try {
+      const uso = Number(localStorage.getItem("controleUso")) || 0;
+      const s = JSON.parse(localStorage.getItem("controleAbertos") || "null");
+      if (s && Date.now() - uso < ABERTOS_TTL) return { pavs: s.pavs || [], amb: s.amb || null };
+    } catch { /* sem storage */ }
+    return { pavs: [], amb: null };
+  });
+  const usoRef = useRef(Date.now());
   const wsRef = useRef(null);
   const idRef = useRef(1);
   // Família (administrador com controle) fala direto com o Home Assistant: rápido e ao vivo.
@@ -2119,8 +2130,28 @@ function ControleApp({ eu, onVoltar, onSair }) {
   const [usarProxy, setUsarProxy] = useState(() => !(eu?.papel === "admin" && (eu?.podeControle || eu?.podeGerirControle)));
   const proxyRefresh = useRef(null);
   const souGestor = eu?.podeGerirControle === true;
-  const aberto = (id) => !fechados[id];
-  const alternar = (id) => setFechados((f) => ({ ...f, [id]: !f[id] }));
+  const pavAberto = (id) => abertos.pavs.includes(id);
+  // Fechar o pavimento fecha também o cômodo aberto dentro dele.
+  const alternarPav = (id, comodoIds) => setAbertos((a) => a.pavs.includes(id)
+    ? { pavs: a.pavs.filter((x) => x !== id), amb: comodoIds.includes(a.amb) ? null : a.amb }
+    : { ...a, pavs: [...a.pavs, id] });
+  // Abrir um cômodo fecha o anterior.
+  const alternarAmb = (id) => setAbertos((a) => ({ ...a, amb: a.amb === id ? null : id }));
+
+  useEffect(() => { try { localStorage.setItem("controleAbertos", JSON.stringify(abertos)); } catch { /* ok */ } }, [abertos]);
+  // Marca o uso (toque na tela) e fecha tudo se passar 8h parado — aberto na tela ou não.
+  useEffect(() => {
+    const gravar = () => { try { localStorage.setItem("controleUso", String(usoRef.current)); } catch { /* ok */ } };
+    let ultimaGravacao = 0;
+    const usou = () => { usoRef.current = Date.now(); if (usoRef.current - ultimaGravacao > 60000) { ultimaGravacao = usoRef.current; gravar(); } };
+    const conferir = () => { if (Date.now() - usoRef.current >= ABERTOS_TTL) { setAbertos({ pavs: [], amb: null }); usoRef.current = Date.now(); gravar(); } };
+    const aoMudarVisib = () => { if (document.visibilityState === "hidden") gravar(); else conferir(); };
+    gravar();
+    document.addEventListener("pointerdown", usou, true);
+    document.addEventListener("visibilitychange", aoMudarVisib);
+    const t = setInterval(conferir, 5 * 60000);
+    return () => { document.removeEventListener("pointerdown", usou, true); document.removeEventListener("visibilitychange", aoMudarVisib); clearInterval(t); gravar(); };
+  }, []);
 
   // ---- Carrega pavimentos/ambientes/equipamentos do Supabase (+ tempo real) ----
   const carregarConfig = useCallback(async () => {
@@ -2379,18 +2410,18 @@ function ControleApp({ eu, onVoltar, onSair }) {
           )}
           {modo === "usar" && status === "ok" && listaPav.map((pav) => (
             <div key={pav.id} style={{ marginBottom: 12 }}>
-              <button onClick={() => alternar(pav.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "6px 2px", cursor: "pointer" }}>
+              <button onClick={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "6px 2px", cursor: "pointer" }}>
                 <span style={{ fontWeight: 800, fontSize: 16, color: C.terra }}>{pav.nome}</span>
-                <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 15 }}>{aberto(pav.id) ? "▾" : "▸"}</span>
+                <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 15 }}>{pavAberto(pav.id) ? "▾" : "▸"}</span>
               </button>
-              {aberto(pav.id) && pav.comodos.map((c) => (
+              {pavAberto(pav.id) && pav.comodos.map((c) => (
                 <div key={c.id} style={{ border: `1px solid ${C.linha}`, borderRadius: 16, background: C.card, padding: 10, marginBottom: 10 }}>
-                  <button onClick={() => alternar(c.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "4px 2px 8px", cursor: "pointer" }}>
+                  <button onClick={() => alternarAmb(c.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "4px 2px 8px", cursor: "pointer" }}>
                     <span style={{ fontWeight: 700, fontSize: 14, color: C.terra }}>{c.nome}</span>
                     <span style={{ fontSize: 11, color: C.cinza, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "2px 8px" }}>{c.itens.length}</span>
-                    <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 14 }}>{aberto(c.id) ? "▾" : "▸"}</span>
+                    <span style={{ marginLeft: "auto", color: C.cinza, fontSize: 14 }}>{abertos.amb === c.id ? "▾" : "▸"}</span>
                   </button>
-                  {aberto(c.id) && (
+                  {abertos.amb === c.id && (
                     <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} editando={editando} setEditando={setEditando} onTamanho={cbs.onTamanho} />
                   )}
                 </div>
