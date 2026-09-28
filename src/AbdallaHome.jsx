@@ -1587,7 +1587,7 @@ function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
   const sec = cor === C.cinza; // cinza = ação secundária (fechar, parar...): fundo suave, legível nos dois temas
   return (
     <button onClick={onClick} disabled={disabled}
-      style={{ flex: 1, background: disabled ? C.bg : sec ? alfa(C.cinza, 20) : cor, color: disabled ? C.cinzaClaro : sec ? C.terra : "#fff", borderRadius: 12, padding: "10px 6px", fontWeight: 700, fontSize: 13, border: "none", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      style={{ flex: 1, background: disabled ? C.bg : sec ? alfa(C.cinza, 20) : cor, color: disabled ? C.cinzaClaro : sec ? C.terra : "#fff", borderRadius: 12, padding: "8px 6px", fontWeight: 700, fontSize: 13, border: "none", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
       {Icon && <Icon size={17} />}{label}
     </button>
   );
@@ -1685,14 +1685,17 @@ function ehInvertido(e) {
   const alvo = ((e?.nome || "") + " " + (e?.id || "")).toLowerCase();
   return HA_INVERTER.some((n) => alvo.includes(n));
 }
+// Estado da persiana como a pessoa vê (desfaz a inversão do flap). O texto vai no topo do cartão.
+function estadoPersiana(e) {
+  if (!e.disponivel) return { texto: "Indisponível", cor: C.cinzaClaro };
+  const inv = ehInvertido(e);
+  return haEstado(inv ? (e.state === "open" ? "closed" : e.state === "closed" ? "open" : e.state) : e.state, e.attributes);
+}
 function CtrlPersiana({ e, enviar }) {
   const ind = !e.disponivel;
   const inv = ehInvertido(e);
-  const estadoVis = inv ? (e.state === "open" ? "closed" : e.state === "closed" ? "open" : e.state) : e.state;
-  const st = haEstado(estadoVis, e.attributes);
   return (
     <div>
-      <div className="text-sm mb-2" style={{ color: ind ? C.cinzaClaro : st.cor, fontWeight: 700 }}>{ind ? "Indisponível" : st.texto}</div>
       <div className="flex gap-2">
         <BotaoAcao icon={ArrowUpFromLine} label={rotulo(e, "abrir", "Abrir")} cor={C.pasto} disabled={ind} onClick={() => enviar("cover", inv ? "close_cover" : "open_cover", e.id)} />
         <BotaoAcao icon={X} label={rotulo(e, "parar", "Parar")} cor={C.ambar} disabled={ind} onClick={() => enviar("cover", "stop_cover", e.id)} />
@@ -1865,6 +1868,7 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
       <div className="flex items-center" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ gap: 10, cursor: compactavel && !editando ? "pointer" : "default" }}>
         <IconeEquip v={v} disponivel={e.disponivel} />
         <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}>{e.nome}</div>
+        {e.tipo === "persiana" && !compacto && (() => { const st = estadoPersiana(e); return <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: st.cor }}>{st.texto}</span>; })()}
         {compactavel && !grande && !editando && <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: expandido ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />}
       </div>
       {compacto
