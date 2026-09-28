@@ -1337,7 +1337,12 @@ function VisitanteSheet({ showToast, onCriado, onFechar }) {
     const ate = new Date(Date.now() + d * 86400000);
     if (data?.id) {
       const { error: e2 } = await supabase.from("perfis").update({ papel: "visitante", pode_controle: true, expira_em: ate.toISOString(), nome: `Visitante · ${d}d` }).eq("id", data.id);
-      if (e2) { setErro("Criado, mas não consegui marcar como visitante: " + e2.message); setCriando(false); return; }
+      if (e2) {
+        // Não deixa para trás uma conta de colaborador sem dono.
+        await supabase.from("perfis").update({ ativo: false }).eq("id", data.id);
+        onCriado && onCriado();
+        setErro("Não consegui criar o acesso de visitante: " + e2.message); setCriando(false); return;
+      }
     }
     const url = new URL(import.meta.env.BASE_URL, window.location.href).href + "#v=" + encodeURIComponent(btoa(email + ":" + senha));
     let qr = null;
