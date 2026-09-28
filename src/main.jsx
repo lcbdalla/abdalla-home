@@ -7,6 +7,7 @@ import App from './App.jsx'
 try {
   const t = localStorage.getItem('tema')
   if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t
+  if (t === 'dark') document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0e1a12')
 } catch { /* sem storage: fica no tema claro */ }
 
 // Registra o service worker (necessário para "Instalar app"); só no site publicado.

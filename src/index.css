@@ -9,6 +9,8 @@
   --c-lago: #2b7a8c; --c-lagoClaro: #e2f0f2; --c-areia: #efe7d4;
   --c-terra: #33302a; --c-cinza: #726b5e; --c-cinzaClaro: #a49c8c;
   --c-ambar: #c8862a; --c-ambarClaro: #fbf0dc; --c-vermelho: #b34a3a; --c-vermelhoClaro: #f7e6e2;
+  --c-ambarTexto: #8f5c10; /* âmbar escurecido: legível como texto sobre o fundo claro */
+  --c-cabecalho: #1f5c39;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -17,6 +19,9 @@
   --c-lago: #4aa9bd; --c-lagoClaro: #12313a; --c-areia: #2a271e;
   --c-terra: #efe9db; --c-cinza: #b3ab9b; --c-cinzaClaro: #7a7264;
   --c-ambar: #e0a24a; --c-ambarClaro: #3a2e1a; --c-vermelho: #d96a5a; --c-vermelhoClaro: #3a201c;
+  --c-ambarTexto: #e8b061;
+  /* Cabeçalho no escuro: degradê do quase-preto ao verde Heineken (mesma receita do app Vitá, que usa turquesa). */
+  --c-cabecalho: linear-gradient(160deg, #0e1a12 0%, #0c4424 58%, #00843d 100%);
 }
 
 /* Reset minimo. O layout/cores do app vem de estilos inline (paleta acima). */

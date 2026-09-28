@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
-  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power,
+  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
   ChevronDown, Lightbulb, Fan, Snowflake, Tv, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -21,6 +21,7 @@ const C = {
   lago: "var(--c-lago,#2b7a8c)", lagoClaro: "var(--c-lagoClaro,#e2f0f2)", areia: "var(--c-areia,#efe7d4)",
   terra: "var(--c-terra,#33302a)", cinza: "var(--c-cinza,#726b5e)", cinzaClaro: "var(--c-cinzaClaro,#a49c8c)",
   ambar: "var(--c-ambar,#c8862a)", ambarClaro: "var(--c-ambarClaro,#fbf0dc)", vermelho: "var(--c-vermelho,#b34a3a)", vermelhoClaro: "var(--c-vermelhoClaro,#f7e6e2)",
+  ambarTexto: "var(--c-ambarTexto,#8f5c10)", cabecalho: "var(--c-cabecalho,#1f5c39)",
 };
 const alfa = (cor, pct) => `color-mix(in srgb, ${cor} ${pct}%, transparent)`;
 
@@ -304,6 +305,7 @@ export default function App() {
   const alternarTema = () => {
     const novo = tema === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = novo;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", novo === "dark" ? "#0e1a12" : "#1f5c39"); // barra do celular
     try { localStorage.setItem("tema", novo); } catch { /* ok */ }
     setTema(novo);
   };
@@ -717,7 +719,7 @@ export default function App() {
     <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
       <div className="mx-auto" style={{ maxWidth: 460, position: "relative", minHeight: "100vh", paddingBottom: 88, background: C.bg }}>
 
-        <header style={{ background: C.pastoEsc, color: "#fff", padding: "14px 16px 14px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
+        <header style={{ background: C.cabecalho, color: "#fff", padding: "14px 16px 14px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div style={{ background: "#ffffff22", borderRadius: 12, padding: 7 }}><MapPin size={20} /></div>
@@ -1610,25 +1612,44 @@ const contarLigados = (itens) => { const d = itens.filter(ehDesligavel); return 
 // em todos os níveis, com qualquer quantidade de aparelhos.
 function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo }) {
   const { on, total } = contarLigados(itens);
-  const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 48 : 44 };
+  const aceso = on > 0;
+  const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 52 : 44 };
   return (
-    <div className="flex items-center" style={{ gap: 10 }}>
-      <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex flex-col justify-center text-left" style={toque}>
-        <span className="truncate" style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 17 : 15, color: C.terra, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2 }}>{nome}</span>
-        {sub && <span style={{ fontSize: 12, color: C.cinza, marginTop: 2 }}>{sub}</span>}
+    <div className="flex items-center" style={{ gap: 8 }}>
+      <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex items-center text-left" style={{ ...toque, gap: grande ? 9 : 10 }}>
+        {grande ? (
+          // Pavimento: selo com ícone que "acende" quando há algo ligado lá dentro.
+          <span aria-hidden="true" style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            background: aceso ? alfa(C.ambar, 20) : alfa(C.cinzaClaro, 16), color: aceso ? C.ambar : C.cinzaClaro,
+            boxShadow: aceso ? `0 0 0 1px ${alfa(C.ambar, 32)}, 0 6px 18px -6px ${alfa(C.ambar, 70)}` : "none", transition: "background .25s, color .25s, box-shadow .25s" }}>
+            <Layers size={18} strokeWidth={2.1} />
+          </span>
+        ) : (
+          // Cômodo: pontinho aceso ao lado do nome.
+          <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, flexShrink: 0, background: aceso ? C.ambar : alfa(C.cinzaClaro, 50),
+            boxShadow: aceso ? `0 0 0 3px ${alfa(C.ambar, 22)}, 0 0 10px ${alfa(C.ambar, 80)}` : "none", transition: "background .25s, box-shadow .25s" }} />
+        )}
+        <span className="min-w-0 flex flex-col">
+          <span className="truncate" style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: C.terra, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2 }}>{nome}</span>
+          {sub && (
+            <span className="truncate" style={{ fontSize: 12, color: C.cinza, marginTop: 2 }}>
+              {aceso ? <b style={{ color: C.ambarTexto, fontWeight: 700 }}>{on} {on === 1 ? "ligado" : "ligados"}</b> : sub}
+            </span>
+          )}
+        </span>
       </button>
       {total > 0 && (
-        <button onClick={() => onDesligarTudo(itens)} disabled={on === 0} aria-label={`Desligar tudo em ${nome}`}
-          className="flex items-center" style={{ flexShrink: 0, gap: 5, height: 32, padding: "0 11px", borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
-            border: `1px solid ${on ? alfa(C.vermelho, 35) : C.linha}`, background: on ? C.vermelhoClaro : "transparent", color: on ? C.vermelho : C.cinzaClaro,
-            cursor: on ? "pointer" : "default", transition: "background .2s, color .2s, border-color .2s" }}>
-          <Power size={13} strokeWidth={2.4} /> Desligar tudo
+        <button onClick={() => onDesligarTudo(itens)} disabled={!aceso} aria-label={`Desligar tudo em ${nome}`}
+          className="flex items-center" style={{ flexShrink: 0, gap: 4, height: 32, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
+            border: `1px solid ${aceso ? alfa(C.vermelho, 35) : C.linha}`, background: aceso ? C.vermelhoClaro : "transparent", color: aceso ? C.vermelho : C.cinzaClaro,
+            cursor: aceso ? "pointer" : "default", transition: "background .2s, color .2s, border-color .2s" }}>
+          <Power size={12.5} strokeWidth={2.4} /> Desligar tudo
         </button>
       )}
-      <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 64, gap: 6 }}>
+      <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 58, gap: 5 }}>
         {total > 0 && (
           <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-            <b style={{ color: on ? C.pasto : C.cinza, fontWeight: 800 }}>{on}</b><span style={{ color: C.cinzaClaro, fontWeight: 600 }}>/{total}</span>
+            <b style={{ color: aceso ? C.ambarTexto : C.cinza, fontWeight: 800 }}>{on}</b><span style={{ color: C.cinzaClaro, fontWeight: 600 }}>/{total}</span>
           </span>
         )}
         <ChevronDown size={18} style={{ color: C.cinza, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
@@ -2467,7 +2488,7 @@ function ControleApp({ eu, onVoltar, onSair }) {
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}"}</style>
         <DialogHost />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
-        <header style={{ background: C.pastoEsc, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
+        <header style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
           <div className="flex items-center gap-2">
             {onVoltar
               ? <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><ChevronLeft size={18} /></button>
@@ -2513,8 +2534,9 @@ function ControleApp({ eu, onVoltar, onSair }) {
           )}
           {modo === "usar" && status === "ok" && listaPav.map((pav) => (
             <section key={pav.id} style={{ marginBottom: pavAberto(pav.id) ? 18 : 8 }}>
-              {/* Mesmo recuo à direita do cabeçalho do cômodo (12 de respiro + 1 de borda): os "Desligar tudo" alinham. */}
-              <div style={{ padding: "2px 13px" }}>
+              {/* Mesmo recuo à DIREITA do cabeçalho do cômodo (12 de respiro + 1 de borda): os "Desligar tudo" alinham.
+                  À esquerda o pavimento encosta na margem, sobrando espaço para o nome. */}
+              <div style={{ padding: "2px 13px 2px 1px" }}>
                 <CabecalhoNivel nome={pav.nome} grande aberto={pavAberto(pav.id)} onAlternar={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))}
                   itens={pav.comodos.flatMap((c) => c.itens)} onDesligarTudo={(itens) => desligarTudo(itens, pav.nome)}
                   sub={`${pav.comodos.length} ${pav.comodos.length === 1 ? "cômodo" : "cômodos"}`} />
@@ -2523,8 +2545,11 @@ function ControleApp({ eu, onVoltar, onSair }) {
                 <div className="flex flex-col" style={{ gap: 10, marginTop: 6 }}>
                   {pav.comodos.map((c) => {
                     const abertoC = abertos.amb === c.id;
+                    const acesoC = contarLigados(c.itens).on > 0; // algo ligado: a caixa ganha um tom âmbar
                     return (
-                      <div key={c.id} style={{ border: `1px solid ${abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18, background: C.card, padding: "6px 12px", boxShadow: abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : "none", transition: "box-shadow .2s, border-color .2s" }}>
+                      <div key={c.id} style={{ border: `1px solid ${acesoC ? alfa(C.ambar, 40) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
+                        background: acesoC ? `color-mix(in srgb, ${C.ambar} 6%, ${C.card})` : C.card, padding: "6px 12px",
+                        boxShadow: abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : "none", transition: "box-shadow .2s, border-color .2s, background .25s" }}>
                         <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id)}
                           itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} />
                         {abertoC && (
