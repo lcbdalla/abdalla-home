@@ -1688,8 +1688,8 @@ function ehInvertido(e) {
 // Estado da persiana como a pessoa vê (desfaz a inversão do flap). O texto vai no topo do cartão.
 function estadoPersiana(e) {
   if (!e.disponivel) return { texto: "Indisponível", cor: C.cinzaClaro };
-  const inv = ehInvertido(e);
-  return haEstado(inv ? (e.state === "open" ? "closed" : e.state === "closed" ? "open" : e.state) : e.state, e.attributes);
+  const troca = { open: "closed", closed: "open", opening: "closing", closing: "opening" }; // flap: HA informa ao contrário
+  return haEstado(ehInvertido(e) ? (troca[e.state] || e.state) : e.state, e.attributes);
 }
 function CtrlPersiana({ e, enviar }) {
   const ind = !e.disponivel;
@@ -1837,8 +1837,7 @@ function CtrlArCompacto({ e, enviar }) {
 // Controle compacto de persiana/flap (encolhido): dois botões ↑ abrir / ↓ fechar.
 function CtrlPersianaCompacto({ e, enviar }) {
   const ind = !e.disponivel; const inv = ehInvertido(e);
-  const estadoVis = inv ? (e.state === "open" ? "closed" : e.state === "closed" ? "open" : e.state) : e.state;
-  const st = haEstado(estadoVis, e.attributes);
+  const st = estadoPersiana(e);
   const abrir = (ev) => { ev.stopPropagation(); enviar("cover", inv ? "close_cover" : "open_cover", e.id); };
   const fechar = (ev) => { ev.stopPropagation(); enviar("cover", inv ? "open_cover" : "close_cover", e.id); };
   const bt = { width: 34, height: 30, borderRadius: 9, border: "none", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: ind ? "default" : "pointer", opacity: ind ? 0.5 : 1 };
