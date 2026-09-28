@@ -318,6 +318,8 @@ export default function App() {
   const eu = perfil && typeof perfil === "object" ? perfil : null;
   const euId = eu?.id || null;
   const souAdmin = eu?.papel === "admin";
+  // Editar/excluir: administrador pode tudo; colaborador só o que ele mesmo criou.
+  const podeMexer = (t) => souAdmin || (!!euId && t.criadoPorId === euId);
   const souCrianca = eu?.papel === "crianca";
   const souVisitante = eu?.papel === "visitante";
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
@@ -757,9 +759,9 @@ export default function App() {
         )}
 
         <main className="px-3 pt-3">
-          {aba === "tarefas" && <TarefasView {...{ tasks, users, euId, souAdmin, meuSetor: eu?.setor || "", filtro, setFiltro, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onReabrir: reabrir, onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onTrocar: trocarResponsavel, onAbrir: (t) => setModal({ tipo: "detalhe", task: t }) }} />}
+          {aba === "tarefas" && <TarefasView {...{ tasks, users, euId, souAdmin, meuSetor: eu?.setor || "", filtro, setFiltro, podeMexer, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onReabrir: reabrir, onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onTrocar: trocarResponsavel, onAbrir: (t) => setModal({ tipo: "detalhe", task: t }) }} />}
           {aba === "agenda" && <AgendaView {...{ tasks, users, souAdmin, meuSetor: eu?.setor || "", euId }} />}
-          {aba === "compras" && <ComprasView {...{ tasks, produtos, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onReabrir: reabrir, onAbrir: (t) => setModal({ tipo: "detalhe", task: t }) }} />}
+          {aba === "compras" && <ComprasView {...{ tasks, produtos, podeMexer, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onReabrir: reabrir, onAbrir: (t) => setModal({ tipo: "detalhe", task: t }) }} />}
           {aba === "estoque" && <EstoqueView {...{ produtos, estoque, movs, users, onAjustar: ajustarEstoque, onAbrirProdutos: () => setProdutosAberto(true), onMovimento: (mv) => setModal({ tipo: "movimento", mov: mv }), onSaidaRapida: saidaRapida }} />}
           {aba === "painel" && souAdmin && <PainelView {...{ tasks, users }} />}
           {aba === "equipe" && souAdmin && <EquipeView {...{ users, souAdmin, euId, showToast, onRecarregar: reloadPerfis }} />}
@@ -785,7 +787,7 @@ export default function App() {
         </nav>
 
         {modal?.tipo === "tarefa" && <TarefaModal {...{ task: modal.task, users, eu, produtos, ehCompraInicial: modal.ehCompra, onCadastrarProduto: cadastrarProduto, showToast, onFechar: () => setModal(null), onSalvar: salvarTarefa }} />}
-        {modal?.tipo === "detalhe" && <DetalheTarefaModal {...{ t: modal.task, users, produtos, onFechar: () => setModal(null), onEditar: (t) => setModal({ tipo: "tarefa", task: t }) }} />}
+        {modal?.tipo === "detalhe" && <DetalheTarefaModal {...{ t: modal.task, users, produtos, podeEditar: podeMexer(modal.task), onFechar: () => setModal(null), onEditar: (t) => setModal({ tipo: "tarefa", task: t }) }} />}
         {modal?.tipo === "concluir" && <ConcluirModal {...{ task: modal.task, produtos, showToast, onFechar: () => setModal(null), onConfirmar: (fotoUrl) => { concluirTarefa(modal.task, fotoUrl); setModal(null); } }} />}
         {infoAberto && <InfoModal onFechar={() => setInfoAberto(false)} />}
         {produtosAberto && <ProdutosModal {...{ produtos, onCadastrar: cadastrarProduto, onRemover: removerProduto, onRenomear: renomearProduto, onFechar: () => setProdutosAberto(false) }} />}
@@ -878,7 +880,7 @@ function AcessoExpirado({ onSair }) {
 }
 
 /* ============================= TAREFAS ============================= */
-function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }) {
+function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro, podeMexer, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }) {
   const [periodoFeitas, setPeriodoFeitas] = useState("hoje"); // hoje | semana
   let lista = tasks.filter((t) => !t.ehCompra);
   // Colaborador só enxerga o próprio setor (e o que estiver no nome dele).
@@ -910,7 +912,7 @@ function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro
         ))}
       </div>
       {lista.length === 0 && <Vazio icon={ListTodo} titulo="Nenhuma tarefa ainda" texto="Toque em “Nova tarefa” para começar a organizar o rancho." />}
-      {pendentes.map((t) => <CardTarefa key={t.id} {...{ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }} />)}
+      {pendentes.map((t) => <CardTarefa key={t.id} {...{ t, users, podeMexer, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }} />)}
       {(feitasHoje.length > 0 || historicoSemana.length > 0) && (
         <div className="mt-4">
           <div className="flex items-center gap-2 mb-2">
@@ -920,7 +922,7 @@ function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro
             ))}
           </div>
           {periodoFeitas === "hoje"
-            ? (feitasHoje.length ? feitasHoje.map((t) => <CardTarefa key={t.id} {...{ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }} />) : <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="px-1 pb-2">Nenhuma tarefa concluída hoje.</div>)
+            ? (feitasHoje.length ? feitasHoje.map((t) => <CardTarefa key={t.id} {...{ t, users, podeMexer, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }} />) : <div style={{ color: C.cinzaClaro, fontSize: 13 }} className="px-1 pb-2">Nenhuma tarefa concluída hoje.</div>)
             : (historicoSemana.length ? historicoSemana.map((h, i) => (
                 <div key={h.t.id + h.iso + i} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12 }} className="p-3 mb-2 flex items-center gap-3">
                   <div style={{ width: 26, height: 26, borderRadius: 999, background: C.pasto, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Check size={15} color="#fff" strokeWidth={3} /></div>
@@ -933,7 +935,7 @@ function TarefasView({ tasks, users, euId, souAdmin, meuSetor, filtro, setFiltro
     </div>
   );
 }
-function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }) {
+function CardTarefa({ t, users, podeMexer, onConcluir, onReabrir, onEditar, onExcluir, onTrocar, onAbrir }) {
   const iso = hojeISO();
   const feito = isConcluida(t, iso);
   const [abrirResp, setAbrirResp] = useState(false);
@@ -979,10 +981,12 @@ function CardTarefa({ t, users, onConcluir, onReabrir, onEditar, onExcluir, onTr
             )}
           </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <button onClick={() => onEditar(t)} style={{ color: C.cinza, padding: 4 }}><Pencil size={17} /></button>
-          <button onClick={async () => { if (await Dialog.confirm({ titulo: "Excluir tarefa", mensagem: "Deseja excluir esta tarefa?", okLabel: "Excluir", perigo: true })) onExcluir(t.id); }} style={{ color: C.vermelho, padding: 4 }}><Trash2 size={17} /></button>
-        </div>
+        {podeMexer(t) && (
+          <div className="flex flex-col gap-1.5">
+            <button onClick={() => onEditar(t)} style={{ color: C.cinza, padding: 4 }}><Pencil size={17} /></button>
+            <button onClick={async () => { if (await Dialog.confirm({ titulo: "Excluir tarefa", mensagem: "Deseja excluir esta tarefa?", okLabel: "Excluir", perigo: true })) onExcluir(t.id); }} style={{ color: C.vermelho, padding: 4 }}><Trash2 size={17} /></button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1018,10 +1022,12 @@ function AgendaView({ tasks, users, souAdmin, meuSetor, euId }) {
 }
 
 /* ============================= COMPRAS ============================= */
-function ComprasView({ tasks, produtos, onConcluir, onEditar, onExcluir, onReabrir, onAbrir }) {
+function ComprasView({ tasks, produtos, podeMexer, onConcluir, onEditar, onExcluir, onReabrir, onAbrir }) {
   const compras = tasks.filter((t) => t.ehCompra);
   const pendentes = compras.filter((t) => !isConcluida(t));
-  const feitas = compras.filter((t) => isConcluida(t));
+  // "Compradas" mostra só os últimos 30 dias (as antigas continuam no banco).
+  const limite = Date.now() - 30 * 864e5;
+  const feitas = compras.filter((t) => isConcluida(t) && (!t.concluidaEm || t.concluidaEm >= limite)).sort((a, b) => (b.concluidaEm || 0) - (a.concluidaEm || 0));
   const prodDe = (id) => produtos.find((p) => p.id === id);
   return (
     <div>
@@ -1038,20 +1044,22 @@ function ComprasView({ tasks, produtos, onConcluir, onEditar, onExcluir, onReabr
                 {itens.map((it, i) => { const p = prodDe(it.produtoId); return (<div key={i} className="flex items-center gap-2 text-sm"><span style={{ width: 6, height: 6, borderRadius: 999, background: C.ambar, flexShrink: 0 }} /><span className="flex-1 min-w-0 truncate">{p ? p.nome : "Produto"}{p?.subcategoria ? " · " + p.subcategoria : ""}</span><b style={{ color: C.pastoEsc, whiteSpace: "nowrap" }}>{it.quantidade} {p?.unidade || ""}</b></div>); })}
               </div>
             </div>
-            <div className="flex flex-col gap-1">
-              <button onClick={() => onEditar(t)} style={{ color: C.cinza, padding: 4 }}><Pencil size={16} /></button>
-              <button onClick={async () => { if (await Dialog.confirm({ titulo: "Excluir", mensagem: "Deseja excluir?", okLabel: "Excluir", perigo: true })) onExcluir(t.id); }} style={{ color: C.vermelho, padding: 4 }}><Trash2 size={16} /></button>
-            </div>
+            {podeMexer(t) && (
+              <div className="flex flex-col gap-1">
+                <button onClick={() => onEditar(t)} style={{ color: C.cinza, padding: 4 }}><Pencil size={16} /></button>
+                <button onClick={async () => { if (await Dialog.confirm({ titulo: "Excluir", mensagem: "Deseja excluir?", okLabel: "Excluir", perigo: true })) onExcluir(t.id); }} style={{ color: C.vermelho, padding: 4 }}><Trash2 size={16} /></button>
+              </div>
+            )}
           </div>
         );
       })}
       {feitas.length > 0 && (
-        <div className="mt-4"><div style={{ color: C.cinza }} className="text-xs font-semibold mb-2 uppercase">Compradas</div>
+        <div className="mt-4"><div style={{ color: C.cinza }} className="text-xs font-semibold mb-2 uppercase">Compradas · últimos 30 dias</div>
           {feitas.map((t) => (
             <div key={t.id} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, opacity: 0.7 }} className="p-3 mb-2 flex items-center gap-3">
               <button onClick={() => onReabrir(t)} style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 999, background: C.pasto, display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={16} color="#fff" strokeWidth={3} /></button>
               <div className="flex-1 font-medium" style={{ textDecoration: "line-through" }}>{t.titulo}</div>
-              <button onClick={async () => { if (await Dialog.confirm({ titulo: "Excluir", mensagem: "Deseja excluir?", okLabel: "Excluir", perigo: true })) onExcluir(t.id); }} style={{ color: C.vermelho, padding: 4 }}><Trash2 size={16} /></button>
+              {podeMexer(t) && <button onClick={async () => { if (await Dialog.confirm({ titulo: "Excluir", mensagem: "Deseja excluir?", okLabel: "Excluir", perigo: true })) onExcluir(t.id); }} style={{ color: C.vermelho, padding: 4 }}><Trash2 size={16} /></button>}
             </div>
           ))}
         </div>
@@ -2584,6 +2592,26 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
   const adicionarItem = () => { if (!addProdId || !(parseFloat(addQtd) > 0)) return; setItens([...itens, { id: uid(), produtoId: addProdId, quantidade: parseFloat(addQtd) }]); setAddProdId(""); setAddQtd(""); setAddKey((k) => k + 1); };
   const removerItem = (id) => setItens(itens.filter((x) => x.id !== id));
 
+  // Lista padrão: um modelo de compra (tabela compra_padrao). Qualquer um puxa os itens
+  // para a compra e edita à vontade; só o administrador troca o modelo.
+  const usarListaPadrao = async () => {
+    const { data, error } = await supabase.from("compra_padrao").select("produto_id, quantidade");
+    if (error) { showToast(/compra_padrao/.test(error.message) ? "A lista padrão ainda não foi ativada no banco." : "Não consegui abrir a lista padrão: " + error.message); return; }
+    if (!data.length) { showToast(souAdmin ? "Lista padrão vazia. Monte uma compra e toque em “Salvar como lista padrão”." : "Ainda não existe lista padrão."); return; }
+    const ja = new Set(itens.map((i) => i.produtoId));
+    const novos = data.filter((r) => !ja.has(r.produto_id) && produtos.some((p) => p.id === r.produto_id)).map((r) => ({ id: uid(), produtoId: r.produto_id, quantidade: Number(r.quantidade) }));
+    setItens([...itens, ...novos]);
+    showToast(novos.length ? `${novos.length} ${novos.length === 1 ? "item adicionado" : "itens adicionados"} da lista padrão` : "Os itens da lista padrão já estão na compra");
+  };
+  const salvarListaPadrao = async () => {
+    if (!(await Dialog.confirm({ titulo: "Lista padrão", mensagem: `Salvar estes ${itens.length} itens como a lista padrão? A lista anterior será substituída.`, okLabel: "Salvar" }))) return;
+    const soma = new Map();
+    itens.forEach((i) => soma.set(i.produtoId, (soma.get(i.produtoId) || 0) + (parseFloat(i.quantidade) || 0)));
+    const del = await supabase.from("compra_padrao").delete().not("produto_id", "is", null);
+    const ins = del.error ? del : await supabase.from("compra_padrao").insert([...soma].filter(([, q]) => q > 0).map(([produto_id, quantidade]) => ({ produto_id, quantidade })));
+    showToast(ins.error ? (/compra_padrao/.test(ins.error.message) ? "A lista padrão ainda não foi ativada no banco." : "Não consegui salvar a lista padrão: " + ins.error.message) : "Lista padrão salva ✓");
+  };
+
   const escolherImg = async (e) => {
     const files = Array.from(e.target.files || []); if (!files.length) return;
     setSalvandoImg(true);
@@ -2634,6 +2662,7 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
 
       {f.ehCompra && (
         <div style={{ background: C.bg, borderRadius: 12 }} className="p-3 mb-3">
+          <button onClick={usarListaPadrao} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.card, border: `1.5px dashed ${C.ambar}`, color: C.terra, borderRadius: 10, padding: 11, fontWeight: 700, fontSize: 14 }}><ListTodo size={17} style={{ color: C.ambar }} /> Usar lista padrão</button>
           <div style={lblSt}>Adicionar produto</div>
           <ProdutoAutocomplete key={addKey} produtos={produtos} valorId={addProdId} onSelecionar={setAddProdId} onCadastrarTexto={abrirCadastroTexto} />
           {novoProd && (
@@ -2664,6 +2693,7 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
                 <button onClick={() => removerItem(it.id)} style={{ color: C.vermelho, padding: 4 }}><X size={16} /></button>
               </div>
             ); })}
+            {souAdmin && itens.length > 0 && <button onClick={salvarListaPadrao} className="flex items-center gap-1.5 mt-1" style={{ color: C.lago, fontWeight: 600, fontSize: 13, padding: "4px 0" }}><Star size={14} /> Salvar como lista padrão</button>}
           </div>
           <div style={{ borderTop: `1px dashed ${C.cinzaClaro}`, marginTop: 12, paddingTop: 10 }} className="flex items-center gap-3">
             <div className="flex-1">
@@ -2785,7 +2815,7 @@ function MovimentoModal({ tipo, produtos, estoque, onAplicar, onFechar }) {
 
 /* ============================= MODAL: CONCLUIR ============================= */
 // Detalhes da tarefa (abre ao tocar no título). Só leitura, com botão para editar.
-function DetalheTarefaModal({ t, users, produtos, onFechar, onEditar }) {
+function DetalheTarefaModal({ t, users, produtos, podeEditar, onFechar, onEditar }) {
   const [zoomUrl, setZoomUrl] = useState(null);
   const iso = hojeISO();
   const feito = isConcluida(t, iso);
@@ -2838,7 +2868,7 @@ function DetalheTarefaModal({ t, users, produtos, onFechar, onEditar }) {
         <div style={{ fontSize: 12.5, fontWeight: 600, color: C.cinza }} className="mt-3 mb-1">Foto da conclusão</div>
         <button onClick={() => setZoomUrl(fotoFeito)} style={{ display: "block", width: "100%", borderRadius: 12, overflow: "hidden", border: `1px solid ${C.linha}` }}><img src={fotoFeito} alt="Foto da conclusão" style={{ width: "100%", maxHeight: 240, objectFit: "cover", display: "block" }} /></button>
       </>)}
-      <button onClick={() => { onFechar(); onEditar(t); }} className="flex items-center justify-center gap-2" style={{ width: "100%", marginTop: 16, background: C.pasto, color: "#fff", borderRadius: 12, padding: 13, fontWeight: 700 }}><Pencil size={17} /> Editar {t.ehCompra ? "compra" : "tarefa"}</button>
+      {podeEditar && <button onClick={() => { onFechar(); onEditar(t); }} className="flex items-center justify-center gap-2" style={{ width: "100%", marginTop: 16, background: C.pasto, color: "#fff", borderRadius: 12, padding: 13, fontWeight: 700 }}><Pencil size={17} /> Editar {t.ehCompra ? "compra" : "tarefa"}</button>}
       {zoomUrl && (
         <div onClick={() => setZoomUrl(null)} style={{ position: "fixed", inset: 0, background: "#000000e8", zIndex: 96, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <img src={zoomUrl} alt="Foto ampliada" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 12 }} />
