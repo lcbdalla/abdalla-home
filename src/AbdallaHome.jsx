@@ -64,6 +64,13 @@ const estaInstalado = () => {
   return window.navigator.standalone === true; // iPhone
 };
 
+// Troca claro/escuro: <html data-theme>, guarda no aparelho e pinta a barra do celular.
+function aplicarTema(novo) {
+  document.documentElement.dataset.theme = novo;
+  try { localStorage.setItem("tema", novo); } catch { /* ok */ }
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", novo === "dark" ? "#0e1a12" : "#1f5c39");
+}
+
 /* global __BUILD_ID__ */
 // Número desta versão do app (injetado no build). Serve para detectar atualização.
 const APP_BUILD = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "dev";
@@ -175,7 +182,7 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -302,13 +309,7 @@ export default function App() {
   const [menuAberto, setMenuAberto] = useState(false);
   const [temAtualizacao, setTemAtualizacao] = useState(false);
   const [tema, setTema] = useState(() => (typeof document !== "undefined" && document.documentElement.dataset.theme === "dark") ? "dark" : "light");
-  const alternarTema = () => {
-    const novo = tema === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = novo;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", novo === "dark" ? "#0e1a12" : "#1f5c39"); // barra do celular
-    try { localStorage.setItem("tema", novo); } catch { /* ok */ }
-    setTema(novo);
-  };
+  const alternarTema = () => { const novo = tema === "dark" ? "light" : "dark"; aplicarTema(novo); setTema(novo); };
   const [rota, setRota] = useState(() => (window.location.hash || "").replace(/^#/, ""));
   useEffect(() => { const h = () => setRota((window.location.hash || "").replace(/^#/, "")); window.addEventListener("hashchange", h); return () => window.removeEventListener("hashchange", h); }, []);
   const [produtosAberto, setProdutosAberto] = useState(false);
@@ -712,7 +713,7 @@ export default function App() {
     { id: "agenda", nome: "Agenda", icon: CalendarDays },
     { id: "compras", nome: "Compras", icon: ShoppingCart },
     { id: "estoque", nome: "Estoque", icon: Package },
-    ...(souAdmin ? [{ id: "painel", nome: "Painel", icon: BarChart3 }, { id: "equipe", nome: "Equipe", icon: Users }] : []),
+    ...(souAdmin ? [{ id: "painel", nome: "Painel", icon: BarChart3 }] : []), // Equipe fica no menu ⋮
   ];
 
   return (
@@ -727,23 +728,14 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2">
               <button onClick={pedirNotificacao} title="Ativar lembretes" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Bell size={18} /></button>
-              <div className="relative">
-                <button onClick={() => setMenuAberto((v) => !v)} title="Mais opções" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><MoreVertical size={18} /></button>
-                {menuAberto && (<>
-                  <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 44 }} />
-                  <div style={{ position: "absolute", top: 42, right: 0, background: C.card, color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 22px #0003", zIndex: 45, minWidth: 210, overflow: "hidden" }}>
-                    {[
-                      ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => { setMenuAberto(false); _installOpen.fn && _installOpen.fn(); } }] : []),
-                      { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: () => { setMenuAberto(false); alternarTema(); } },
-                      ...(eu?.podeControle ? [{ key: "controle", icon: Home, cor: C.lago, txt: "Controle da casa", on: () => { setMenuAberto(false); window.location.hash = "controle"; } }] : []),
-                      ...(souAdmin ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: () => { setMenuAberto(false); setInfoAberto(true); } }] : []),
-                      { key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { setMenuAberto(false); if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) sair(); } },
-                    ].map((it, i) => { const Ic = it.icon; return (
-                      <button key={it.key} onClick={it.on} className="flex items-center gap-2" style={{ width: "100%", textAlign: "left", padding: "12px 14px", fontSize: 14, fontWeight: 600, color: it.cor === C.vermelho ? C.vermelho : C.terra, borderTop: i ? `1px solid ${C.linha}` : "none" }}><Ic size={16} style={{ color: it.cor }} /> {it.txt}</button>
-                    ); })}
-                  </div>
-                </>)}
-              </div>
+              <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
+                ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
+                ...(souAdmin ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: () => setAba("equipe") }] : []),
+                { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: alternarTema },
+                ...(eu?.podeControle ? [{ key: "controle", icon: Home, cor: C.lago, txt: "Controle da casa", on: () => { window.location.hash = "controle"; } }] : []),
+                ...(souAdmin ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: () => setInfoAberto(true) }] : []),
+                { key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) sair(); } },
+              ]} />
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2" style={{ background: "#ffffff1a", borderRadius: 12, padding: "8px 12px" }}>
@@ -1197,6 +1189,13 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                 <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode controlar a casa</div>
                 <Toggle on={u.podeControle === true} onToggle={() => editar(u.id, "pode_controle", !(u.podeControle === true))} />
               </div>
+              {u.podeControle && (
+                <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
+                  <MoreVertical size={13} style={{ color: C.cinzaClaro }} />
+                  <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Menu ⋮ do Controle</div>
+                  <Toggle on={u.podeMenuControle === true} onToggle={() => editar(u.id, "pode_menu_controle", !(u.podeMenuControle === true))} />
+                </div>
+              )}
               {u.papel === "admin" && (
                 <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
                   <Wrench size={13} style={{ color: C.cinzaClaro }} />
@@ -1592,6 +1591,23 @@ function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
       style={{ flex: 1, background: disabled ? C.bg : sec ? alfa(C.cinza, 20) : cor, color: disabled ? C.cinzaClaro : sec ? C.terra : "#fff", borderRadius: 12, padding: "8px 6px", fontWeight: 700, fontSize: 13, border: "none", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
       {Icon && <Icon size={17} />}{label}
     </button>
+  );
+}
+
+/* ---- Menu ⋮ do cabeçalho (o mesmo no app de tarefas e no Controle) ---- */
+function MenuPontinhos({ aberto, setAberto, itens }) {
+  return (
+    <div className="relative">
+      <button onClick={() => setAberto((v) => !v)} title="Mais opções" aria-expanded={aberto} style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><MoreVertical size={18} /></button>
+      {aberto && (<>
+        <div onClick={() => setAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 44 }} />
+        <div style={{ position: "absolute", top: 42, right: 0, background: C.card, color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 8px 22px #0003", zIndex: 45, minWidth: 210, overflow: "hidden" }}>
+          {itens.map((it, i) => { const Ic = it.icon; return (
+            <button key={it.key} onClick={() => { setAberto(false); it.on(); }} className="flex items-center gap-2" style={{ width: "100%", textAlign: "left", padding: "12px 14px", fontSize: 14, fontWeight: 600, color: it.cor === C.vermelho ? C.vermelho : C.terra, borderTop: i ? `1px solid ${C.linha}` : "none" }}><Ic size={16} style={{ color: it.cor }} /> {it.txt}</button>
+          ); })}
+        </div>
+      </>)}
+    </div>
   );
 }
 
@@ -2221,6 +2237,8 @@ function ControleApp({ eu, onVoltar, onSair }) {
   const [ambientes, setAmbientes] = useState([]);
   const [equipamentos, setEquipamentos] = useState([]);
   const [modo, setModo] = useState("usar"); // usar | gerenciar
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [tema, setTema] = useState(() => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
   // O que está aberto: pavimentos abertos + UM cômodo por vez. Começa tudo fechado e
   // volta a fechar depois de 8h sem uso (guardado no aparelho para valer entre aberturas).
   const [abertos, setAbertos] = useState(() => {
@@ -2487,18 +2505,24 @@ function ControleApp({ eu, onVoltar, onSair }) {
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}"}</style>
         <DialogHost />
+        <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
         <header style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
           <div className="flex items-center gap-2">
-            {onVoltar
-              ? <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><ChevronLeft size={18} /></button>
-              : onSair
-                ? <button onClick={() => { if (window.confirm("Deseja sair?")) onSair(); }} title="Sair" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><LogOut size={18} /></button>
-                : null}
+            {onVoltar && <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><ChevronLeft size={18} /></button>}
             <div style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex" }}><Home size={18} /></div>
             <div className="flex-1 min-w-0"><div className="font-bold leading-tight truncate" style={{ fontSize: 16 }}>Controle da Casa</div><div style={{ color: "#ffffffcc", fontSize: 11.5 }} className="leading-tight truncate">{modo === "gerenciar" ? "Organizando ambientes" : "Rancho Abdalla"}</div></div>
-            {souGestor && <button onClick={() => setModo((m) => (m === "usar" ? "gerenciar" : "usar"))} title={modo === "usar" ? "Gerenciar ambientes" : "Voltar a usar"} style={{ background: modo === "gerenciar" ? "#ffffff44" : "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}>{modo === "usar" ? <Wrench size={18} /> : <Check size={18} />}</button>}
-            <button onClick={() => setTentativa((t) => t + 1)} title="Atualizar" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><RefreshCw size={18} /></button>
+            {/* Configurando: o "Pronto" fica à vista para voltar; o resto mora no menu ⋮. */}
+            {modo === "gerenciar" && <button onClick={() => setModo("usar")} title="Terminar de configurar" style={{ background: "#ffffff33", borderRadius: 10, padding: "7px 11px", display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 700 }}><Check size={16} /> Pronto</button>}
+            {/* O menu ⋮ só aparece para quem tem a chave "Menu ⋮ do Controle" ligada na Equipe. */}
+            {eu?.podeMenuControle && (
+              <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
+                ...(souGestor && modo === "usar" ? [{ key: "config", icon: Wrench, cor: C.pasto, txt: "Configuração", on: () => setModo("gerenciar") }] : []),
+                ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
+                { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: () => { const n = tema === "dark" ? "light" : "dark"; aplicarTema(n); setTema(n); } },
+                ...(onSair ? [{ key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) onSair(); } }] : []),
+              ]} />
+            )}
           </div>
         </header>
 
