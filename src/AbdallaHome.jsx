@@ -727,10 +727,10 @@ export default function App() {
               <div><div className="font-bold text-lg leading-tight">Abdalla Home</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">Rancho Abdalla</div></div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={pedirNotificacao} title="Ativar lembretes" style={{ background: "#ffffff22", borderRadius: 10, padding: 8 }}><Bell size={18} /></button>
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
                 ...(souAdmin ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: () => setAba("equipe") }] : []),
+                { key: "lembretes", icon: Bell, cor: C.ambar, txt: "Ativar lembretes", on: pedirNotificacao }, // o sino saiu do topo
                 { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: alternarTema },
                 ...(eu?.podeControle ? [{ key: "controle", icon: Home, cor: C.lago, txt: "Controle da casa", on: () => { window.location.hash = "controle"; } }] : []),
                 ...(souAdmin ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: () => setInfoAberto(true) }] : []),
