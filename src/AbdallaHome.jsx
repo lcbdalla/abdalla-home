@@ -446,7 +446,9 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [euId]);
 
-  const sair = async () => { await supabase.auth.signOut(); setPerfil(null); };
+  // "local": sai só deste aparelho. O padrão ("global") derrubava a mesma conta em todos
+  // os outros celulares — ex.: o QR do visitante aberto em dois aparelhos.
+  const sair = async () => { await supabase.auth.signOut({ scope: "local" }); setPerfil(null); };
 
   // Visitante: se o prazo vencer com o app aberto, bloqueia na hora.
   useEffect(() => {
@@ -2136,15 +2138,26 @@ function ControleApp({ eu, onVoltar, onSair }) {
     setStatus((s) => (s === "ok" ? "ok" : "carregando")); setErro(""); // reconexão mantém a tela
     if (usarProxy) {
       // Modo intermediário: pergunta os estados a cada 3 s (só com o app na tela).
-      let timer = null;
+      let timer = null, renovou = false;
       const buscar = async () => {
         const { data, error } = await supabase.functions.invoke(PROXY_FN, { body: { acao: "estados" } });
         if (!ativo) return;
         if (error) {
-          if (error?.context?.status === 404) { setUsarProxy(false); return; } // intermediário ainda não publicado: conexão direta
+          const st = error?.context?.status;
+          if (st === 404) { setUsarProxy(false); return; } // intermediário ainda não publicado: conexão direta
+          // Login vencido: renova uma vez e tenta de novo antes de mostrar erro.
+          if (st === 401 && !renovou) {
+            renovou = true;
+            const { error: eR } = await supabase.auth.refreshSession();
+            if (!ativo) return;
+            if (!eR) return buscar();
+            console.warn("controle-proxy: não renovou a sessão", eR);
+            setErro("O acesso deste aparelho foi encerrado. Saia e entre de novo (visitante: leia o QR Code de novo)."); setStatus("erro"); return;
+          }
           let msg = ""; try { msg = (await error.context.json())?.error || ""; } catch { /* sem corpo */ }
           setErro(msg || "Não consegui falar com o controle da casa."); setStatus("erro"); return;
         }
+        renovou = false;
         const map = {};
         (data?.estados || []).forEach((s) => { const dom = s.entity_id.split(".")[0]; if (HA_SHOW.has(dom) && !ehGrupoLuz(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
         setEnts(map); setStatus("ok"); setErro("");
