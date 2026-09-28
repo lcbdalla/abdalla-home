@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
-  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power
+  ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -1556,11 +1557,13 @@ function ControleSemAcesso({ onVoltar }) {
 }
 
 /* ---- Peças visuais reutilizáveis ---- */
-function PillToggle({ on, cor, onClick, disabled }) {
+function PillToggle({ on, cor, onClick, disabled, pequeno }) {
+  const w = pequeno ? 44 : 50, h = pequeno ? 26 : 30, k = h - 6;
   return (
     <button onClick={onClick} disabled={disabled} title={on ? "desligar" : "ligar"}
-      style={{ width: 52, height: 30, borderRadius: 999, background: on ? (cor || C.pasto) : "#c9c2b2", position: "relative", flexShrink: 0, border: "none", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}>
-      <span style={{ position: "absolute", top: 3, left: on ? 25 : 3, width: 24, height: 24, borderRadius: 999, background: C.card, transition: "left .15s" }} />
+      role="switch" aria-checked={!!on}
+      style={{ width: w, height: h, borderRadius: 999, background: on ? (cor || C.pasto) : alfa(C.cinzaClaro, 45), position: "relative", flexShrink: 0, border: "none", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.45 : 1, transition: "background .2s" }}>
+      <span style={{ position: "absolute", top: 3, left: on ? w - k - 3 : 3, width: k, height: k, borderRadius: 999, background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.28)", transition: "left .2s cubic-bezier(.25,1,.5,1)" }} />
     </button>
   );
 }
@@ -1581,9 +1584,10 @@ function CtrlChip({ ativo, onClick, children, cor }) {
   );
 }
 function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
+  const sec = cor === C.cinza; // cinza = ação secundária (fechar, parar...): fundo suave, legível nos dois temas
   return (
     <button onClick={onClick} disabled={disabled}
-      style={{ flex: 1, background: disabled ? C.bg : cor, color: disabled ? C.cinzaClaro : "#fff", borderRadius: 12, padding: "10px 6px", fontWeight: 700, fontSize: 13, border: "none", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      style={{ flex: 1, background: disabled ? C.bg : sec ? alfa(C.cinza, 20) : cor, color: disabled ? C.cinzaClaro : sec ? C.terra : "#fff", borderRadius: 12, padding: "10px 6px", fontWeight: 700, fontSize: 13, border: "none", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
       {Icon && <Icon size={17} />}{label}
     </button>
   );
@@ -1601,24 +1605,65 @@ const estaLigado = (e) => {
 const servicoDesligar = (e) => (e.tipo === "ar" ? ["climate", "turn_off"] : e.tipo === "tv" ? ["media_player", "turn_off"] : ["homeassistant", "turn_off"]);
 const contarLigados = (itens) => { const d = itens.filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
 
-// Cabeçalho de pavimento/cômodo: nome · [Desligar tudo] · ligados/total ▾ (tocar abre/fecha).
-function CabecalhoNivel({ nome, grande, aberto, onAlternar, itens, onDesligarTudo }) {
+// Cabeçalho de pavimento/cômodo: nome · [Desligar tudo] · ligados/total ⌄ (tocar abre/fecha).
+// A coluna da direita tem largura fixa: o botão "Desligar tudo" fica na mesma linha vertical
+// em todos os níveis, com qualquer quantidade de aparelhos.
+function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo }) {
   const { on, total } = contarLigados(itens);
-  const btn = { background: "none", border: "none", cursor: "pointer", padding: grande ? "6px 2px" : "4px 2px 8px" };
+  const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 48 : 44 };
   return (
-    <div className="flex items-center gap-2">
-      <button onClick={onAlternar} className="flex-1 min-w-0 text-left truncate" style={{ ...btn, fontWeight: grande ? 800 : 700, fontSize: grande ? 16 : 14, color: C.terra }}>{nome}</button>
+    <div className="flex items-center" style={{ gap: 10 }}>
+      <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex flex-col justify-center text-left" style={toque}>
+        <span className="truncate" style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 17 : 15, color: C.terra, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2 }}>{nome}</span>
+        {sub && <span style={{ fontSize: 12, color: C.cinza, marginTop: 2 }}>{sub}</span>}
+      </button>
       {total > 0 && (
-        <button onClick={() => onDesligarTudo(itens)} disabled={on === 0} title="Desligar tudo"
-          className="flex items-center gap-1" style={{ flexShrink: 0, border: `1px solid ${on ? alfa(C.vermelho, 40) : C.linha}`, background: on ? C.vermelhoClaro : "transparent", color: on ? C.vermelho : C.cinzaClaro, borderRadius: 999, padding: "4px 10px", fontSize: 11.5, fontWeight: 700, cursor: on ? "pointer" : "default", marginBottom: grande ? 0 : 4 }}>
-          <Power size={12} /> Desligar tudo
+        <button onClick={() => onDesligarTudo(itens)} disabled={on === 0} aria-label={`Desligar tudo em ${nome}`}
+          className="flex items-center" style={{ flexShrink: 0, gap: 5, height: 32, padding: "0 11px", borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
+            border: `1px solid ${on ? alfa(C.vermelho, 35) : C.linha}`, background: on ? C.vermelhoClaro : "transparent", color: on ? C.vermelho : C.cinzaClaro,
+            cursor: on ? "pointer" : "default", transition: "background .2s, color .2s, border-color .2s" }}>
+          <Power size={13} strokeWidth={2.4} /> Desligar tudo
         </button>
       )}
-      <button onClick={onAlternar} className="flex items-center gap-2" style={{ ...btn, flexShrink: 0 }}>
-        {total > 0 && <span style={{ fontSize: 12.5, fontWeight: 700, color: on ? C.pasto : C.cinza, fontVariantNumeric: "tabular-nums" }}>{on}/{total}</span>}
-        <span style={{ color: C.cinza, fontSize: grande ? 15 : 14 }}>{aberto ? "▾" : "▸"}</span>
+      <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 64, gap: 6 }}>
+        {total > 0 && (
+          <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+            <b style={{ color: on ? C.pasto : C.cinza, fontWeight: 800 }}>{on}</b><span style={{ color: C.cinzaClaro, fontWeight: 600 }}>/{total}</span>
+          </span>
+        )}
+        <ChevronDown size={18} style={{ color: C.cinza, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
       </button>
     </div>
+  );
+}
+
+// Aparência de cada aparelho: ícone do tipo e a cor quando está "ativo"
+// (ligado, aberto, destrancado...). Desligado = ícone apagado.
+function visualEquip(e) {
+  const dom = String(e.id).split(".")[0];
+  const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
+  if (e.tipo === "persiana") {
+    const inv = ehInvertido(e);
+    const aberto = e.disponivel && ((inv ? e.state === "closed" : e.state === "open") || ["opening", "closing"].includes(e.state));
+    const portao = /port[aã]o|gate/.test(alvo);
+    return { Icon: portao ? (aberto ? DoorOpen : DoorClosed) : Blinds, ativo: aberto, cor: C.ambar };
+  }
+  if (e.tipo === "ar") return { Icon: Snowflake, ativo: estaLigado(e), cor: C.lago };
+  if (e.tipo === "tv") return { Icon: Tv, ativo: estaLigado(e), cor: C.lago };
+  if (e.tipo === "irrigacao") return { Icon: Droplets, ativo: estaLigado(e), cor: C.lago };
+  if (e.tipo === "fechadura") { const aberta = e.disponivel && e.state === "unlocked"; return { Icon: aberta ? LockOpen : Lock, ativo: aberta, cor: C.ambar }; }
+  if (e.tipo === "sensor") return { Icon: Gauge, ativo: e.disponivel, cor: C.lago };
+  return { Icon: dom === "fan" ? Fan : Lightbulb, ativo: estaLigado(e), cor: C.ambar, luz: dom !== "fan" };
+}
+function IconeEquip({ v, disponivel }) {
+  const { Icon, ativo, cor, luz } = v;
+  return (
+    <span aria-hidden="true" style={{ width: 40, height: 40, borderRadius: 13, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+      background: ativo ? alfa(cor, 20) : alfa(C.cinzaClaro, 16), color: ativo ? cor : C.cinzaClaro, opacity: disponivel ? 1 : 0.55,
+      boxShadow: ativo ? `0 0 0 1px ${alfa(cor, 32)}, 0 6px 18px -6px ${alfa(cor, 70)}` : "none",
+      transition: "background .25s, color .25s, box-shadow .25s" }}>
+      <Icon size={21} strokeWidth={2} fill={ativo && luz ? alfa(cor, 40) : "none"} />
+    </span>
   );
 }
 
@@ -1627,9 +1672,9 @@ function CtrlInterruptor({ e, enviar, cardClicavel }) {
   const on = e.state === "on"; const ind = !e.disponivel;
   return (
     <div className="flex items-center gap-3">
-      <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (on ? C.pasto : C.cinza), fontWeight: 600 }}>{ind ? "Indisponível" : (on ? "Ligado" : "Desligado")}</div>
+      <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (on ? C.terra : C.cinza), fontWeight: 600 }}>{ind ? "Indisponível" : (on ? "Ligado" : "Desligado")}</div>
       {/* Quando o quadro inteiro já é clicável, a chave é só um indicador visual. */}
-      <PillToggle on={on} cor={C.pasto} disabled={ind} onClick={cardClicavel ? undefined : () => enviar("homeassistant", "toggle", e.id)} />
+      <PillToggle on={on} cor={C.ambar} disabled={ind} onClick={cardClicavel ? undefined : () => enviar("homeassistant", "toggle", e.id)} />
     </div>
   );
 }
@@ -1771,17 +1816,17 @@ function CtrlArCompacto({ e, enviar }) {
   const setTemp = (ev, delta) => { ev.stopPropagation(); if (alvo == null) return; let v = Math.round((alvo + delta * passo) * 10) / 10; v = Math.min(max, Math.max(min, v)); enviar("climate", "set_temperature", e.id, { temperature: v }); };
   const mini = { width: 26, height: 26, borderRadius: 8, border: `1px solid ${C.linha}`, background: C.card, color: C.terra, fontWeight: 700, fontSize: 15, lineHeight: "1", flexShrink: 0 };
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center" style={{ gap: 6 }}>
       {ligado && alvo != null ? (
-        <div className="flex items-center gap-1">
-          <button onClick={(ev) => setTemp(ev, -1)} style={mini}>−</button>
-          <span style={{ fontWeight: 700, fontSize: 14, minWidth: 32, textAlign: "center" }}>{Math.round(alvo)}°</span>
-          <button onClick={(ev) => setTemp(ev, 1)} style={mini}>+</button>
+        <div className="flex items-center" style={{ gap: 2 }}>
+          <button onClick={(ev) => setTemp(ev, -1)} aria-label="Diminuir temperatura" style={mini}>−</button>
+          <span style={{ fontWeight: 800, fontSize: 14, minWidth: 28, textAlign: "center", color: C.terra, fontVariantNumeric: "tabular-nums" }}>{Math.round(alvo)}°</span>
+          <button onClick={(ev) => setTemp(ev, 1)} aria-label="Aumentar temperatura" style={mini}>+</button>
         </div>
       ) : (
-        <div className="flex-1 text-xs" style={{ color: C.cinzaClaro }}>{ind ? "Indisponível" : "Desligado"}</div>
+        <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : C.cinza, fontWeight: 600 }}>{ind ? "Indisponível" : "Desligado"}</div>
       )}
-      <span style={{ marginLeft: "auto" }}><PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={(ev) => { ev.stopPropagation(); enviar("climate", ligado ? "turn_off" : "turn_on", e.id); }} /></span>
+      <span style={{ marginLeft: "auto" }}><PillToggle pequeno on={ligado} cor={C.lago} disabled={ind} onClick={(ev) => { ev.stopPropagation(); enviar("climate", ligado ? "turn_off" : "turn_on", e.id); }} /></span>
     </div>
   );
 }
@@ -1797,13 +1842,13 @@ function CtrlPersianaCompacto({ e, enviar }) {
     <div className="flex items-center gap-2">
       <div className="flex-1 text-xs truncate" style={{ color: ind ? C.cinzaClaro : st.cor, fontWeight: 600 }}>{ind ? "Indisponível" : st.texto}</div>
       <button onClick={abrir} disabled={ind} title={rotulo(e, "abrir", "Abrir")} style={{ ...bt, background: C.pasto }}><ArrowUpFromLine size={16} /></button>
-      <button onClick={fechar} disabled={ind} title={rotulo(e, "fechar", "Fechar")} style={{ ...bt, background: C.cinza }}><ArrowDownToLine size={16} /></button>
+      <button onClick={fechar} disabled={ind} title={rotulo(e, "fechar", "Fechar")} style={{ ...bt, background: alfa(C.cinza, 20), color: C.terra }}><ArrowDownToLine size={16} /></button>
     </div>
   );
 }
 function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
-  const st = haEstado(e.state, e.attributes);
-  const ligado = e.disponivel && ["on", "open", "playing", "unlocked", "cool", "heat", "dry", "fan_only", "auto", "heat_cool"].includes(e.state);
+  const v = visualEquip(e);
+  const ativo = v.ativo && e.disponivel;
   const compactavel = CTRL_COMPACTAVEL.includes(e.tipo);
   const grande = e.tamanho === "g"; // ocupa 2 colunas e mostra o controle completo
   const compacto = compactavel && !expandido && !grande;
@@ -1812,13 +1857,15 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
     : e.tipo === "interruptor" && e.disponivel ? () => enviar("homeassistant", "toggle", e.id)
       : compacto ? onExpandir : undefined;
   return (
+    // Ligado = o quadro "acende" na cor do aparelho; desligado = fundo rebaixado e ícone apagado.
     <div onClick={cardClick} role={cardClick ? "button" : undefined}
-      style={{ background: C.card, border: `1px solid ${ligado ? alfa(C.pasto, 40) : C.linha}`, borderRadius: 16, height: "100%", cursor: cardClick ? "pointer" : "default" }} className="p-3">
-      <div className="flex items-center gap-2 mb-2" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ cursor: compactavel && !editando ? "pointer" : "default" }}>
-        <span style={{ fontSize: 20, flexShrink: 0 }}>{CTRL_EMOJI[e.tipo] || "●"}</span>
-        <div className="flex-1 min-w-0 font-semibold truncate" style={{ fontSize: 14, color: C.terra }}>{e.nome}</div>
-        {compactavel && !grande && !editando && <span style={{ color: C.cinzaClaro, fontSize: 13, flexShrink: 0 }}>{expandido ? "▾" : "▸"}</span>}
-        <span style={{ width: 9, height: 9, borderRadius: 999, background: e.disponivel ? st.cor : "#c9c2b2", flexShrink: 0 }} />
+      style={{ background: ativo ? `color-mix(in srgb, ${v.cor} 10%, ${C.card})` : C.bg, border: `1px solid ${ativo ? alfa(v.cor, 38) : "transparent"}`,
+        borderRadius: 16, height: "100%", padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10,
+        cursor: cardClick ? "pointer" : "default", transition: "background .25s, border-color .25s" }}>
+      <div className="flex items-center" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ gap: 10, cursor: compactavel && !editando ? "pointer" : "default" }}>
+        <IconeEquip v={v} disponivel={e.disponivel} />
+        <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}>{e.nome}</div>
+        {compactavel && !grande && !editando && <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: expandido ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />}
       </div>
       {compacto
         ? (e.tipo === "ar" ? <CtrlArCompacto e={e} enviar={enviar} /> : <CtrlPersianaCompacto e={e} enviar={enviar} />)
@@ -2461,19 +2508,32 @@ function ControleApp({ eu, onVoltar, onSair }) {
             )
           )}
           {modo === "usar" && status === "ok" && listaPav.map((pav) => (
-            <div key={pav.id} style={{ marginBottom: 12 }}>
-              <CabecalhoNivel nome={pav.nome} grande aberto={pavAberto(pav.id)} onAlternar={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))}
-                itens={pav.comodos.flatMap((c) => c.itens)} onDesligarTudo={(itens) => desligarTudo(itens, pav.nome)} />
-              {pavAberto(pav.id) && pav.comodos.map((c) => (
-                <div key={c.id} style={{ border: `1px solid ${C.linha}`, borderRadius: 16, background: C.card, padding: 10, marginBottom: 10 }}>
-                  <CabecalhoNivel nome={c.nome} aberto={abertos.amb === c.id} onAlternar={() => alternarAmb(c.id)}
-                    itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} />
-                  {abertos.amb === c.id && (
-                    <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} editando={editando} setEditando={setEditando} onTamanho={cbs.onTamanho} />
-                  )}
+            <section key={pav.id} style={{ marginBottom: pavAberto(pav.id) ? 18 : 8 }}>
+              {/* Mesmo recuo à direita do cabeçalho do cômodo (12 de respiro + 1 de borda): os "Desligar tudo" alinham. */}
+              <div style={{ padding: "2px 13px" }}>
+                <CabecalhoNivel nome={pav.nome} grande aberto={pavAberto(pav.id)} onAlternar={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))}
+                  itens={pav.comodos.flatMap((c) => c.itens)} onDesligarTudo={(itens) => desligarTudo(itens, pav.nome)}
+                  sub={`${pav.comodos.length} ${pav.comodos.length === 1 ? "cômodo" : "cômodos"}`} />
+              </div>
+              {pavAberto(pav.id) && (
+                <div className="flex flex-col" style={{ gap: 10, marginTop: 6 }}>
+                  {pav.comodos.map((c) => {
+                    const abertoC = abertos.amb === c.id;
+                    return (
+                      <div key={c.id} style={{ border: `1px solid ${abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18, background: C.card, padding: "6px 12px", boxShadow: abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : "none", transition: "box-shadow .2s, border-color .2s" }}>
+                        <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id)}
+                          itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} />
+                        {abertoC && (
+                          <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
+                            <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} editando={editando} setEditando={setEditando} onTamanho={cbs.onTamanho} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              )}
+            </section>
           ))}
 
           {aviso && <div style={{ background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, borderRadius: 12, fontSize: 13.5 }} className="p-3 mb-3">{aviso.texto}</div>}

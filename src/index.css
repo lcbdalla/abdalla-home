@@ -32,3 +32,8 @@ body,
 * {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Quem pede menos movimento no celular: sem animações nem transições. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }
+}
