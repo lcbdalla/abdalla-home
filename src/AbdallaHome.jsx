@@ -2466,19 +2466,19 @@ function ControleApp({ eu, onVoltar, onSair }) {
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}"}</style>
         <DialogHost />
-        <header style={{ background: LAGO_ESC, color: "#fff", padding: "14px 16px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
+        {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
+        <header style={{ background: C.pastoEsc, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
           <div className="flex items-center gap-2">
             {onVoltar
-              ? <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><ChevronLeft size={18} /></button>
+              ? <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><ChevronLeft size={18} /></button>
               : onSair
-                ? <button onClick={() => { if (window.confirm("Deseja sair?")) onSair(); }} title="Sair" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><LogOut size={18} /></button>
+                ? <button onClick={() => { if (window.confirm("Deseja sair?")) onSair(); }} title="Sair" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><LogOut size={18} /></button>
                 : null}
-            <div style={{ background: "#ffffff22", borderRadius: 12, padding: 7 }}><Home size={20} /></div>
-            <div className="flex-1"><div className="font-bold text-lg leading-tight">Controle da Casa</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">{modo === "gerenciar" ? "Organizando ambientes" : "Rancho Abdalla"}</div></div>
-            {souGestor && <button onClick={() => setModo((m) => (m === "usar" ? "gerenciar" : "usar"))} title={modo === "usar" ? "Gerenciar ambientes" : "Voltar a usar"} style={{ background: modo === "gerenciar" ? "#ffffff44" : "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}>{modo === "usar" ? <Wrench size={18} /> : <Check size={18} />}</button>}
-            <button onClick={() => setTentativa((t) => t + 1)} title="Atualizar" style={{ background: "#ffffff22", borderRadius: 10, padding: 8, display: "flex" }}><RefreshCw size={18} /></button>
+            <div style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex" }}><Home size={18} /></div>
+            <div className="flex-1 min-w-0"><div className="font-bold leading-tight truncate" style={{ fontSize: 16 }}>Controle da Casa</div><div style={{ color: "#ffffffcc", fontSize: 11.5 }} className="leading-tight truncate">{modo === "gerenciar" ? "Organizando ambientes" : "Rancho Abdalla"}</div></div>
+            {souGestor && <button onClick={() => setModo((m) => (m === "usar" ? "gerenciar" : "usar"))} title={modo === "usar" ? "Gerenciar ambientes" : "Voltar a usar"} style={{ background: modo === "gerenciar" ? "#ffffff44" : "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}>{modo === "usar" ? <Wrench size={18} /> : <Check size={18} />}</button>}
+            <button onClick={() => setTentativa((t) => t + 1)} title="Atualizar" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><RefreshCw size={18} /></button>
           </div>
-          {status === "ok" && modo === "usar" && <div className="mt-3 text-sm" style={{ background: "#ffffff1a", borderRadius: 12, padding: "8px 12px" }}>{ambientes.length} ambientes · ao vivo</div>}
         </header>
 
         <main className="px-3 pt-3">
