@@ -688,7 +688,7 @@ export default function App() {
 
   // ---------- Telas de porta de entrada ----------
   if (session === undefined || perfil === undefined) return <TelaCarregando />;
-  if (!session) return logandoQR ? <TelaCarregando /> : (<><LoginScreen /><DialogHost /></>);
+  if (!session) return logandoQR ? <TelaCarregando /> : (<><LoginScreen /><InstalarPrompt /><DialogHost /></>);
   if (perfil === "removido") return (<><AcessoRemovido onSair={sair} /><DialogHost /></>);
   if (perfil === "expirado") return (<><AcessoExpirado onSair={sair} /><DialogHost /></>);
   // Criança e visitante: só o Controle da Casa, sem o app de tarefas (nem carregam os dados dele).
@@ -1392,7 +1392,10 @@ function VisitanteSheet({ showToast, onCriado, onFechar }) {
 function InstalarPrompt() {
   const [visivel, setVisivel] = useState(false);
   const [ajuda, setAjuda] = useState(false);
-  const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const [convite, setConvite] = useState(!!_installEvt); // o navegador oferece instalar com 1 toque?
+  const ua = navigator.userAgent;
+  const iOS = /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1); // iPad se passa por Mac
+  const samsung = /SamsungBrowser/i.test(ua);
 
   // Deixa o botão do cabeçalho reabrir este convite quando quiser.
   useEffect(() => {
@@ -1400,17 +1403,16 @@ function InstalarPrompt() {
     return () => { _installOpen.fn = null; };
   }, []);
 
-  // Aparece sozinho ao entrar, se ainda não instalou e não pediu para não mostrar.
+  // Na primeira vez que abre (em qualquer navegador), se ainda não instalou e não dispensou.
+  // Sem o convite de 1 toque do navegador, o botão mostra o passo a passo.
   useEffect(() => {
-    if (estaInstalado()) return;
+    const atualizar = () => setConvite(!!_installEvt);
+    _installSubs.add(atualizar);
     let dispensado = false;
     try { dispensado = localStorage.getItem("instalarDispensado") === "1"; } catch { /* ok */ }
-    if (dispensado) return;
-    const talvezMostrar = () => { if (!estaInstalado() && (iOS || _installEvt)) setVisivel(true); };
-    _installSubs.add(talvezMostrar);
-    const t = setTimeout(talvezMostrar, 800);
-    return () => { _installSubs.delete(talvezMostrar); clearTimeout(t); };
-  }, [iOS]);
+    const t = (!dispensado && !estaInstalado()) ? setTimeout(() => { if (!estaInstalado()) setVisivel(true); }, 1500) : null;
+    return () => { _installSubs.delete(atualizar); clearTimeout(t); };
+  }, []);
 
   if (!visivel || estaInstalado()) return null;
 
@@ -1419,11 +1421,11 @@ function InstalarPrompt() {
     if (_installEvt) {
       _installEvt.prompt();
       const escolha = await _installEvt.userChoice.catch(() => null);
-      _installEvt = null;
+      _installEvt = null; setConvite(false);
       if (escolha?.outcome === "accepted") setVisivel(false);
       return;
     }
-    // Sem convite automático: mostra o passo a passo (iPhone ou outros navegadores).
+    // Sem convite automático: mostra o passo a passo (iPhone, Samsung ou outros navegadores).
     setAjuda(true);
   };
 
@@ -1444,9 +1446,13 @@ function InstalarPrompt() {
         {ajuda ? (
           <div style={{ background: C.bg, borderRadius: 14 }} className="p-3 mt-2 mb-3">
             {iOS ? (<>
-              <Passo n={1}>Toque no botão <b>Compartilhar</b> do Safari (o quadradinho com a seta pra cima, na barra de baixo).</Passo>
-              <Passo n={2}>Role e toque em <b>Adicionar à Tela de Início</b>.</Passo>
+              <Passo n={1}>Toque no botão <b>Compartilhar</b> (o quadradinho com a seta pra cima). No Safari fica na barra de baixo; no Chrome, no alto à direita.</Passo>
+              <Passo n={2}>Role e toque em <b>Adicionar à Tela de Início</b> (se não aparecer, toque em <b>Ver mais</b>).</Passo>
               <Passo n={3}>Toque em <b>Adicionar</b>. Pronto!</Passo>
+            </>) : samsung ? (<>
+              <Passo n={1}>Toque no menu do navegador (os <b>três risquinhos ☰</b>, embaixo à direita).</Passo>
+              <Passo n={2}>Toque em <b>Adicionar página a</b> e depois em <b>Tela inicial</b>.</Passo>
+              <Passo n={3}>Confirme em <b>Adicionar</b>. Pronto!</Passo>
             </>) : (<>
               <Passo n={1}>Toque no menu do navegador (os <b>três pontinhos ⋮</b> no canto de cima).</Passo>
               <Passo n={2}>Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).</Passo>
@@ -1458,7 +1464,7 @@ function InstalarPrompt() {
         )}
         <div className="flex gap-2">
           <button onClick={dispensar} style={{ flex: 1, padding: 13, borderRadius: 12, fontWeight: 600, color: C.cinza, background: C.bg }}>{ajuda ? "Fechar" : "Agora não"}</button>
-          {!ajuda && <button onClick={instalar} className="flex items-center justify-center gap-2" style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}><ArrowDownToLine size={18} /> {iOS ? "Como instalar" : "Instalar"}</button>}
+          {!ajuda && <button onClick={instalar} className="flex items-center justify-center gap-2" style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}><ArrowDownToLine size={18} /> {convite ? "Instalar" : "Como instalar"}</button>}
           {ajuda && <button onClick={dispensar} style={{ flex: 1.4, padding: 13, borderRadius: 12, fontWeight: 700, color: "#fff", background: C.pasto }}>Entendi</button>}
         </div>
       </div>
