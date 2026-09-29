@@ -2382,6 +2382,60 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return () => document.removeEventListener("visibilitychange", aoVoltar);
   }, [usarProxy]);
 
+  // ---- Segurar e arrastar PAVIMENTOS para mudar a ordem (só gestor) ----
+  // Segura ~0,5 s (até vibrar) no título do pavimento → ele flutua seguindo o dedo; os outros
+  // abrem vaga. Enquanto arrasta, todos ficam recolhidos (só os títulos) para caber na tela.
+  const [arrPav, setArrPav] = useState(null); // { id, ordem, y, offY, left, w, h }
+  const pavPress = useRef(null), pavTimer = useRef(null), pavLongo = useRef(false), pavRefs = useRef({});
+  const pegarPav = () => {
+    const p = pavPress.current; if (!p || arrPav) return;
+    pavPress.current = null; clearTimeout(pavTimer.current); pavLongo.current = true;
+    const r = p.el.getBoundingClientRect();
+    try { p.el.setPointerCapture?.(p.pid); } catch { /* ok */ }
+    setArrPav({ id: p.id, ordem: pavimentos.map((x) => x.id), y: p.y, offY: p.y - r.top, left: r.left, w: r.width, h: r.height });
+  };
+  const aoPressionarPav = (e, id) => {
+    if (!souGestor || id === "__sem__" || arrPav) return;
+    pavLongo.current = false;
+    pavPress.current = { id, pid: e.pointerId, el: e.currentTarget, x: e.clientX, y: e.clientY };
+    clearTimeout(pavTimer.current); pavTimer.current = setTimeout(pegarPav, 500);
+  };
+  const aoMoverPav = (e) => {
+    if (!arrPav) {
+      const p = pavPress.current;
+      if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) { clearTimeout(pavTimer.current); pavPress.current = null; } // era rolagem
+      return;
+    }
+    const y = e.clientY;
+    setArrPav((a) => {
+      if (!a) return a;
+      const outros = a.ordem.filter((id) => id !== a.id);
+      let alvo = 0;
+      for (const id of outros) { const el = pavRefs.current[id]; if (el) { const r = el.getBoundingClientRect(); if (y > r.top + r.height / 2) alvo++; } }
+      const nova = outros.slice(); nova.splice(alvo, 0, a.id);
+      return { ...a, y, ordem: nova.join() === a.ordem.join() ? a.ordem : nova };
+    });
+  };
+  const aoSoltarPav = async () => {
+    clearTimeout(pavTimer.current); pavPress.current = null;
+    const a = arrPav; if (!a) return;
+    setArrPav(null);
+    setTimeout(() => { pavLongo.current = false; }, 0);
+    if (a.ordem.join() === pavimentos.map((x) => x.id).join()) return;
+    setPavimentos((lista) => a.ordem.map((id, i) => ({ ...lista.find((x) => x.id === id), ordem: i })).filter((x) => x.id)); // já mostra na nova ordem
+    const res = await Promise.all(a.ordem.map((id, i) => supabase.from("pavimentos").update({ ordem: i }).eq("id", id)));
+    if (res.some((r) => r.error)) setAviso({ erro: true, texto: "Não consegui salvar a nova ordem dos pavimentos." });
+    carregarConfig();
+  };
+  useEffect(() => () => clearTimeout(pavTimer.current), []);
+  // Enquanto arrasta, a tela não rola junto com o dedo.
+  useEffect(() => {
+    if (!arrPav) return;
+    const barrar = (ev) => ev.preventDefault();
+    document.addEventListener("touchmove", barrar, { passive: false });
+    return () => document.removeEventListener("touchmove", barrar);
+  }, [!!arrPav]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- Desligar tudo de um pavimento/cômodo: um aparelho por vez, 600 ms entre cada ----
   const desligarTudo = async (itens, nivel) => {
     const alvo = itens.filter((e) => ehDesligavel(e) && estaLigado(e));
@@ -2526,19 +2580,32 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 <button onClick={() => setEditando(false)} style={{ background: C.pasto, color: "#fff", borderRadius: 8, padding: "6px 16px", fontWeight: 700, fontSize: 13 }}>Concluir</button>
               </div>
             ) : (
-              <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1 mb-2 px-1"><Info size={12} /> Segure um aparelho (até vibrar) para arrastar, reposicionar e mudar o tamanho.</div>
+              <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1 mb-2 px-1"><Info size={12} /> Segure um pavimento ou aparelho (até vibrar) para arrastar e mudar a ordem.</div>
             )
           )}
-          {modo === "usar" && status === "ok" && listaPav.map((pav) => (
-            <section key={pav.id} style={{ marginBottom: pavAberto(pav.id) ? 18 : 8 }}>
+          {modo === "usar" && status === "ok" && (arrPav
+            ? [...arrPav.ordem.map((id) => listaPav.find((x) => x.id === id)).filter(Boolean), ...listaPav.filter((x) => !arrPav.ordem.includes(x.id))]
+            : listaPav).map((pav) => {
+            const naMao = arrPav?.id === pav.id;
+            const abertoP = !arrPav && pavAberto(pav.id);
+            return (
+            <React.Fragment key={pav.id}>
+            {naMao && <div style={{ height: arrPav.h, marginBottom: 8, borderRadius: 16, border: `2px dashed ${C.cinzaClaro}`, background: alfa(C.cinzaClaro, 8) }} />}
+            <section ref={(el) => { pavRefs.current[pav.id] = el; }}
+              style={{ marginBottom: abertoP ? 18 : 8,
+                ...(naMao ? { position: "fixed", left: arrPav.left, top: arrPav.y - arrPav.offY, width: arrPav.w, zIndex: 60, background: C.card, borderRadius: 16,
+                  boxShadow: "0 22px 44px -16px rgba(0,0,0,.5)", transform: "scale(1.02)", margin: 0, padding: "2px 0 2px 8px", boxSizing: "border-box" } : {}) }}>
               {/* Mesmo recuo à DIREITA do cabeçalho do cômodo (12 de respiro + 1 de borda): os "Desligar tudo" alinham.
                   À esquerda o pavimento encosta na margem, sobrando espaço para o nome. */}
-              <div style={{ padding: "2px 13px 2px 1px" }}>
-                <CabecalhoNivel nome={pav.nome} grande aberto={pavAberto(pav.id)} onAlternar={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))}
+              <div style={{ padding: "2px 13px 2px 1px", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: arrPav ? "none" : "auto" }}
+                onPointerDown={(ev) => aoPressionarPav(ev, pav.id)} onPointerMove={aoMoverPav} onPointerUp={aoSoltarPav} onPointerCancel={aoSoltarPav}
+                onContextMenu={(ev) => { if (souGestor && pav.id !== "__sem__") { ev.preventDefault(); pegarPav(); } }}
+                onClickCapture={(ev) => { if (pavLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}>
+                <CabecalhoNivel nome={pav.nome} grande aberto={abertoP} onAlternar={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))}
                   itens={pav.comodos.flatMap((c) => c.itens)} onDesligarTudo={(itens) => desligarTudo(itens, pav.nome)}
                   sub={`${pav.comodos.length} ${pav.comodos.length === 1 ? "cômodo" : "cômodos"}`} />
               </div>
-              {pavAberto(pav.id) && (
+              {abertoP && (
                 <div className="flex flex-col" style={{ gap: 10, marginTop: 6 }}>
                   {pav.comodos.map((c) => {
                     const abertoC = abertos.amb === c.id;
@@ -2560,7 +2627,9 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 </div>
               )}
             </section>
-          ))}
+            </React.Fragment>
+            );
+          })}
 
           {aviso && <div style={{ background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, borderRadius: 12, fontSize: 13.5 }} className="p-3 mb-3">{aviso.texto}</div>}
           {modo === "usar" && status === "ok" && listaPav.length > 0 && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Cada aparelho tem os controles do seu tipo.</div>}
