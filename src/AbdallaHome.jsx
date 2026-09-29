@@ -2579,9 +2579,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 <span style={{ flex: 1, fontSize: 12.5, color: C.pastoEsc, fontWeight: 600 }}>Arraste para reordenar · ⤢ muda o tamanho</span>
                 <button onClick={() => setEditando(false)} style={{ background: C.pasto, color: "#fff", borderRadius: 8, padding: "6px 16px", fontWeight: 700, fontSize: 13 }}>Concluir</button>
               </div>
-            ) : (
-              <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="flex items-center gap-1 mb-2 px-1"><Info size={12} /> Segure um pavimento ou aparelho (até vibrar) para arrastar e mudar a ordem.</div>
-            )
+            ) : null
           )}
           {modo === "usar" && status === "ok" && (arrPav
             ? [...arrPav.ordem.map((id) => listaPav.find((x) => x.id === id)).filter(Boolean), ...listaPav.filter((x) => !arrPav.ordem.includes(x.id))]
