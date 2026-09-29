@@ -1601,13 +1601,13 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
   const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 52 : 44 };
   return (
     <div className="flex items-center" style={{ gap: 8 }}>
-      <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex items-center text-left" style={{ ...toque, gap: grande ? 9 : 10 }}>
+      <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex items-center text-left" style={{ ...toque, gap: grande ? 8 : 10 }}>
         {grande ? (
           // Pavimento: selo com ícone que "acende" quando há algo ligado lá dentro.
-          <span aria-hidden="true" style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+          <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
             background: aceso ? alfa(C.ambar, 20) : alfa(C.cinzaClaro, 16), color: aceso ? C.ambar : C.cinzaClaro,
             boxShadow: aceso ? `0 0 0 1px ${alfa(C.ambar, 32)}, 0 6px 18px -6px ${alfa(C.ambar, 70)}` : "none", transition: "background .25s, color .25s, box-shadow .25s" }}>
-            <Layers size={18} strokeWidth={2.1} />
+            <Layers size={16} strokeWidth={2.1} />
           </span>
         ) : (
           // Cômodo: pontinho aceso ao lado do nome.
@@ -1625,13 +1625,13 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
       </button>
       {total > 0 && (
         <button onClick={() => onDesligarTudo(itens)} disabled={!aceso} aria-label={`Desligar tudo em ${nome}`}
-          className="flex items-center" style={{ flexShrink: 0, gap: 4, height: 32, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
+          className="flex items-center" style={{ flexShrink: 0, gap: 4, height: 30, padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
             border: `1px solid ${aceso ? alfa(C.vermelho, 35) : C.linha}`, background: aceso ? C.vermelhoClaro : "transparent", color: aceso ? C.vermelho : C.cinzaClaro,
             cursor: aceso ? "pointer" : "default", transition: "background .2s, color .2s, border-color .2s" }}>
-          <Power size={12.5} strokeWidth={2.4} /> Desligar tudo
+          <Power size={12} strokeWidth={2.4} /> Desligar tudo
         </button>
       )}
-      <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 58, gap: 5 }}>
+      <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 54, gap: 4 }}>
         {total > 0 && (
           <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
             <b style={{ color: aceso ? C.ambarTexto : C.cinza, fontWeight: 800 }}>{on}</b><span style={{ color: C.cinzaClaro, fontWeight: 600 }}>/{total}</span>
@@ -2390,9 +2390,10 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const pegarPav = () => {
     const p = pavPress.current; if (!p || arrPav) return;
     pavPress.current = null; clearTimeout(pavTimer.current); pavLongo.current = true;
-    const r = p.el.getBoundingClientRect();
+    const r = p.el.getBoundingClientRect(); // título
+    const cx = pavRefs.current[p.id]?.getBoundingClientRect() || r; // caixa do pavimento
     try { p.el.setPointerCapture?.(p.pid); } catch { /* ok */ }
-    setArrPav({ id: p.id, ordem: pavimentos.map((x) => x.id), y: p.y, offY: p.y - r.top, left: r.left, w: r.width, h: r.height });
+    setArrPav({ id: p.id, ordem: pavimentos.map((x) => x.id), y: p.y, offY: p.y - cx.top, left: cx.left, w: cx.width, h: r.height + 14 });
   };
   const aoPressionarPav = (e, id) => {
     if (!souGestor || id === "__sem__" || arrPav) return;
@@ -2553,7 +2554,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           </div>
         </header>
 
-        <main className="px-3 pt-3">
+        <main className="pt-3" style={{ paddingLeft: 8, paddingRight: 8 }}>
           {status === "carregando" && <div className="text-center py-16" style={{ color: C.cinza }}>Conectando ao Home Assistant…</div>}
           {status === "erro" && (
             <div style={{ background: C.vermelhoClaro, border: `1px solid ${alfa(C.vermelho, 33)}`, borderRadius: 14 }} className="p-4 mt-4">
@@ -2585,16 +2586,21 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             : listaPav).map((pav) => {
             const naMao = arrPav?.id === pav.id;
             const abertoP = !arrPav && pavAberto(pav.id);
+            const acesoP = contarLigados(pav.comodos.flatMap((c) => c.itens)).on > 0;
             return (
             <React.Fragment key={pav.id}>
-            {naMao && <div style={{ height: arrPav.h, marginBottom: 8, borderRadius: 16, border: `2px dashed ${C.cinzaClaro}`, background: alfa(C.cinzaClaro, 8) }} />}
+            {naMao && <div style={{ height: arrPav.h, marginBottom: 10, borderRadius: 22, border: `2px dashed ${C.cinzaClaro}`, background: alfa(C.cinzaClaro, 8) }} />}
             <section ref={(el) => { pavRefs.current[pav.id] = el; }}
-              style={{ marginBottom: abertoP ? 18 : 8,
-                ...(naMao ? { position: "fixed", left: arrPav.left, top: arrPav.y - arrPav.offY, width: arrPav.w, zIndex: 60, background: C.card, borderRadius: 16,
-                  boxShadow: "0 22px 44px -16px rgba(0,0,0,.5)", transform: "scale(1.02)", margin: 0, padding: "2px 0 2px 8px", boxSizing: "border-box" } : {}) }}>
+              // Caixa do pavimento: fecha toda a área do nível (título + cômodos) com borda e um fundo
+              // um tom diferente da página. Com algo ligado, a borda fica âmbar.
+              style={{ marginBottom: 10, padding: 6, borderRadius: 22, boxSizing: "border-box",
+                border: `1px solid ${acesoP ? alfa(C.ambar, 35) : C.linha}`,
+                background: `color-mix(in srgb, ${C.card} 55%, ${C.bg})`, transition: "border-color .25s",
+                ...(naMao ? { position: "fixed", left: arrPav.left, top: arrPav.y - arrPav.offY, width: arrPav.w, zIndex: 60, margin: 0,
+                  boxShadow: "0 22px 44px -16px rgba(0,0,0,.5)", transform: "scale(1.02)" } : {}) }}>
               {/* Mesmo recuo à DIREITA do cabeçalho do cômodo (12 de respiro + 1 de borda): os "Desligar tudo" alinham.
-                  À esquerda o pavimento encosta na margem, sobrando espaço para o nome. */}
-              <div style={{ padding: "2px 13px 2px 1px", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: arrPav ? "none" : "auto" }}
+                  Aqui o recuo conta a partir da borda interna da caixa do pavimento. */}
+              <div style={{ padding: "0 13px 0 3px", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: arrPav ? "none" : "auto" }}
                 onPointerDown={(ev) => aoPressionarPav(ev, pav.id)} onPointerMove={aoMoverPav} onPointerUp={aoSoltarPav} onPointerCancel={aoSoltarPav}
                 onContextMenu={(ev) => { if (souGestor && pav.id !== "__sem__") { ev.preventDefault(); pegarPav(); } }}
                 onClickCapture={(ev) => { if (pavLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}>
@@ -2603,7 +2609,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                   sub={`${pav.comodos.length} ${pav.comodos.length === 1 ? "cômodo" : "cômodos"}`} />
               </div>
               {abertoP && (
-                <div className="flex flex-col" style={{ gap: 10, marginTop: 6 }}>
+                <div className="flex flex-col" style={{ gap: 8, marginTop: 4 }}>
                   {pav.comodos.map((c) => {
                     const abertoC = abertos.amb === c.id;
                     const acesoC = contarLigados(c.itens).on > 0; // algo ligado: a caixa ganha um tom âmbar
