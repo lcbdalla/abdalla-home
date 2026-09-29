@@ -2575,8 +2575,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           )}
           {modo === "usar" && status === "ok" && souGestor && listaPav.length > 0 && (
             editando ? (
-              <div className="flex items-center gap-2 mb-3" style={{ background: C.pastoClaro, borderRadius: 10, padding: "8px 10px", position: "sticky", top: 6, zIndex: 20 }}>
-                <span style={{ flex: 1, fontSize: 12.5, color: C.pastoEsc, fontWeight: 600 }}>Arraste para reordenar · ⤢ muda o tamanho</span>
+              <div className="flex items-center justify-end mb-3" style={{ position: "sticky", top: 6, zIndex: 20 }}>
                 <button onClick={() => setEditando(false)} style={{ background: C.pasto, color: "#fff", borderRadius: 8, padding: "6px 16px", fontWeight: 700, fontSize: 13 }}>Concluir</button>
               </div>
             ) : null
@@ -2630,7 +2629,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           })}
 
           {aviso && <div style={{ background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, borderRadius: 12, fontSize: 13.5 }} className="p-3 mb-3">{aviso.texto}</div>}
-          {modo === "usar" && status === "ok" && listaPav.length > 0 && <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="text-center mt-2 mb-4 flex items-center justify-center gap-1"><Info size={12} /> Cada aparelho tem os controles do seu tipo.</div>}
         </main>
       </div>
     </div>
