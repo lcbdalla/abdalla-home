@@ -10,8 +10,13 @@
   --c-terra: #33302a; --c-cinza: #726b5e; --c-cinzaClaro: #a49c8c;
   --c-ambar: #c8862a; --c-ambarClaro: #fbf0dc; --c-vermelho: #b34a3a; --c-vermelhoClaro: #f7e6e2;
   --c-ambarTexto: #8f5c10; /* âmbar escurecido: legível como texto sobre o fundo claro */
-  --c-cabecalho: #1f5c39;
-  --c-nivel: #fbf9f4; --c-nivelBorda: #e6dfcd; /* caixa do pavimento no Controle */
+  /* Claro no estilo do app Vitá (lá em turquesa, aqui no verde do rancho): cabeçalho em degradê,
+     fundo com um véu verde no alto, pavimento em degradê areia → verde e sombras coloridas. */
+  --c-cabecalho: linear-gradient(160deg, #1f5c39 0%, #2f7d4f 62%, #4f9f6c 100%);
+  --c-tela: radial-gradient(1000px 600px at 10% -10%, #cde5d4 0%, rgba(205, 229, 212, 0) 70%), #f6f3ea;
+  --c-nivel: linear-gradient(160deg, #fdfbf5 0%, #e4f1e8 48%, #c2e0cc 100%); --c-nivelBorda: rgba(47, 125, 79, 0.28);
+  --c-nivelSombra: 0 16px 36px -24px rgba(31, 92, 57, 0.55);
+  --c-comodoSombra: 0 10px 24px -20px rgba(31, 92, 57, 0.5);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -27,6 +32,7 @@
   --c-cabecalho: linear-gradient(160deg, #0e1a12 0%, #0c4424 58%, #00843d 100%);
   /* Caixa do pavimento: degradê verde bem escuro sobre o fundo preto. */
   --c-nivel: linear-gradient(160deg, #09130d 0%, #0b1f13 55%, #0e2b1a 100%); --c-nivelBorda: #1c3826;
+  --c-tela: #050706; --c-nivelSombra: none; --c-comodoSombra: none;
 }
 
 /* Reset minimo. O layout/cores do app vem de estilos inline (paleta acima). */

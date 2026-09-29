@@ -22,7 +22,8 @@ const C = {
   terra: "var(--c-terra,#33302a)", cinza: "var(--c-cinza,#726b5e)", cinzaClaro: "var(--c-cinzaClaro,#a49c8c)",
   ambar: "var(--c-ambar,#c8862a)", ambarClaro: "var(--c-ambarClaro,#fbf0dc)", vermelho: "var(--c-vermelho,#b34a3a)", vermelhoClaro: "var(--c-vermelhoClaro,#f7e6e2)",
   ambarTexto: "var(--c-ambarTexto,#8f5c10)", cabecalho: "var(--c-cabecalho,#1f5c39)",
-  nivel: "var(--c-nivel,#fbf9f4)", nivelBorda: "var(--c-nivelBorda,#e6dfcd)",
+  nivel: "var(--c-nivel,#fbf9f4)", nivelBorda: "var(--c-nivelBorda,#e6dfcd)", tela: "var(--c-tela,#f6f3ea)",
+  nivelSombra: "var(--c-nivelSombra,none)", comodoSombra: "var(--c-comodoSombra,none)",
 };
 const alfa = (cor, pct) => `color-mix(in srgb, ${cor} ${pct}%, transparent)`;
 
@@ -688,8 +689,8 @@ export default function App() {
   ];
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
-      <div className="mx-auto" style={{ maxWidth: 460, position: "relative", minHeight: "100vh", paddingBottom: 88, background: C.bg }}>
+    <div style={{ background: C.tela, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
+      <div className="mx-auto" style={{ maxWidth: 460, position: "relative", minHeight: "100vh", paddingBottom: 88 }}>
 
         <header style={{ background: C.cabecalho, color: "#fff", padding: "14px 16px 14px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
           <div className="flex items-center justify-between">
@@ -2526,7 +2527,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "hidden", width: "100%" }}>
+    <div style={{ background: C.tela, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "hidden", width: "100%" }}>
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}"}</style>
         <DialogHost />
@@ -2596,7 +2597,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               // um tom diferente da página. Com algo ligado, a borda fica âmbar.
               style={{ marginBottom: 10, padding: 6, borderRadius: 22, boxSizing: "border-box",
                 border: `1px solid ${acesoP ? alfa(C.ambar, 35) : C.nivelBorda}`,
-                background: C.nivel, transition: "border-color .25s",
+                background: C.nivel, boxShadow: C.nivelSombra, transition: "border-color .25s",
                 ...(naMao ? { position: "fixed", left: arrPav.left, top: arrPav.y - arrPav.offY, width: arrPav.w, zIndex: 60, margin: 0,
                   boxShadow: "0 22px 44px -16px rgba(0,0,0,.5)", transform: "scale(1.02)" } : {}) }}>
               {/* Mesmo recuo à DIREITA do cabeçalho do cômodo (12 de respiro + 1 de borda): os "Desligar tudo" alinham.
@@ -2617,7 +2618,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                     return (
                       <div key={c.id} style={{ border: `1px solid ${acesoC ? alfa(C.ambar, 40) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
                         background: acesoC ? `color-mix(in srgb, ${C.ambar} 6%, ${C.card})` : C.card, padding: "6px 12px",
-                        boxShadow: abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : "none", transition: "box-shadow .2s, border-color .2s, background .25s" }}>
+                        boxShadow: abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra, transition: "box-shadow .2s, border-color .2s, background .25s" }}>
                         <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id)}
                           itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} />
                         {abertoC && (
