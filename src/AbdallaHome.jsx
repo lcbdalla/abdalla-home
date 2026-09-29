@@ -22,6 +22,7 @@ const C = {
   terra: "var(--c-terra,#33302a)", cinza: "var(--c-cinza,#726b5e)", cinzaClaro: "var(--c-cinzaClaro,#a49c8c)",
   ambar: "var(--c-ambar,#c8862a)", ambarClaro: "var(--c-ambarClaro,#fbf0dc)", vermelho: "var(--c-vermelho,#b34a3a)", vermelhoClaro: "var(--c-vermelhoClaro,#f7e6e2)",
   ambarTexto: "var(--c-ambarTexto,#8f5c10)", cabecalho: "var(--c-cabecalho,#1f5c39)",
+  nivel: "var(--c-nivel,#fbf9f4)", nivelBorda: "var(--c-nivelBorda,#e6dfcd)",
 };
 const alfa = (cor, pct) => `color-mix(in srgb, ${cor} ${pct}%, transparent)`;
 
@@ -1871,9 +1872,9 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
       style={{ background: ativo ? `color-mix(in srgb, ${v.cor} 10%, ${C.card})` : C.bg, border: `1px solid ${ativo ? alfa(v.cor, 38) : "transparent"}`,
         borderRadius: 16, height: "100%", padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10,
         cursor: cardClick ? "pointer" : "default", transition: "background .25s, border-color .25s" }}>
-      <div className="flex items-center" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ gap: 10, cursor: compactavel && !editando ? "pointer" : "default" }}>
+      <div className="flex items-center" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ gap: 8, cursor: compactavel && !editando ? "pointer" : "default" }}>
         <IconeEquip v={v} disponivel={e.disponivel} />
-        <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}>{e.nome}</div>
+        <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" }}>{e.nome}</div>
         {e.tipo === "persiana" && !compacto && (() => { const st = estadoPersiana(e); return <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: st.cor }}>{st.texto}</span>; })()}
         {compactavel && !grande && !editando && <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: expandido ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />}
       </div>
@@ -2594,8 +2595,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               // Caixa do pavimento: fecha toda a área do nível (título + cômodos) com borda e um fundo
               // um tom diferente da página. Com algo ligado, a borda fica âmbar.
               style={{ marginBottom: 10, padding: 6, borderRadius: 22, boxSizing: "border-box",
-                border: `1px solid ${acesoP ? alfa(C.ambar, 35) : C.linha}`,
-                background: `color-mix(in srgb, ${C.card} 55%, ${C.bg})`, transition: "border-color .25s",
+                border: `1px solid ${acesoP ? alfa(C.ambar, 35) : C.nivelBorda}`,
+                background: C.nivel, transition: "border-color .25s",
                 ...(naMao ? { position: "fixed", left: arrPav.left, top: arrPav.y - arrPav.offY, width: arrPav.w, zIndex: 60, margin: 0,
                   boxShadow: "0 22px 44px -16px rgba(0,0,0,.5)", transform: "scale(1.02)" } : {}) }}>
               {/* Mesmo recuo à DIREITA do cabeçalho do cômodo (12 de respiro + 1 de borda): os "Desligar tudo" alinham.

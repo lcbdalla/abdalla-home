@@ -11,17 +11,22 @@
   --c-ambar: #c8862a; --c-ambarClaro: #fbf0dc; --c-vermelho: #b34a3a; --c-vermelhoClaro: #f7e6e2;
   --c-ambarTexto: #8f5c10; /* âmbar escurecido: legível como texto sobre o fundo claro */
   --c-cabecalho: #1f5c39;
+  --c-nivel: #fbf9f4; --c-nivelBorda: #e6dfcd; /* caixa do pavimento no Controle */
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --c-bg: #15140f; --c-card: #22211b; --c-linha: #38352c;
-  --c-pasto: #43a56a; --c-pastoEsc: #2f7d4f; --c-pastoClaro: #1b3325;
-  --c-lago: #4aa9bd; --c-lagoClaro: #12313a; --c-areia: #2a271e;
-  --c-terra: #efe9db; --c-cinza: #b3ab9b; --c-cinzaClaro: #7a7264;
+  /* Escuro no estilo do app Vitá: fundo preto e superfícies num neutro puxado para o verde
+     (lá é para o turquesa). */
+  --c-bg: #050706; --c-card: #151c17; --c-linha: #243029;
+  --c-pasto: #43a56a; --c-pastoEsc: #2f7d4f; --c-pastoClaro: #16301f;
+  --c-lago: #4aa9bd; --c-lagoClaro: #10292f; --c-areia: #18211b;
+  --c-terra: #e9efea; --c-cinza: #a8b3ab; --c-cinzaClaro: #6d7a71;
   --c-ambar: #e0a24a; --c-ambarClaro: #3a2e1a; --c-vermelho: #d96a5a; --c-vermelhoClaro: #3a201c;
   --c-ambarTexto: #e8b061;
   /* Cabeçalho no escuro: degradê do quase-preto ao verde Heineken (mesma receita do app Vitá, que usa turquesa). */
   --c-cabecalho: linear-gradient(160deg, #0e1a12 0%, #0c4424 58%, #00843d 100%);
+  /* Caixa do pavimento: degradê verde bem escuro sobre o fundo preto. */
+  --c-nivel: linear-gradient(160deg, #09130d 0%, #0b1f13 55%, #0e2b1a 100%); --c-nivelBorda: #1c3826;
 }
 
 /* Reset minimo. O layout/cores do app vem de estilos inline (paleta acima). */
