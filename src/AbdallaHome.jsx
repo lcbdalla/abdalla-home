@@ -672,7 +672,9 @@ export default function App() {
   // App separado de Controle da Casa (mesmo login), aberto por #controle.
   if (rota === "controle") {
     return (eu?.podeControle || eu?.podeGerirControle)
-      ? <ControleApp eu={eu} onVoltar={() => { window.location.hash = ""; }} />
+      ? <ControleApp eu={eu} onVoltar={() => { window.location.hash = ""; }} onSair={sair}
+          onEquipe={souAdmin ? () => { setAba("equipe"); window.location.hash = ""; } : null}
+          onSobre={souAdmin ? () => { setInfoAberto(true); window.location.hash = ""; } : null} />
       : <ControleSemAcesso onVoltar={() => { window.location.hash = ""; }} />;
   }
 
@@ -2189,7 +2191,7 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
   );
 }
 
-function ControleApp({ eu, onVoltar, onSair }) {
+function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [status, setStatus] = useState("carregando"); // carregando | ok | erro
   const [erro, setErro] = useState("");
   // Cards ampliados (ar/persiana). Começa vazio → ao abrir/recarregar o app, todos encolhidos.
@@ -2484,9 +2486,13 @@ function ControleApp({ eu, onVoltar, onSair }) {
             {/* O menu ⋮ só aparece para quem tem a chave "Menu ⋮ do Controle" ligada na Equipe. */}
             {eu?.podeMenuControle && (
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
+                // Mesmos itens do ⋮ das tarefas (com "Tarefas" no lugar de "Controle da casa") + Configuração.
                 ...(souGestor && modo === "usar" ? [{ key: "config", icon: Wrench, cor: C.pasto, txt: "Configuração", on: () => setModo("gerenciar") }] : []),
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
+                ...(onEquipe ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: onEquipe }] : []),
                 { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: () => { const n = tema === "dark" ? "light" : "dark"; aplicarTema(n); setTema(n); } },
+                ...(onVoltar ? [{ key: "tarefas", icon: ListTodo, cor: C.lago, txt: "Tarefas", on: onVoltar }] : []),
+                ...(onSobre ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: onSobre }] : []),
                 ...(onSair ? [{ key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) onSair(); } }] : []),
               ]} />
             )}
