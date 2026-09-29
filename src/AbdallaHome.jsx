@@ -22,7 +22,7 @@ const C = {
   terra: "var(--c-terra,#33302a)", cinza: "var(--c-cinza,#726b5e)", cinzaClaro: "var(--c-cinzaClaro,#a49c8c)",
   ambar: "var(--c-ambar,#c8862a)", ambarClaro: "var(--c-ambarClaro,#fbf0dc)", vermelho: "var(--c-vermelho,#b34a3a)", vermelhoClaro: "var(--c-vermelhoClaro,#f7e6e2)",
   ambarTexto: "var(--c-ambarTexto,#8f5c10)", cabecalho: "var(--c-cabecalho,#1f5c39)",
-  nivel: "var(--c-nivel,#fbf9f4)", nivelBorda: "var(--c-nivelBorda,#e6dfcd)", tela: "var(--c-tela,#f6f3ea)",
+  nivel: "var(--c-nivel,#fbf9f4)", nivelBorda: "var(--c-nivelBorda,#e6dfcd)", tela: "var(--c-tela,#f6f3ea)", aceso: "var(--c-aceso,#f2ae2e)",
   nivelSombra: "var(--c-nivelSombra,none)", comodoSombra: "var(--c-comodoSombra,none)",
 };
 const alfa = (cor, pct) => `color-mix(in srgb, ${cor} ${pct}%, transparent)`;
@@ -2616,9 +2616,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                     const abertoC = abertos.amb === c.id;
                     const acesoC = contarLigados(c.itens).on > 0; // algo ligado: a caixa ganha um tom âmbar
                     return (
-                      <div key={c.id} style={{ border: `1px solid ${acesoC ? alfa(C.ambar, 40) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
-                        background: acesoC ? `color-mix(in srgb, ${C.ambar} 6%, ${C.card})` : C.card, padding: "6px 12px",
-                        boxShadow: abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra, transition: "box-shadow .2s, border-color .2s, background .25s" }}>
+                      // Cômodo com algo ligado "acende": fundo âmbar em degradê, borda mais forte e um brilho em volta.
+                      <div key={c.id} style={{ border: `1px solid ${acesoC ? alfa(C.aceso, 75) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
+                        background: acesoC ? `linear-gradient(160deg, color-mix(in srgb, ${C.aceso} 26%, ${C.card}) 0%, color-mix(in srgb, ${C.aceso} 9%, ${C.card}) 100%)` : C.card, padding: "6px 12px",
+                        boxShadow: acesoC ? `0 0 0 3px ${alfa(C.aceso, 18)}, 0 12px 30px -12px ${alfa(C.aceso, 70)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
+                        transition: "box-shadow .25s, border-color .25s, background .25s" }}>
                         <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id)}
                           itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} />
                         {abertoC && (
