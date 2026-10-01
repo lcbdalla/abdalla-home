@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
+import CATALOGO_LAB from "./catalogoLab.json"; // aparelhos do painel LAB do Home Assistant (lista revisada)
 
 /* ============================================================
    ABDALLA HOME — Rancho Abdalla
@@ -1887,39 +1888,56 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
 }
 
 /* ---- Modo GERENCIAR (só gestor) ---- */
-function SeletorAparelho({ ents, areas, usados, onEscolher, onFechar }) {
+// Busca de aparelho novo: só os equipamentos da lista do painel LAB (src/catalogoLab.json),
+// agrupados pelo cômodo sugerido — o grupo do cômodo que está sendo montado vem primeiro.
+// Cada item já traz o nome e o tipo de controle da lista.
+function SeletorAparelho({ ents, usados, comodo, onEscolher, onFechar }) {
   const [busca, setBusca] = useState("");
-  const lista = Object.entries(ents)
-    .map(([id, v]) => ({ id, dom: id.split(".")[0], nome: v.attributes?.friendly_name || id, area: (areas && areas[id]) || "" }))
-    .filter((x) => HA_ESCOLHIVEIS.includes(x.dom) && !usados.has(x.id))
-    .filter((x) => (x.nome + " " + x.id + " " + x.area).toLowerCase().includes(busca.toLowerCase()))
-    // Ordena por área (ambiente do HA) e depois por nome, para facilitar achar.
-    .sort((a, b) => (a.area || "~").localeCompare(b.area || "~") || a.nome.localeCompare(b.nome))
-    .slice(0, 80);
+  const q = norm(busca);
+  const aqui = norm(comodo || "");
+  const itens = CATALOGO_LAB
+    .filter((x) => !usados.has(x.id))
+    .filter((x) => !q || norm(`${x.nome} ${x.id} ${x.ambiente} ${x.grupo}`).includes(q));
+  const grupos = {};
+  itens.forEach((x) => { (grupos[x.ambiente || ""] ||= []).push(x); });
+  const nomes = Object.keys(grupos).sort((a, b) =>
+    (norm(b) === aqui) - (norm(a) === aqui) || (a === "") - (b === "") || a.localeCompare(b, "pt-BR"));
+  const restam = CATALOGO_LAB.filter((x) => !usados.has(x.id)).length;
   return (
     <div style={{ border: `1px dashed ${LAGO}66`, borderRadius: 12, background: C.lagoClaro, padding: 10, marginTop: 8 }}>
       <div className="flex items-center gap-2 mb-2">
         <Search size={16} style={{ color: C.cinza }} />
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar por nome ou ambiente…" style={{ ...inpControle, background: C.card }} autoFocus />
-        <button onClick={onFechar} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><X size={16} /></button>
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar por nome ou cômodo…" style={{ ...inpControle, background: C.card }} autoFocus />
+        <button onClick={onFechar} aria-label="Fechar" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><X size={16} /></button>
       </div>
-      {Object.keys(ents).length === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Conecte-se ao Home Assistant (↻ no topo) para listar os aparelhos.</div>}
-      {lista.length === 0 && Object.keys(ents).length > 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Nenhum aparelho novo encontrado.</div>}
-      {areas === null && Object.keys(ents).length > 0 && <div style={{ color: C.cinzaClaro, fontSize: 11.5 }} className="pb-2 text-center">Carregando os ambientes do Home Assistant…</div>}
-      <div style={{ maxHeight: 300, overflowY: "auto" }}>
-        {lista.map((x) => (
-          <button key={x.id} onClick={() => onEscolher(x.id)} style={{ width: "100%", textAlign: "left", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: "9px 11px", marginBottom: 6, cursor: "pointer" }}>
-            <div className="flex items-center gap-2">
-              <Plus size={15} style={{ color: C.pasto, flexShrink: 0 }} />
-              <div className="min-w-0" style={{ flex: 1 }}>
-                <div className="flex items-center gap-2">
-                  <span className="truncate" style={{ fontWeight: 600, fontSize: 14, color: C.terra, flex: 1 }}>{x.nome}</span>
-                  {x.area && <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, background: C.lagoClaro, color: LAGO_ESC, border: `1px solid ${LAGO}33`, borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}><MapPin size={11} />{x.area}</span>}
-                </div>
-                <div className="truncate" style={{ fontSize: 11, color: C.cinzaClaro }}>{x.id} · sugerido: {CTRL_TIPO_NOME[tipoSugerido(x.id)]}</div>
-              </div>
+      {restam === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Todos os aparelhos da lista já foram adicionados.</div>}
+      {restam > 0 && itens.length === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Nada encontrado com “{busca}”.</div>}
+      <div style={{ maxHeight: 380, overflowY: "auto" }}>
+        {nomes.map((nomeG) => (
+          <div key={nomeG || "_"} className="mb-2">
+            <div className="flex items-center gap-2" style={{ position: "sticky", top: 0, zIndex: 1, background: C.lagoClaro, padding: "4px 2px", fontSize: 12.5, fontWeight: 800, color: LAGO_ESC }}>
+              <MapPin size={12} /><span className="flex-1 truncate">{nomeG || "Sem cômodo definido"}</span>
+              <span style={{ fontWeight: 700, color: C.cinza }}>{grupos[nomeG].length}</span>
             </div>
-          </button>
+            {grupos[nomeG].map((x) => {
+              const live = ents[x.id];
+              const ind = live && ["unavailable", "unknown"].includes(live.state);
+              return (
+                <button key={x.id} onClick={() => onEscolher(x)} style={{ width: "100%", textAlign: "left", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: "8px 11px", marginBottom: 6, cursor: "pointer" }}>
+                  <div className="flex items-center gap-2">
+                    <Plus size={15} style={{ color: C.pasto, flexShrink: 0 }} />
+                    <div className="min-w-0" style={{ flex: 1 }}>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate" style={{ fontWeight: 600, fontSize: 14, color: C.terra, flex: 1 }}>{x.nome}</span>
+                        <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.cinza, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "1px 8px" }}>{x.grupo}</span>
+                      </div>
+                      <div className="truncate" style={{ fontSize: 11, color: C.cinzaClaro }}>{CTRL_TIPO_NOME[x.tipo] || x.tipo}{ind ? " · sem estado no HA" : ""} · {x.id}</div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         ))}
       </div>
     </div>
@@ -2005,7 +2023,7 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
         })}
 
         {abrindoSel
-          ? <SeletorAparelho ents={ents} areas={areas} usados={usados} onEscolher={(entityId) => { onAddEquip(amb.id, entityId); }} onFechar={() => setAbrindoSel(false)} />
+          ? <SeletorAparelho ents={ents} usados={usados} comodo={amb.nome} onEscolher={(x) => { onAddEquip(amb.id, x.id, { nome: x.nome, tipo: x.tipo }); }} onFechar={() => setAbrindoSel(false)} />
           : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 2, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${alfa(C.pasto, 20)}`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Adicionar aparelho</button>}
       </div>)}
     </div>
@@ -2487,7 +2505,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     onExcluirAmb: (id) => salvar(supabase.from("ambientes").delete().eq("id", id), "Cômodo excluído"),
     onMoverAmb: (id, pavimentoId) => salvar(supabase.from("ambientes").update({ pavimento_id: pavimentoId }).eq("id", id)),
     onVisitanteAmb: (id, liberar) => salvar(supabase.from("ambientes").update({ visitante: liberar }).eq("id", id), liberar ? "Liberado para visitantes" : "Escondido dos visitantes"),
-    onAddEquip: (ambienteId, entityId) => salvar(supabase.from("controle_equipamentos").insert({ ambiente_id: ambienteId, entity_id: entityId, tipo: tipoSugerido(entityId), ordem: equipamentos.filter((q) => q.ambiente_id === ambienteId).length }), "Aparelho adicionado"),
+    onAddEquip: (ambienteId, entityId, sug) => salvar(supabase.from("controle_equipamentos").insert({ ambiente_id: ambienteId, entity_id: entityId, tipo: sug?.tipo || tipoSugerido(entityId), nome: sug?.nome || null, ordem: equipamentos.filter((q) => q.ambiente_id === ambienteId).length }), "Aparelho adicionado"),
     onTipoEquip: (id, tipo) => salvar(supabase.from("controle_equipamentos").update({ tipo }).eq("id", id)),
     onNomeEquip: (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id)),
     onDelEquip: (id) => salvar(supabase.from("controle_equipamentos").delete().eq("id", id)),
