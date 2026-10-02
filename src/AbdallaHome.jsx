@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -1862,9 +1862,20 @@ function CtrlAr({ e, enviar }) {
     </div>
   );
 }
+// Estado de um aparelho de mídia, usado no topo do cartão (texto + chave) e nos controles.
+function estadoMidia(e) {
+  const r = midiaRecursos(e), ind = !e.disponivel;
+  // Sem liga/desliga (streamer): considerado sempre "ativo" para mostrar os controles.
+  const ligado = r.liga ? (!["off", "idle", "standby"].includes(e.state) && !ind) : !ind;
+  const texto = ind ? "Indisponível" : r.liga ? (ligado ? "Ligado" : "Desligado") : haEstado(e.state, e.attributes).texto;
+  return { r, ind, ligado, texto };
+}
+
 // Barra de volume: arrasta e vê o número mudar; o comando (volume_set) vai uma vez só, ao soltar.
+// O alto-falante no começo liga/desliga o mudo: colorido = com som, cinza = mudo.
 function BarraVolume({ e, enviar }) {
   const atual = typeof e.attributes?.volume_level === "number" ? Math.round(e.attributes.volume_level * 100) : 0;
+  const mudo = e.attributes?.is_volume_muted === true;
   const [local, setLocal] = useState(null); // valor enquanto o dedo está na barra
   const ref = useRef(null), enviarRef = useRef(enviar);
   enviarRef.current = enviar;
@@ -1876,50 +1887,44 @@ function BarraVolume({ e, enviar }) {
     return () => el.removeEventListener("change", soltar);
   }, [e.id]);
   const v = local ?? atual;
+  const cor = mudo ? C.cinzaClaro : LAGO;
+  const Icone = mudo ? VolumeX : Volume2;
   return (
     <div className="flex items-center gap-2" onPointerDown={(ev) => ev.stopPropagation()}>
-      <Volume2 size={18} style={{ color: LAGO, flexShrink: 0 }} />
-      <input ref={ref} type="range" min="0" max="100" step="1" value={v} aria-label="Volume"
+      <button onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} aria-label={mudo ? "Tirar do mudo" : "Deixar no mudo"} aria-pressed={mudo}
+        style={{ width: 46, height: 46, borderRadius: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer",
+          background: mudo ? alfa(C.cinzaClaro, 18) : alfa(LAGO, 16), color: cor, transition: "background .2s, color .2s" }}>
+        <Icone size={26} strokeWidth={2.2} />
+      </button>
+      <input ref={ref} type="range" min="0" max="100" step="1" value={v} aria-label="Volume" className="ah-vol"
         onInput={(ev) => setLocal(Number(ev.target.value))} onChange={(ev) => setLocal(Number(ev.target.value))}
-        style={{ flex: 1, minWidth: 0, height: 28, accentColor: LAGO, cursor: "pointer" }} />
-      <span style={{ width: 40, textAlign: "right", fontSize: 13.5, fontWeight: 800, color: local != null ? LAGO : C.terra, fontVariantNumeric: "tabular-nums" }}>{v}%</span>
+        style={{ flex: 1, minWidth: 0, "--cor": cor, "--trilha": `linear-gradient(to right, ${cor} ${v}%, ${alfa(C.cinzaClaro, 30)} ${v}%)` }} />
+      <span style={{ width: 46, textAlign: "right", fontSize: 16, fontWeight: 800, color: mudo ? C.cinzaClaro : local != null ? LAGO : C.terra, fontVariantNumeric: "tabular-nums" }}>{v}%</span>
     </div>
   );
 }
 
 function CtrlTv({ e, enviar }) {
-  const ind = !e.disponivel;
-  const r = midiaRecursos(e);
+  const { r, ligado } = estadoMidia(e);
   const a = e.attributes || {};
-  // Sem liga/desliga (streamer): os controles ficam sempre à mostra.
-  const ligado = r.liga ? (!["off", "idle", "standby"].includes(e.state) && !ind) : !ind;
   const mudo = a.is_volume_muted === true;
-  const vol = typeof a.volume_level === "number" ? Math.round(a.volume_level * 100) : null;
-  const estado = ind ? "Indisponível" : r.liga ? (ligado ? "Ligado" : "Desligado") : haEstado(e.state, a).texto;
+  if (!ligado) return null; // o estado e a chave liga/desliga ficam no topo do cartão
   return (
     <div>
-      <div className="flex items-center gap-3 mb-3">
-        <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (ligado ? LAGO : C.cinza), fontWeight: 600 }}>
-          {estado}{ligado && vol != null && !r.volSet && <span style={{ color: C.cinzaClaro }}> · volume {vol}%</span>}{ligado && r.fonte && a.source && <span style={{ color: C.cinzaClaro }}> · {nomeFonte(e, a.source)}</span>}
+      {r.volSet && <BarraVolume e={e} enviar={enviar} />}
+      {(!r.volSet || r.play) && (
+        <div className="flex gap-2" style={{ marginTop: r.volSet ? 10 : 0 }}>
+          {!r.volSet && <BotaoAcao label="Vol −" cor={C.cinza} onClick={() => enviar("media_player", "volume_down", e.id)} />}
+          {!r.volSet && <BotaoAcao label="Vol +" cor={C.pasto} onClick={() => enviar("media_player", "volume_up", e.id)} />}
+          {!r.volSet && <BotaoAcao label={mudo ? "Som" : "Mudo"} cor={C.ambar} onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} />}
+          {r.play && <BotaoAcao label="Play/Pausa" cor={LAGO} onClick={() => enviar("media_player", "media_play_pause", e.id)} />}
         </div>
-        {r.liga && <PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={() => enviar("media_player", ligado ? "turn_off" : "turn_on", e.id)} />}
-      </div>
-      {ligado && (
-        <>
-          {r.volSet && <div className="mb-2"><BarraVolume e={e} enviar={enviar} /></div>}
-          <div className="flex gap-2">
-            {!r.volSet && <BotaoAcao label="Vol −" cor={C.cinza} onClick={() => enviar("media_player", "volume_down", e.id)} />}
-            {!r.volSet && <BotaoAcao label="Vol +" cor={C.pasto} onClick={() => enviar("media_player", "volume_up", e.id)} />}
-            <BotaoAcao label={mudo ? "Som" : "Mudo"} cor={C.ambar} onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} />
-            {r.play && <BotaoAcao label="Play/Pausa" cor={LAGO} onClick={() => enviar("media_player", "media_play_pause", e.id)} />}
-          </div>
-          {r.fonte && (
-            <div className="mt-3">
-              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Fonte</div>
-              <div className="flex flex-wrap gap-2">{r.fontes.map((f) => <CtrlChip key={f} ativo={a.source === f} cor={LAGO} onClick={() => enviar("media_player", "select_source", e.id, { source: f })}>{nomeFonte(e, f)}</CtrlChip>)}</div>
-            </div>
-          )}
-        </>
+      )}
+      {r.fonte && (
+        <div className="mt-3">
+          <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Fonte</div>
+          <div className="flex flex-wrap gap-2">{r.fontes.map((f) => <CtrlChip key={f} ativo={a.source === f} cor={LAGO} onClick={() => enviar("media_player", "select_source", e.id, { source: f })}>{nomeFonte(e, f)}</CtrlChip>)}</div>
+        </div>
       )}
     </div>
   );
@@ -2016,6 +2021,15 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
       <div className="flex items-center" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ gap: 8, cursor: compactavel && !editando ? "pointer" : "default" }}>
         <IconeEquip v={v} disponivel={e.disponivel} />
         <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" }}>{e.nome}</div>
+        {e.tipo === "tv" && (() => {
+          const m = estadoMidia(e);
+          return (<>
+            <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: m.ind ? C.cinzaClaro : m.ligado ? LAGO : C.cinza }}>{m.texto}</span>
+            {m.r.liga && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
+              <PillToggle on={m.ligado} cor={LAGO} disabled={m.ind} onClick={() => enviar("media_player", m.ligado ? "turn_off" : "turn_on", e.id)} />
+            </span>}
+          </>);
+        })()}
         {e.tipo === "persiana" && !compacto && (() => { const st = estadoPersiana(e); return <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: st.cor }}>{st.texto}</span>; })()}
         {compactavel && !grande && !editando && <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: expandido ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />}
       </div>

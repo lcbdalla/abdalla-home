@@ -50,6 +50,13 @@ body,
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Barra de volume do Controle: trilho grosso preenchido até o volume (--trilha) e bolinha grande. */
+.ah-vol { -webkit-appearance: none; appearance: none; height: 40px; background: transparent; cursor: pointer; }
+.ah-vol::-webkit-slider-runnable-track { height: 12px; border-radius: 999px; background: var(--trilha); }
+.ah-vol::-moz-range-track { height: 12px; border-radius: 999px; background: var(--trilha); }
+.ah-vol::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -8px; border-radius: 50%; background: #fff; border: 3px solid var(--cor); box-shadow: 0 2px 6px rgba(0, 0, 0, .28); }
+.ah-vol::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--cor); box-shadow: 0 2px 6px rgba(0, 0, 0, .28); }
+
 /* Quem pede menos movimento no celular: sem animações nem transições. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }
