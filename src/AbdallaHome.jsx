@@ -1908,14 +1908,14 @@ function BarraVolume({ e, enviar }) {
   );
 }
 
-// Controle do streamer (Som Térreo / Audiocast) que está tocando nesta zona.
+// Controle do streamer (Som Térreo / Audiocast) que está tocando nesta zona. Sem escolha de
+// fonte do streamer: fica sempre no Wifi (Bluetooth/USB não alcançam de onde se usa o app).
 function PainelStreamer({ s: st, enviar }) {
   const a = st.attributes || {};
   const f = Number(a.supported_features) || 0;
   const tem = (b) => f === 0 || (f & b) !== 0;
   const tocando = st.state === "playing";
   const faixa = [a.media_title, a.media_artist].filter(Boolean).join(" · ");
-  const fontes = Array.isArray(a.source_list) ? a.source_list : [];
   const bt = (on, Ic, rot, grande) => (
     <button onClick={on} disabled={!st.disponivel} aria-label={rot} style={{ width: grande ? 52 : 42, height: grande ? 52 : 42, borderRadius: 999, border: "none", flexShrink: 0,
       display: "flex", alignItems: "center", justifyContent: "center", cursor: st.disponivel ? "pointer" : "default", opacity: st.disponivel ? 1 : 0.45,
@@ -1936,11 +1936,6 @@ function PainelStreamer({ s: st, enviar }) {
           {tem(16) && bt(() => enviar("media_player", "media_previous_track", st.id), SkipBack, "Faixa anterior")}
           {tem(1 | 16384) && bt(() => enviar("media_player", "media_play_pause", st.id), tocando ? Pause : Play, tocando ? "Pausar" : "Tocar", true)}
           {tem(32) && bt(() => enviar("media_player", "media_next_track", st.id), SkipForward, "Próxima faixa")}
-        </div>
-      )}
-      {!st.semSinal && (f & 2048) !== 0 && fontes.length > 0 && (
-        <div className="flex flex-wrap gap-2" style={{ marginTop: 10 }}>
-          {fontes.map((x) => <CtrlChip key={x} ativo={a.source === x} cor={LAGO} onClick={() => enviar("media_player", "select_source", st.id, { source: x })}>{x}</CtrlChip>)}
         </div>
       )}
     </div>
