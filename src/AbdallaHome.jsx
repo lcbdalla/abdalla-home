@@ -1910,12 +1910,27 @@ function BarraVolume({ e, enviar }) {
 
 // Controle do streamer (Som Térreo / Audiocast) que está tocando nesta zona. Sem escolha de
 // fonte do streamer: fica sempre no Wifi (Bluetooth/USB não alcançam de onde se usa o app).
+// Abre o app do Spotify (para escolher a música e o streamer em "Dispositivos").
+// Android: intent com volta para o site se o app não estiver instalado. iPhone: esquema spotify:.
+function abrirSpotify() {
+  const ua = navigator.userAgent;
+  if (/android/i.test(ua)) { window.location.href = "intent://open.spotify.com/#Intent;scheme=https;package=com.spotify.music;S.browser_fallback_url=https%3A%2F%2Fopen.spotify.com%2F;end"; return; }
+  if (/iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) {
+    window.location.href = "spotify:";
+    setTimeout(() => { if (document.visibilityState === "visible") window.open("https://open.spotify.com/", "_blank"); }, 1500); // sem o app: abre o site
+    return;
+  }
+  window.open("https://open.spotify.com/", "_blank");
+}
+
 function PainelStreamer({ s: st, enviar }) {
   const a = st.attributes || {};
   const f = Number(a.supported_features) || 0;
   const tem = (b) => f === 0 || (f & b) !== 0;
   const tocando = st.state === "playing";
   const faixa = [a.media_title, a.media_artist].filter(Boolean).join(" · ");
+  // Nada carregado no streamer: o Play não teria o que tocar. Aí ele abre o Spotify.
+  const semMusica = !a.media_title && !["playing", "paused"].includes(st.state);
   const bt = (on, Ic, rot, grande) => (
     <button onClick={on} disabled={!st.disponivel} aria-label={rot} style={{ width: grande ? 52 : 42, height: grande ? 52 : 42, borderRadius: 999, border: "none", flexShrink: 0,
       display: "flex", alignItems: "center", justifyContent: "center", cursor: st.disponivel ? "pointer" : "default", opacity: st.disponivel ? 1 : 0.45,
@@ -1927,14 +1942,14 @@ function PainelStreamer({ s: st, enviar }) {
         <Radio size={16} style={{ color: LAGO, flexShrink: 0 }} />
         <span className="flex-1 truncate" style={{ fontWeight: 700, fontSize: 13.5, color: C.terra }}>{st.nome}</span>
         <span style={{ fontSize: 12.5, fontWeight: 700, color: st.disponivel ? (tocando ? LAGO : C.cinza) : C.cinzaClaro }}>
-          {st.semSinal ? "Sem sinal do streamer" : st.disponivel ? haEstado(st.state, a).texto : "Indisponível"}
+          {st.semSinal ? "Sem sinal do streamer" : !st.disponivel ? "Indisponível" : semMusica ? "Nada tocando" : haEstado(st.state, a).texto}
         </span>
       </div>
       {faixa && <div className="truncate" style={{ fontSize: 12.5, color: C.cinza, marginTop: 4 }}>{faixa}</div>}
       {!st.semSinal && (
         <div className="flex items-center justify-center gap-3" style={{ marginTop: 10 }}>
           {tem(16) && bt(() => enviar("media_player", "media_previous_track", st.id), SkipBack, "Faixa anterior")}
-          {tem(1 | 16384) && bt(() => enviar("media_player", "media_play_pause", st.id), tocando ? Pause : Play, tocando ? "Pausar" : "Tocar", true)}
+          {tem(1 | 16384) && bt(() => (semMusica ? abrirSpotify() : enviar("media_player", "media_play_pause", st.id)), tocando ? Pause : Play, semMusica ? "Abrir o Spotify" : tocando ? "Pausar" : "Tocar", true)}
           {tem(32) && bt(() => enviar("media_player", "media_next_track", st.id), SkipForward, "Próxima faixa")}
         </div>
       )}
