@@ -1765,7 +1765,7 @@ const musicaDe = (itens, enviar) => {
 const ALEXAS = { "alexa.quarto_leo_e_pri": ["Quarto Leo e Pri Echo"] }; // nome(s) da Alexa no Spotify
 // Grupo de música da Alexa com outra Alexa (ex.: quarto + banheiro). O Spotify toca num aparelho
 // por vez; o grupo aparece para ele como mais um. A chave do cartão alterna entre a Alexa e o grupo.
-const ALEXA_GRUPO = { "alexa.quarto_leo_e_pri": { rotulo: "Tocar também no banheiro", nomes: ["Quarto e Banheiro Leo e Pri"] } };
+const ALEXA_GRUPO = { "alexa.quarto_leo_e_pri": { rotulo: "Tocar também no banheiro", nomes: ["Som quarto e banheiro Leo e Pri", "Quarto e Banheiro Leo e Pri"] } };
 function acharConnect(sp, nomes) {
   const lista = sp?.attributes?.source_list || [];
   const alvo = (nomes || []).map((n) => norm(n));
