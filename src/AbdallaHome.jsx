@@ -1709,45 +1709,34 @@ const servicoDesligar = (e) => (e.tipo === "ar" ? ["climate", "turn_off"]
     : ["homeassistant", "turn_off"]);
 const contarLigados = (itens) => { const d = itens.filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
 
-// Cabeçalho de pavimento/cômodo: nome · [Desligar tudo] · ligados/total ⌄ (tocar abre/fecha).
-// A coluna da direita tem largura fixa: o botão "Desligar tudo" fica na mesma linha vertical
-// em todos os níveis, com qualquer quantidade de aparelhos.
+// Cabeçalho de pavimento/cômodo: [⏻ desligar tudo] · nome · ligados/total ⌄ (tocar abre/fecha).
 function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo }) {
   const { on, total } = contarLigados(itens);
   const aceso = on > 0;
   const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 52 : 44 };
+  // Botão ⏻ "Desligar tudo": fica no lugar do ícone do pavimento / do pontinho do cômodo.
+  // Aceso (âmbar, com brilho) = tem algo ligado; apagado (cinza) = nada ligado, não faz nada.
+  const tam = grande ? 34 : 30;
   return (
-    <div className="flex items-center" style={{ gap: 8 }}>
-      <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex items-center text-left" style={{ ...toque, gap: grande ? 8 : 10 }}>
-        {grande ? (
-          // Pavimento: selo com ícone que "acende" quando há algo ligado lá dentro.
-          <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-            background: aceso ? alfa(C.ambar, 20) : alfa(C.cinzaClaro, 16), color: aceso ? C.ambar : C.cinzaClaro,
-            boxShadow: aceso ? `0 0 0 1px ${alfa(C.ambar, 32)}, 0 6px 18px -6px ${alfa(C.ambar, 70)}` : "none", transition: "background .25s, color .25s, box-shadow .25s" }}>
-            <Layers size={16} strokeWidth={2.1} />
-          </span>
-        ) : (
-          // Cômodo: pontinho aceso ao lado do nome.
-          <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, flexShrink: 0, background: aceso ? C.ambar : alfa(C.cinzaClaro, 50),
-            boxShadow: aceso ? `0 0 0 3px ${alfa(C.ambar, 22)}, 0 0 10px ${alfa(C.ambar, 80)}` : "none", transition: "background .25s, box-shadow .25s" }} />
-        )}
-        <span className="min-w-0 flex flex-col">
-          <span className="truncate" style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: C.terra, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2 }}>{nome}</span>
-          {sub && (
-            <span className="truncate" style={{ fontSize: 12, color: C.cinza, marginTop: 2 }}>
-              {aceso ? <b style={{ color: C.ambarTexto, fontWeight: 700 }}>{on} {on === 1 ? "ligado" : "ligados"}</b> : sub}
-            </span>
-          )}
-        </span>
-      </button>
-      {total > 0 && (
-        <button onClick={() => onDesligarTudo(itens)} disabled={!aceso} aria-label={`Desligar tudo em ${nome}`}
-          className="flex items-center" style={{ flexShrink: 0, gap: 4, height: 30, padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
-            border: `1px solid ${aceso ? alfa(C.vermelho, 35) : C.linha}`, background: aceso ? C.vermelhoClaro : "transparent", color: aceso ? C.vermelho : C.cinzaClaro,
-            cursor: aceso ? "pointer" : "default", transition: "background .2s, color .2s, border-color .2s" }}>
-          <Power size={12} strokeWidth={2.4} /> Desligar tudo
+    <div className="flex items-center" style={{ gap: grande ? 9 : 10 }}>
+      {total > 0 ? (
+        <button onClick={() => aceso && onDesligarTudo(itens)} disabled={!aceso} aria-label={aceso ? `Desligar tudo em ${nome}` : `Nada ligado em ${nome}`}
+          style={{ width: tam, height: tam, borderRadius: grande ? 11 : 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none",
+            cursor: aceso ? "pointer" : "default", background: aceso ? alfa(C.ambar, 22) : alfa(C.cinzaClaro, 16), color: aceso ? C.ambar : C.cinzaClaro,
+            boxShadow: aceso ? `0 0 0 1px ${alfa(C.ambar, 35)}, 0 6px 18px -6px ${alfa(C.ambar, 75)}` : "none", transition: "background .25s, color .25s, box-shadow .25s" }}>
+          <Power size={grande ? 18 : 15} strokeWidth={2.5} />
         </button>
-      )}
+      ) : grande ? (
+        <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: C.cinzaClaro }}><Layers size={17} /></span>
+      ) : null}
+      <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex flex-col justify-center text-left" style={toque}>
+        <span className="truncate" style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: C.terra, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2 }}>{nome}</span>
+        {sub && (
+          <span className="truncate" style={{ fontSize: 12, color: C.cinza, marginTop: 2 }}>
+            {aceso ? <b style={{ color: C.ambarTexto, fontWeight: 700 }}>{on} {on === 1 ? "ligado" : "ligados"}</b> : sub}
+          </span>
+        )}
+      </button>
       <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 54, gap: 4 }}>
         {total > 0 && (
           <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
