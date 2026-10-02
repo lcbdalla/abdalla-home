@@ -2868,16 +2868,31 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
 // acende todas, uma por vez). Tocar no título abre as luzes de dentro.
 // Cartão de botões (ex.: Coifa): cada toque aperta o botão no HA. Não há como saber se está
 // ligado (o comando vai por infravermelho), então não mostra estado.
+// A luz não informa se está acesa: o app começa considerando apagada e cada toque em "Luz"
+// inverte. ponytail: guardado só neste aparelho; toques pela Alexa ou por outro celular não
+// entram — para valer para todos, precisaria de um input_boolean no HA.
 function CartaoGrupoBotoes({ e, enviar }) {
+  const luz = e.membros.find((m) => acaoBotao(m).label === "Luz");
+  const chave = luz ? "botaoLigado:" + luz.id : null;
+  const [acesa, setAcesa] = useState(() => { try { return !!chave && localStorage.getItem(chave) === "1"; } catch { return false; } });
+  const apertar = (m) => {
+    enviar("input_button", "press", m.id);
+    if (m !== luz) return;
+    const n = !acesa; setAcesa(n);
+    try { localStorage.setItem(chave, n ? "1" : "0"); } catch { /* ok */ }
+  };
+  const v = { ...visualEquip(e), ativo: acesa, cor: C.ambar, luz: true };
   return (
-    <div style={{ background: C.bg, borderRadius: 16, padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ background: acesa ? `color-mix(in srgb, ${C.ambar} 10%, ${C.card})` : C.bg, border: `1px solid ${acesa ? alfa(C.ambar, 38) : "transparent"}`,
+      borderRadius: 16, padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10, transition: "background .25s, border-color .25s" }}>
       <div className="flex items-center" style={{ gap: 8 }}>
-        <IconeEquip v={visualEquip(e)} disponivel={e.disponivel} />
+        <IconeEquip v={v} disponivel={e.disponivel} />
         <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra }}>{e.nome}</div>
+        {luz && <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: acesa ? C.ambarTexto : C.cinza }}>{acesa ? "Luz acesa" : "Luz apagada"}</span>}
       </div>
       <div className="flex gap-2" onPointerDown={(ev) => ev.stopPropagation()}>
         {e.membros.map((m) => { const a = acaoBotao(m); return (
-          <BotaoAcao key={m.id} icon={a.Icon} label={a.label} cor={C.lago} disabled={!m.disponivel} onClick={() => enviar("input_button", "press", m.id)} />
+          <BotaoAcao key={m.id} icon={a.Icon} label={a.label} cor={m === luz && acesa ? C.ambar : C.lago} disabled={!m.disponivel} onClick={() => apertar(m)} />
         ); })}
       </div>
     </div>
