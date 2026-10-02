@@ -1467,7 +1467,7 @@ const CTRL_TIPOS = [
 ];
 const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]));
 const CTRL_EMOJI = { interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
-const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao", "alexa", "grupoPersianas"]; // ocupam a linha inteira (têm mais botões)
+const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao", "alexa", "grupoPersianas", "grupoLuzes"]; // ocupam a linha inteira (têm mais botões)
 const CTRL_COMPACTAVEL = ["ar", "persiana"]; // começam pequenos; tocar no quadro amplia; encolhem ao recarregar
 // Botões de ação que dá para renomear, por tipo de aparelho. [chave, nome padrão].
 const ROTULOS_POR_TIPO = {
@@ -2115,9 +2115,26 @@ function agruparPersianas(itens, comodoId) {
   return resto;
 }
 
+/* ---- Grupo de luzes pelo começo do nome (ex.: Varanda: as 6 luzes "Banheiro …") ---- */
+const GRUPOS_LUZES = [{ re: /^banheiro\b/i, nome: "Banheiros" }];
+function agruparLuzes(itens, comodoId) {
+  let lista = itens;
+  GRUPOS_LUZES.forEach((g, gi) => {
+    const membros = lista.filter((x) => x.tipo === "interruptor" && g.re.test(String(x.nome || "").trim()));
+    if (membros.length < 3) return;
+    const pos = lista.indexOf(membros[0]);
+    const grupo = { dbId: `grupo-luzes-${gi}-${comodoId}`, id: `grupo.luzes_${gi}_${comodoId}`, tipo: "grupoLuzes", nome: g.nome, rotulos: {},
+      tamanho: "g", membros, disponivel: membros.some((m) => m.disponivel), state: membros.some((m) => m.state === "on") ? "on" : "off" };
+    const resto = lista.filter((x) => !membros.includes(x));
+    resto.splice(Math.min(pos, resto.length), 0, grupo);
+    lista = resto;
+  });
+  return lista;
+}
+
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
 // Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
-const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas"].includes(e.tipo);
+const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas", "grupoLuzes"].includes(e.tipo);
 const estaLigado = (e) => {
   if (!e.disponivel) return false;
   if (e.tipo === "ar") return e.state !== "off";
@@ -2136,7 +2153,9 @@ const midiaRecursos = (e) => {
 const servicoDesligar = (e) => (e.tipo === "ar" ? ["climate", "turn_off"]
   : e.tipo === "tv" ? (midiaRecursos(e).liga ? ["media_player", "turn_off"] : ["media_player", "media_pause"])
     : ["homeassistant", "turn_off"]);
-const contarLigados = (itens) => { const d = itens.filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
+// Grupos de luzes contam (e desligam) cada luz de dentro.
+const achatar = (itens) => itens.flatMap((x) => (x.tipo === "grupoLuzes" ? x.membros : [x]));
+const contarLigados = (itens) => { const d = achatar(itens).filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
 
 // Cabeçalho de pavimento/cômodo: [⏻ desligar tudo] · nome · ligados/total ⌄ (tocar abre/fecha).
 function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo, musica }) {
@@ -2224,6 +2243,7 @@ function visualEquip(e) {
 }
 function visualPorTipo(e) {
   if (e.tipo === "grupoPersianas") return { Icon: Blinds, ativo: e.membros.some((m) => visualPorTipo(m).ativo), cor: C.ambar };
+  if (e.tipo === "grupoLuzes") return { Icon: Lightbulb, ativo: e.membros.some((m) => m.disponivel && m.state === "on"), cor: C.ambar, luz: true };
   if (e.tipo === "alexa") return { Icon: Speaker, ativo: ["playing", "paused"].includes(e.state), cor: C.lago };
   const dom = String(e.id).split(".")[0];
   const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
@@ -2808,7 +2828,44 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
   );
 }
 
+// Cartão de grupo de luzes: resumo + chave (alguma acesa → apaga todas; todas apagadas →
+// acende todas, uma por vez). Tocar no título abre as luzes de dentro.
+function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
+  const v = visualPorTipo(e);
+  const acesas = e.membros.filter((m) => m.disponivel && m.state === "on").length;
+  const alternarTodas = async () => {
+    const ligar = acesas === 0;
+    const lista = e.membros.filter((m) => m.disponivel && (ligar ? m.state !== "on" : m.state === "on"));
+    for (let i = 0; i < lista.length; i++) {
+      enviar("homeassistant", ligar ? "turn_on" : "turn_off", lista[i].id);
+      if (i < lista.length - 1) await new Promise((r) => setTimeout(r, 300));
+    }
+  };
+  return (
+    <div style={{ background: v.ativo ? `color-mix(in srgb, ${v.cor} 10%, ${C.card})` : C.bg, border: `1px solid ${v.ativo ? alfa(v.cor, 38) : "transparent"}`,
+      borderRadius: 16, padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10, transition: "background .25s, border-color .25s" }}>
+      <div className="flex items-center" style={{ gap: 8 }}>
+        <div className="flex items-center flex-1 min-w-0" onClick={editando ? undefined : onAlternar} role="button" style={{ gap: 8, cursor: editando ? "default" : "pointer" }}>
+          <IconeEquip v={v} disponivel={e.disponivel} />
+          <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra }}>{e.nome} <span style={{ color: C.cinzaClaro, fontWeight: 600 }}>({e.membros.length})</span></div>
+          <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: acesas ? C.ambarTexto : C.cinza }}>{acesas ? `${acesas} ${acesas === 1 ? "ligada" : "ligadas"}` : "Todas desligadas"}</span>
+          <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+        </div>
+        <span onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
+          <PillToggle on={acesas > 0} cor={C.ambar} disabled={!e.disponivel} onClick={alternarTodas} />
+        </span>
+      </div>
+      {aberto && (
+        <div onPointerDown={(ev) => ev.stopPropagation()}>
+          <GradeEquip itens={e.membros} enviar={enviar} expandidos={new Set()} toggleExpand={() => {}} podeArrastar={false} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
+  if (e.tipo === "grupoLuzes") return <CartaoGrupoLuzes e={e} enviar={enviar} aberto={expandido} onAlternar={onExpandir} editando={editando} />;
   if (e.tipo === "grupoPersianas") return <CartaoGrupoPersianas e={e} enviar={enviar} aberto={expandido} onAlternar={onExpandir} editando={editando} />;
   const v = visualEquip(e);
   const ativo = v.ativo && e.disponivel;
@@ -3450,7 +3507,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
 
   // ---- Desligar tudo de um pavimento/cômodo: um aparelho por vez, 600 ms entre cada ----
   const desligarTudo = async (itens, nivel) => {
-    const alvo = itens.filter((e) => ehDesligavel(e) && estaLigado(e));
+    const alvo = achatar(itens).filter((e) => ehDesligavel(e) && estaLigado(e));
     if (!alvo.length) return;
     const ok = await Dialog.confirm({ titulo: "Desligar tudo", mensagem: `Tem certeza que quer desligar tudo em ${nivel}? (${alvo.length} ${alvo.length === 1 ? "aparelho ligado" : "aparelhos ligados"})`, okLabel: "Desligar tudo", perigo: true });
     if (!ok) return;
@@ -3661,6 +3718,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Cartões de grupo (persianas): recebem a previsão e anotam os aparelhos de dentro, para o
   // arrasto mover o grupo inteiro.
   const comGrupos = (itens) => itens.map((x) => {
+    if (x.tipo === "grupoLuzes") { gruposRef.current[x.dbId] = x.membros.map((m) => m.dbId); return x; }
     if (x.tipo !== "grupoPersianas") return x;
     gruposRef.current[x.dbId] = [...(x.mestre ? [x.mestre.dbId] : []), ...x.membros.map((m) => m.dbId)];
     return { ...x, preverEstados };
@@ -3671,7 +3729,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
     comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
-      itens: comGrupos(somPrimeiro(comFontePadrao(agruparPersianas(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), p.nome))),
+      itens: comGrupos(somPrimeiro(comFontePadrao(agruparLuzes(agruparPersianas(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), a.id), p.nome))),
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
