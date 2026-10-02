@@ -1712,6 +1712,43 @@ function acionarZonas(e, ligar, enviar) {
   if (fonte && ids.length > 1) setTimeout(() => ids.forEach((id) => enviar("media_player", "select_source", id, { source: fonte })), 900);
 }
 
+// Som ligado sobe para o 1º lugar do cômodo; desligado volta à posição salva (sort é estável).
+const somLigado = (x) => ehZonaAAT(x.id) && x.state === "on";
+const somPrimeiro = (itens) => itens.slice().sort((x, y) => somLigado(y) - somLigado(x));
+
+// Controles de música de um streamer: se o Spotify da pessoa está tocando nele, comanda o
+// Spotify (que aceita anterior/próxima); senão, o próprio streamer (só tocar/pausar).
+// Sem nada carregado, o "tocar" leva o Spotify da pessoa para o streamer (ou abre o app).
+function acoesMusica(st, enviar) {
+  if (!st || st.semSinal || !st.disponivel) return null;
+  const sp = st.spotifyEnt;
+  const spAqui = sp && sp.attributes?.source === st.connect && ["playing", "paused"].includes(sp.state);
+  const a = st.attributes || {};
+  const semMusica = !a.media_title && !["playing", "paused"].includes(st.state);
+  const alvo = spAqui ? st.spotify : st.id;
+  const f = Number((spAqui ? sp : st).attributes?.supported_features) || 0;
+  const tem = (b) => spAqui || f === 0 || (f & b) !== 0;
+  return {
+    tocando: (spAqui ? sp.state : st.state) === "playing",
+    tocar: () => {
+      if (!spAqui && semMusica) {
+        if (!st.spotify || !st.connect) { abrirSpotify(); return; }
+        enviar("media_player", "select_source", st.spotify, { source: st.connect });
+        setTimeout(() => enviar("media_player", "media_play", st.spotify), 1500);
+        return;
+      }
+      enviar("media_player", "media_play_pause", alvo);
+    },
+    anterior: tem(16) ? () => enviar("media_player", "media_previous_track", alvo) : null,
+    proxima: tem(32) ? () => enviar("media_player", "media_next_track", alvo) : null,
+  };
+}
+// Do conjunto de aparelhos de um cômodo/pavimento, o 1º som ligado tocando um streamer.
+const musicaDe = (itens, enviar) => {
+  const som = itens.find((x) => somLigado(x) && x.streamer && !x.streamer.semSinal);
+  return som ? acoesMusica(som.streamer, enviar) : null;
+};
+
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
 // Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
 const ehDesligavel = (e) => !["persiana", "fechadura", "sensor"].includes(e.tipo);
@@ -1735,7 +1772,7 @@ const servicoDesligar = (e) => (e.tipo === "ar" ? ["climate", "turn_off"]
 const contarLigados = (itens) => { const d = itens.filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
 
 // Cabeçalho de pavimento/cômodo: [⏻ desligar tudo] · nome · ligados/total ⌄ (tocar abre/fecha).
-function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo }) {
+function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo, musica }) {
   const { on, total } = contarLigados(itens);
   const aceso = on > 0;
   const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 52 : 44 };
@@ -1762,6 +1799,14 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
           </span>
         )}
       </button>
+      {musica && (
+        // Trocar a música sem abrir o cômodo.
+        <div className="flex items-center" style={{ gap: 3, flexShrink: 0 }}>
+          {musica.anterior && <BotaoMini Ic={SkipBack} rot="Música anterior" onClick={musica.anterior} />}
+          <BotaoMini Ic={musica.tocando ? Pause : Play} rot={musica.tocando ? "Pausar" : "Tocar"} onClick={musica.tocar} cheio />
+          {musica.proxima && <BotaoMini Ic={SkipForward} rot="Próxima música" onClick={musica.proxima} />}
+        </div>
+      )}
       <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 54, gap: 4 }}>
         {total > 0 && (
           <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
@@ -1771,6 +1816,16 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
         <ChevronDown size={18} style={{ color: C.cinza, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
       </button>
     </div>
+  );
+}
+
+function BotaoMini({ Ic, rot, onClick, cheio }) {
+  return (
+    <button onClick={onClick} aria-label={rot} title={rot}
+      style={{ width: 30, height: 30, borderRadius: 999, border: "none", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+        background: cheio ? LAGO : alfa(LAGO, 14), color: cheio ? "#fff" : LAGO }}>
+      <Ic size={cheio ? 15 : 14} strokeWidth={2.4} />
+    </button>
   );
 }
 
@@ -2976,7 +3031,13 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     onTipoEquip: (id, tipo) => salvar(supabase.from("controle_equipamentos").update({ tipo }).eq("id", id)),
     onNomeEquip: (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id)),
     onDelEquip: (id) => salvar(supabase.from("controle_equipamentos").delete().eq("id", id)),
-    onReordenar: async (ids) => {
+    onReordenar: async (idsTela) => {
+      // O som ligado aparece em 1º só enquanto toca: ao salvar, ele volta para a posição que tinha.
+      const somOn = idsTela.find((id) => { const q = equipamentos.find((x) => x.id === id); return q && ehZonaAAT(q.entity_id) && entsVis[q.entity_id]?.state === "on"; });
+      const ids = somOn && idsTela[0] === somOn ? (() => {
+        const resto = idsTela.slice(1), antes = equipamentos.filter((x) => resto.includes(x.id) || x.id === somOn).sort((x, y) => x.ordem - y.ordem).map((x) => x.id);
+        const pos = Math.min(antes.indexOf(somOn), resto.length); resto.splice(pos, 0, somOn); return resto;
+      })() : idsTela;
       try { await Promise.all(ids.map((id, i) => supabase.from("controle_equipamentos").update({ ordem: i }).eq("id", id))); }
       catch { setAviso({ erro: true, texto: "Não consegui salvar a nova ordem." }); }
       await carregarConfig();
@@ -3034,7 +3095,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
     comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
-      itens: juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)),
+      itens: somPrimeiro(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip))),
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
@@ -3122,6 +3183,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 onClickCapture={(ev) => { if (pavLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}>
                 <CabecalhoNivel nome={pav.nome} grande aberto={abertoP} onAlternar={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))}
                   itens={pav.comodos.flatMap((c) => c.itens)} onDesligarTudo={(itens) => desligarTudo(itens, pav.nome)}
+                  musica={musicaDe(pav.comodos.flatMap((c) => c.itens), enviar)}
                   sub={`${pav.comodos.length} ${pav.comodos.length === 1 ? "cômodo" : "cômodos"}`} />
               </div>
               {abertoP && (
@@ -3136,7 +3198,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                         boxShadow: acesoC ? `0 0 0 3px ${alfa(C.aceso, 18)}, 0 12px 30px -12px ${alfa(C.aceso, 70)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
                         transition: "box-shadow .25s, border-color .25s, background .25s" }}>
                         <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id)}
-                          itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} />
+                          itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} musica={musicaDe(c.itens, enviar)} />
                         {abertoC && (
                           <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
                             <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} editando={editando} setEditando={setEditando} onTamanho={cbs.onTamanho} />
