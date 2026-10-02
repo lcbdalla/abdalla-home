@@ -2732,11 +2732,12 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const souGestor = eu?.podeGerirControle === true;
   const pavAberto = (id) => abertos.pavs.includes(id);
   // Fechar o pavimento fecha também o cômodo aberto dentro dele.
+  // Um pavimento aberto por vez: abrir um recolhe os outros (e o cômodo que estava aberto neles).
   const alternarPav = (id, comodoIds) => setAbertos((a) => a.pavs.includes(id)
     ? { pavs: a.pavs.filter((x) => x !== id), amb: comodoIds.includes(a.amb) ? null : a.amb }
-    : { ...a, pavs: [...a.pavs, id] });
-  // Abrir um cômodo fecha o anterior.
-  const alternarAmb = (id) => setAbertos((a) => ({ ...a, amb: a.amb === id ? null : id }));
+    : { pavs: [id], amb: comodoIds.includes(a.amb) ? a.amb : null });
+  // Abrir um cômodo fecha o anterior e deixa aberto só o pavimento dele.
+  const alternarAmb = (id, pavId) => setAbertos((a) => (a.amb === id ? { ...a, amb: null } : { pavs: [pavId], amb: id }));
 
   useEffect(() => { try { localStorage.setItem("controleAbertos", JSON.stringify(abertos)); } catch { /* ok */ } }, [abertos]);
   // Marca o uso (toque na tela) e fecha tudo se passar 8h parado — aberto na tela ou não.
@@ -3197,7 +3198,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                         background: acesoC ? `linear-gradient(160deg, color-mix(in srgb, ${C.aceso} 26%, ${C.card}) 0%, color-mix(in srgb, ${C.aceso} 9%, ${C.card}) 100%)` : C.card, padding: "6px 12px",
                         boxShadow: acesoC ? `0 0 0 3px ${alfa(C.aceso, 18)}, 0 12px 30px -12px ${alfa(C.aceso, 70)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
                         transition: "box-shadow .25s, border-color .25s, background .25s" }}>
-                        <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id)}
+                        <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
                           itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} musica={musicaDe(c.itens, enviar)} />
                         {abertoC && (
                           <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
