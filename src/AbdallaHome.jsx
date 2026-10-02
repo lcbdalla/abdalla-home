@@ -1743,8 +1743,7 @@ function acoesMusica(st, enviar) {
     tocar: () => {
       if (!spAqui && semMusica) {
         if (!st.spotify || !st.connect) { abrirSpotify(); return; }
-        enviar("media_player", "select_source", st.spotify, { source: st.connect });
-        setTimeout(() => enviar("media_player", "media_play", st.spotify), 1500);
+        st.conectarSpotify(st.spotify, st.connect, (v) => { if (v.state !== "playing") enviar("media_player", "media_play", st.spotify); });
         return;
       }
       enviar("media_player", "media_play_pause", alvo);
@@ -1784,8 +1783,7 @@ function ligarAlexa(e, ligar, enviar) {
   if (!e.spotify) { abrirSpotify(); return; }
   if (!ligar) { enviar("media_player", "media_pause", e.spotify); return; }
   if (!e.connect) return;
-  enviar("media_player", "select_source", e.spotify, { source: e.noGrupo ? e.grupoConnect : e.connect });
-  setTimeout(() => enviar("media_player", "media_play", e.spotify), 1500);
+  e.conectarSpotify(e.spotify, e.noGrupo ? e.grupoConnect : e.connect, (v) => { if (v.state !== "playing") enviar("media_player", "media_play", e.spotify); });
 }
 
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
@@ -2076,8 +2074,8 @@ function PlaylistsSpotify({ st, enviar, onFechar }) {
     return () => { vivo = false; };
   }, [st.spotify]); // eslint-disable-line react-hooks/exhaustive-deps
   const tocar = (pl) => {
-    enviar("media_player", "select_source", st.spotify, { source: st.connect }); // leva o Spotify para este streamer
-    setTimeout(() => enviar("media_player", "play_media", st.spotify, { media_content_id: pl.media_content_id, media_content_type: pl.media_content_type }), 1500);
+    // Leva o Spotify para este aparelho e, quando ele confirmar, toca a playlist.
+    st.conectarSpotify(st.spotify, st.connect, () => enviar("media_player", "play_media", st.spotify, { media_content_id: pl.media_content_id, media_content_type: pl.media_content_type }));
     onFechar();
   };
   return (
@@ -2130,8 +2128,7 @@ function PainelStreamer({ s: st, enviar }) {
   // Leva o Spotify da pessoa para este streamer (Spotify Connect) e dá play na última música/playlist.
   const tocarSpotify = () => {
     if (!st.spotify || !st.connect) { abrirSpotify(); return; }
-    enviar("media_player", "select_source", st.spotify, { source: st.connect });
-    setTimeout(() => enviar("media_player", "media_play", st.spotify), 1500);
+    st.conectarSpotify(st.spotify, st.connect, (v) => { if (v.state !== "playing") enviar("media_player", "media_play", st.spotify); });
   };
   const bt = (on, Ic, rot, grande) => (
     <button onClick={on} disabled={!st.disponivel} aria-label={rot} style={{ width: grande ? 52 : 42, height: grande ? 52 : 42, borderRadius: 999, border: "none", flexShrink: 0,
@@ -2357,7 +2354,7 @@ function CtrlAlexa({ e, enviar }) {
           Abrir o Spotify <ChevronRight size={14} />
         </button>
       </div>
-      {verPlaylists && <PlaylistsSpotify st={{ spotify: e.spotify, connect: e.connect, nome: e.nome, pedirHA: e.pedirHA }} enviar={enviar} onFechar={() => setVerPlaylists(false)} />}
+      {verPlaylists && <PlaylistsSpotify st={{ spotify: e.spotify, connect: e.noGrupo ? e.grupoConnect : e.connect, nome: e.nome, pedirHA: e.pedirHA, conectarSpotify: e.conectarSpotify }} enviar={enviar} onFechar={() => setVerPlaylists(false)} />}
     </div>
   );
 }
@@ -3184,6 +3181,25 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
 
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
   const meuSpotify = spotifyDaPessoa(entsVis, eu?.nome);
+  // Com o Spotify parado, o HA só aceita "escolher o aparelho"; tocar/play_media só depois que o
+  // Spotify conecta nele. Então: escolhe o aparelho, espera o estado mostrar a conexão e segue.
+  const entsRef = useRef(entsVis);
+  entsRef.current = entsVis;
+  const conectarSpotify = (spId, connect, depois) => {
+    if (!spId || !connect) return;
+    enviar("media_player", "select_source", spId, { source: connect });
+    setAviso({ texto: "Conectando o Spotify…" });
+    const t0 = Date.now();
+    const checar = () => {
+      const v = entsRef.current[spId];
+      const f = Number(v?.attributes?.supported_features) || 0;
+      const pronto = v && v.attributes?.source === connect && (["playing", "paused"].includes(v.state) || (f & (1 | 512 | 16384)) !== 0);
+      if (pronto) { setAviso(null); depois(v); return; }
+      if (Date.now() - t0 > 35000) { setAviso({ erro: true, texto: "O Spotify não respondeu. Abra o Spotify, escolha o aparelho e dê o play por lá." }); return; }
+      setTimeout(checar, 700);
+    };
+    setTimeout(checar, 700);
+  };
   // As 6 zonas do amplificador AAT (nome = cômodo, como estão no HA), para "Sincronizar ambientes".
   const nZona = (id) => Number(String(id).split("_").pop()) || 0;
   const zonasAAT = Object.keys(entsVis).filter(ehZonaAAT).sort((x, y) => nZona(x) - nZona(y)).map((id) => {
@@ -3211,7 +3227,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       const aqui = !!(tocandoSp && connect && (fonte === connect || noGrupo));
       return { dbId: row.id, id: row.entity_id, tipo: "alexa", nome: row.nome || "Alexa", rotulos: row.rotulos || {}, tamanho: "g",
         state: aqui ? sp.state : "idle", attributes: aqui ? sp.attributes : {}, disponivel: true,
-        spotify: meuSpotify, connect, grupoConnect, grupoRotulo: g?.rotulo, noGrupo,
+        spotify: meuSpotify, connect, grupoConnect, grupoRotulo: g?.rotulo, noGrupo, conectarSpotify,
         pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
     }
     const live = entsVis[row.entity_id];
@@ -3231,7 +3247,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const v = entsVis[sid], st = v?.state;
     return { id: sid, tipo: "tv", nome: FONTE_NOME_AAT[fonte] || sid, state: st, attributes: v?.attributes || {},
       disponivel: st != null && !["unavailable", "unknown", "none", ""].includes(st), semSinal: !v,
-      spotify: meuSpotify, connect: STREAMER_CONNECT[sid], spotifyEnt: meuSpotify ? entsVis[meuSpotify] : null,
+      spotify: meuSpotify, connect: STREAMER_CONNECT[sid], spotifyEnt: meuSpotify ? entsVis[meuSpotify] : null, conectarSpotify,
       pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
   }
   const semPav = { id: "__sem__", nome: "Outros", ordem: 99999 };
