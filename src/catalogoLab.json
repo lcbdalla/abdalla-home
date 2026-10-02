@@ -157,12 +157,12 @@
 {"id": "switch.adega_luz", "nome": "Luz interna da Adega", "tipo": "interruptor", "grupo": "Adega", "ambiente": "Adega"},
 {"id": "lock.fechadura_porta_frente", "nome": "Porta da Frente", "tipo": "fechadura", "grupo": "Fechaduras (opcional)", "ambiente": "Entrada"},
 {"id": "lock.fechadura_porta_fundo", "nome": "Porta dos Fundos", "tipo": "fechadura", "grupo": "Fechaduras (opcional)", "ambiente": "Entrada"},
-{"id": "media_player.aat_pmr7_zona_1", "nome": "Som da Zona 1", "tipo": "tv", "grupo": "Som", "ambiente": ""},
-{"id": "media_player.aat_pmr7_zona_2", "nome": "Som da Zona 2", "tipo": "tv", "grupo": "Som", "ambiente": ""},
-{"id": "media_player.aat_pmr7_zona_3", "nome": "Som da Zona 3", "tipo": "tv", "grupo": "Som", "ambiente": ""},
-{"id": "media_player.aat_pmr7_zona_4", "nome": "Som da Zona 4", "tipo": "tv", "grupo": "Som", "ambiente": ""},
-{"id": "media_player.aat_pmr7_zona_5", "nome": "Som da Zona 5", "tipo": "tv", "grupo": "Som", "ambiente": ""},
-{"id": "media_player.aat_pmr7_zona_6", "nome": "Som da Zona 6", "tipo": "tv", "grupo": "Som", "ambiente": ""},
+{"id": "media_player.aat_pmr7_zona_1", "nome": "Som", "tipo": "tv", "grupo": "Som", "ambiente": "Churrasqueira"},
+{"id": "media_player.aat_pmr7_zona_2", "nome": "Som", "tipo": "tv", "grupo": "Som", "ambiente": "Varanda"},
+{"id": "media_player.aat_pmr7_zona_3", "nome": "Som", "tipo": "tv", "grupo": "Som", "ambiente": "Living e Hall"},
+{"id": "media_player.aat_pmr7_zona_4", "nome": "Som", "tipo": "tv", "grupo": "Som", "ambiente": "Cozinha e Despensa"},
+{"id": "media_player.aat_pmr7_zona_5", "nome": "Som", "tipo": "tv", "grupo": "Som", "ambiente": "Piscina"},
+{"id": "media_player.aat_pmr7_zona_6", "nome": "Som", "tipo": "tv", "grupo": "Som", "ambiente": "Ofurô"},
 {"id": "media_player.som_terreo", "nome": "Som Térreo (streamer)", "tipo": "tv", "grupo": "Som", "ambiente": ""},
 {"id": "media_player.aat_audiocast_ac_1_aeab", "nome": "Som Subsolo (Audiocast)", "tipo": "tv", "grupo": "Som", "ambiente": ""}
 ]
