@@ -1595,11 +1595,13 @@ function PortaoModal({ ent, enviar, onFechar, cameras = [], topo }) {
   const barras = Array.from({ length: 14 }, (_, i) => i);
   return (
     <Sheet titulo="Portão" onFechar={onFechar} topo={topo}>
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
-        {cameras.map((c) => <CameraAoVivo key={c.id} cam={c} preencher={topo != null} />)}
+      {/* Câmeras no tamanho original (16:9). Quem cresce para ocupar a tela é o desenho do portão. */}
+      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
+        {cameras.map((c) => <CameraAoVivo key={c.id} cam={c} topo={topo} />)}
       </div>
-      <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: "8px 10px 6px" }}>
-        <svg viewBox="0 0 320 172" role="img" aria-label={`Portão: ${texto}`} style={{ width: "100%", height: 76, display: "block" }}>
+      <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: "8px 10px 6px",
+        ...(topo != null ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : {}) }}>
+        <svg viewBox="0 0 320 172" role="img" aria-label={`Portão: ${texto}`} style={{ width: "100%", display: "block", ...(topo != null ? { flex: 1, minHeight: 60, height: "100%" } : { height: 76 }) }}>
           <defs><clipPath id="vao-portao"><rect x="30" y="18" width="260" height="130" /></clipPath></defs>
           <rect x="0" y="146" width="320" height="26" rx="5" style={{ fill: alfa(C.cinzaClaro, 22) }} />
           <rect x="8" y="143" width="304" height="4" rx="2" style={{ fill: alfa(C.cinzaClaro, 70) }} />
@@ -1617,11 +1619,12 @@ function PortaoModal({ ent, enviar, onFechar, cameras = [], topo }) {
           {/* luz de aviso: pisca em âmbar enquanto o portão se move */}
           <circle cx="22" cy="9" r="6" className={movendo ? "ah-pisca" : ""} style={{ fill: movendo ? C.ambar : alfa(C.cinzaClaro, 60) }} />
         </svg>
-        <div className="text-center" style={{ marginTop: 2, fontSize: 14, fontWeight: 800, color: movendo ? C.ambarTexto : alvo === "aberto" ? C.ambarTexto : C.terra }}>{texto}</div>
+        <div className="text-center" style={{ marginTop: 2, flexShrink: 0, fontSize: topo != null ? 16 : 14, fontWeight: 800, color: movendo ? C.ambarTexto : alvo === "aberto" ? C.ambarTexto : C.terra }}>{texto}</div>
       </div>
-      <div className="flex gap-2" style={{ marginTop: 10 }}>
-        <button onClick={() => acionar(true)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: C.pasto, color: "#fff", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 16 }}><DoorOpen size={19} /> Abrir</button>
-        <button onClick={() => acionar(false)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: alfa(C.cinza, 20), color: C.terra, borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 16 }}><DoorClosed size={19} /> Fechar</button>
+      {/* Botões maiores no popup de tela cheia (crescem com a tela, de 56 a 84 px). */}
+      <div className="flex gap-2" style={{ marginTop: 10, flexShrink: 0 }}>
+        <button onClick={() => acionar(true)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: C.pasto, color: "#fff", borderRadius: 16, padding: 12, fontWeight: 800, fontSize: topo != null ? 18 : 16, minHeight: topo != null ? "clamp(56px, 10dvh, 84px)" : undefined }}><DoorOpen size={topo != null ? 22 : 19} /> Abrir</button>
+        <button onClick={() => acionar(false)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: alfa(C.cinza, 20), color: C.terra, borderRadius: 16, padding: 12, fontWeight: 800, fontSize: topo != null ? 18 : 16, minHeight: topo != null ? "clamp(56px, 10dvh, 84px)" : undefined }}><DoorClosed size={topo != null ? 22 : 19} /> Fechar</button>
       </div>
     </Sheet>
   );
@@ -1631,7 +1634,7 @@ function PortaoModal({ ent, enviar, onFechar, cameras = [], topo }) {
 // A foto seguinte só troca quando terminou de carregar (sem piscar); para quando o popup fecha
 // ou o app vai para segundo plano. O token da câmera muda a cada ~5 min e a URL acompanha.
 const CAMERA_MS = 1000;
-function CameraAoVivo({ cam, preencher }) {
+function CameraAoVivo({ cam, topo }) {
   const [src, setSrc] = useState(null);
   const [falhou, setFalhou] = useState(false);
   const urlRef = useRef(cam.url);
@@ -1655,8 +1658,10 @@ function CameraAoVivo({ cam, preencher }) {
   return (
     // Cada câmera fica em 16:9, mas nunca mais alta que metade do espaço que sobra na tela
     // (o resto do popup ocupa ~280 px): assim tudo cabe sem rolagem.
-    <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", width: "100%",
-      ...(preencher ? { flex: 1, minHeight: 0 } : { aspectRatio: "16 / 9", maxHeight: "calc((92dvh - 280px) / 2)" }) }}>
+    // 16:9 sempre (sem cortar a imagem). Numa tela baixa demais a câmera fica menor e centralizada,
+    // para sobrar ~240 px ao portão e aos botões.
+    <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "16 / 9", alignSelf: "center",
+      width: `min(100%, calc(${topo != null ? `(100dvh - ${topo}px - 300px)` : "(92dvh - 280px)"} / 2 * 16 / 9))` }}>
       {ok
         ? <img src={src} alt={cam.nome} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         : <div className="flex items-center justify-center" style={{ width: "100%", height: "100%", color: "#ffffffaa", fontSize: 13.5, padding: 16, textAlign: "center" }}>{cam.aviso || (falhou ? "Câmera sem imagem agora." : "Carregando a câmera…")}</div>}
