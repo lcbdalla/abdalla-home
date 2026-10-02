@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -1642,10 +1642,20 @@ const ehDesligavel = (e) => !["persiana", "fechadura", "sensor"].includes(e.tipo
 const estaLigado = (e) => {
   if (!e.disponivel) return false;
   if (e.tipo === "ar") return e.state !== "off";
-  if (e.tipo === "tv") return !["off", "idle", "standby"].includes(e.state);
+  if (e.tipo === "tv") return midiaRecursos(e).liga ? !["off", "idle", "standby"].includes(e.state) : e.state === "playing";
   return e.state === "on";
 };
-const servicoDesligar = (e) => (e.tipo === "ar" ? ["climate", "turn_off"] : e.tipo === "tv" ? ["media_player", "turn_off"] : ["homeassistant", "turn_off"]);
+// O que um media_player aceita (supported_features do HA). Sem a informação, supõe tudo.
+// Ex.: as zonas do amplificador AAT não têm play/pausa; os streamers AAT não têm liga/desliga.
+const midiaRecursos = (e) => {
+  const f = Number(e?.attributes?.supported_features) || 0;
+  const tem = (bits) => f === 0 || (f & bits) !== 0;
+  const fontes = Array.isArray(e?.attributes?.source_list) ? e.attributes.source_list : [];
+  return { liga: tem(128 | 256), play: tem(1 | 16384), fonte: (f & 2048) !== 0 && fontes.length > 0, fontes };
+};
+const servicoDesligar = (e) => (e.tipo === "ar" ? ["climate", "turn_off"]
+  : e.tipo === "tv" ? (midiaRecursos(e).liga ? ["media_player", "turn_off"] : ["media_player", "media_pause"])
+    : ["homeassistant", "turn_off"]);
 const contarLigados = (itens) => { const d = itens.filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
 
 // Cabeçalho de pavimento/cômodo: nome · [Desligar tudo] · ligados/total ⌄ (tocar abre/fecha).
@@ -1711,7 +1721,7 @@ function visualEquip(e) {
     return { Icon: portao ? (aberto ? DoorOpen : DoorClosed) : Blinds, ativo: aberto, cor: C.ambar };
   }
   if (e.tipo === "ar") return { Icon: Snowflake, ativo: estaLigado(e), cor: C.lago };
-  if (e.tipo === "tv") return { Icon: Tv, ativo: estaLigado(e), cor: C.lago };
+  if (e.tipo === "tv") return { Icon: ["speaker", "receiver"].includes(e.attributes?.device_class) ? Speaker : Tv, ativo: estaLigado(e), cor: C.lago };
   if (e.tipo === "irrigacao") return { Icon: Droplets, ativo: estaLigado(e), cor: C.lago };
   if (e.tipo === "fechadura") { const aberta = e.disponivel && e.state === "unlocked"; return { Icon: aberta ? LockOpen : Lock, ativo: aberta, cor: C.ambar }; }
   if (e.tipo === "sensor") return { Icon: Gauge, ativo: e.disponivel, cor: C.lago };
@@ -1819,21 +1829,36 @@ function CtrlAr({ e, enviar }) {
 }
 function CtrlTv({ e, enviar }) {
   const ind = !e.disponivel;
-  const ligado = !["off", "idle", "standby"].includes(e.state) && !ind;
-  const mudo = e.attributes?.is_volume_muted === true;
+  const r = midiaRecursos(e);
+  const a = e.attributes || {};
+  // Sem liga/desliga (streamer): os controles ficam sempre à mostra.
+  const ligado = r.liga ? (!["off", "idle", "standby"].includes(e.state) && !ind) : !ind;
+  const mudo = a.is_volume_muted === true;
+  const vol = typeof a.volume_level === "number" ? Math.round(a.volume_level * 100) : null;
+  const estado = ind ? "Indisponível" : r.liga ? (ligado ? "Ligado" : "Desligado") : haEstado(e.state, a).texto;
   return (
     <div>
       <div className="flex items-center gap-3 mb-3">
-        <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (ligado ? LAGO : C.cinza), fontWeight: 600 }}>{ind ? "Indisponível" : (ligado ? "Ligada" : "Desligada")}</div>
-        <PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={() => enviar("media_player", ligado ? "turn_off" : "turn_on", e.id)} />
+        <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (ligado ? LAGO : C.cinza), fontWeight: 600 }}>
+          {estado}{ligado && vol != null && <span style={{ color: C.cinzaClaro }}> · volume {vol}%</span>}{ligado && r.fonte && a.source && <span style={{ color: C.cinzaClaro }}> · {a.source}</span>}
+        </div>
+        {r.liga && <PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={() => enviar("media_player", ligado ? "turn_off" : "turn_on", e.id)} />}
       </div>
       {ligado && (
-        <div className="flex gap-2">
-          <BotaoAcao label="Vol −" cor={C.cinza} onClick={() => enviar("media_player", "volume_down", e.id)} />
-          <BotaoAcao label="Vol +" cor={C.pasto} onClick={() => enviar("media_player", "volume_up", e.id)} />
-          <BotaoAcao label={mudo ? "Som" : "Mudo"} cor={C.ambar} onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} />
-          <BotaoAcao label="Play/Pausa" cor={LAGO} onClick={() => enviar("media_player", "media_play_pause", e.id)} />
-        </div>
+        <>
+          <div className="flex gap-2">
+            <BotaoAcao label="Vol −" cor={C.cinza} onClick={() => enviar("media_player", "volume_down", e.id)} />
+            <BotaoAcao label="Vol +" cor={C.pasto} onClick={() => enviar("media_player", "volume_up", e.id)} />
+            <BotaoAcao label={mudo ? "Som" : "Mudo"} cor={C.ambar} onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} />
+            {r.play && <BotaoAcao label="Play/Pausa" cor={LAGO} onClick={() => enviar("media_player", "media_play_pause", e.id)} />}
+          </div>
+          {r.fonte && (
+            <div className="mt-3">
+              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Fonte</div>
+              <div className="flex flex-wrap gap-2">{r.fontes.map((f) => <CtrlChip key={f} ativo={a.source === f} cor={LAGO} onClick={() => enviar("media_player", "select_source", e.id, { source: f })}>{f}</CtrlChip>)}</div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
