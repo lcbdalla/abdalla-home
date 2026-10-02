@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -2117,15 +2117,19 @@ function agruparPersianas(itens, comodoId) {
 }
 
 /* ---- Grupo de luzes pelo começo do nome (ex.: Varanda: as 6 luzes "Banheiro …") ---- */
-const GRUPOS_LUZES = [{ re: /^banheiro\b/i, nome: "Banheiros" }];
+// tipos: o que entra no grupo (padrão só luzes); icone: desenho do cartão (padrão lâmpada).
+const GRUPOS_LUZES = [
+  { re: /^banheiro\b/i, nome: "Banheiros" },
+  { re: /^brinquedoteca\b/i, nome: "Brinquedoteca", tipos: ["interruptor", "ar"], icone: ToyBrick },
+];
 function agruparLuzes(itens, comodoId) {
   let lista = itens;
   GRUPOS_LUZES.forEach((g, gi) => {
-    const membros = lista.filter((x) => x.tipo === "interruptor" && g.re.test(String(x.nome || "").trim()));
+    const membros = lista.filter((x) => (g.tipos || ["interruptor"]).includes(x.tipo) && g.re.test(String(x.nome || "").trim()));
     if (membros.length < 3) return;
     const pos = lista.indexOf(membros[0]);
-    const grupo = { dbId: `grupo-luzes-${gi}-${comodoId}`, id: `grupo.luzes_${gi}_${comodoId}`, tipo: "grupoLuzes", nome: g.nome, rotulos: {},
-      tamanho: "g", membros, disponivel: membros.some((m) => m.disponivel), state: membros.some((m) => m.state === "on") ? "on" : "off" };
+    const grupo = { dbId: `grupo-luzes-${gi}-${comodoId}`, id: `grupo.luzes_${gi}_${comodoId}`, tipo: "grupoLuzes", nome: g.nome, icone: g.icone, rotulos: {},
+      tamanho: "g", membros, disponivel: membros.some((m) => m.disponivel), state: membros.some(estaLigado) ? "on" : "off" };
     const resto = lista.filter((x) => !membros.includes(x));
     resto.splice(Math.min(pos, resto.length), 0, grupo);
     lista = resto;
@@ -2244,7 +2248,7 @@ function visualEquip(e) {
 }
 function visualPorTipo(e) {
   if (e.tipo === "grupoPersianas") return { Icon: Blinds, ativo: e.membros.some((m) => visualPorTipo(m).ativo), cor: C.ambar };
-  if (e.tipo === "grupoLuzes") return { Icon: Lightbulb, ativo: e.membros.some((m) => m.disponivel && m.state === "on"), cor: C.ambar, luz: true };
+  if (e.tipo === "grupoLuzes") return { Icon: e.icone || Lightbulb, ativo: e.membros.some(estaLigado), cor: C.ambar, luz: true };
   if (e.tipo === "alexa") return { Icon: Speaker, ativo: ["playing", "paused"].includes(e.state), cor: C.lago };
   const dom = String(e.id).split(".")[0];
   const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
@@ -2832,11 +2836,14 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
 // Cartão de grupo de luzes: resumo + chave (alguma acesa → apaga todas; todas apagadas →
 // acende todas, uma por vez). Tocar no título abre as luzes de dentro.
 function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
+  const [exp, setExp] = useState(() => new Set());
+  const alternarMembro = (id) => setExp((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const v = visualPorTipo(e);
-  const acesas = e.membros.filter((m) => m.disponivel && m.state === "on").length;
+  const acesas = e.membros.filter(estaLigado).length;
+  const soLuzes = e.membros.every((m) => m.tipo === "interruptor");
   const alternarTodas = async () => {
     const ligar = acesas === 0;
-    const lista = e.membros.filter((m) => m.disponivel && (ligar ? m.state !== "on" : m.state === "on"));
+    const lista = e.membros.filter((m) => m.disponivel && estaLigado(m) !== ligar);
     for (let i = 0; i < lista.length; i++) {
       enviar("homeassistant", ligar ? "turn_on" : "turn_off", lista[i].id);
       if (i < lista.length - 1) await new Promise((r) => setTimeout(r, 300));
@@ -2849,7 +2856,7 @@ function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
         <div className="flex items-center flex-1 min-w-0" onClick={editando ? undefined : onAlternar} role="button" style={{ gap: 8, cursor: editando ? "default" : "pointer" }}>
           <IconeEquip v={v} disponivel={e.disponivel} />
           <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra }}>{e.nome} <span style={{ color: C.cinzaClaro, fontWeight: 600 }}>({e.membros.length})</span></div>
-          <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: acesas ? C.ambarTexto : C.cinza }}>{acesas ? `${acesas} ${acesas === 1 ? "ligada" : "ligadas"}` : "Todas desligadas"}</span>
+          <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: acesas ? C.ambarTexto : C.cinza }}>{soLuzes ? (acesas ? `${acesas} ${acesas === 1 ? "ligada" : "ligadas"}` : "Todas desligadas") : (acesas ? `${acesas} ${acesas === 1 ? "ligado" : "ligados"}` : "Todos desligados")}</span>
           <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
         </div>
         <span onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
@@ -2858,7 +2865,7 @@ function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
       </div>
       {aberto && (
         <div onPointerDown={(ev) => ev.stopPropagation()}>
-          <GradeEquip itens={e.membros} enviar={enviar} expandidos={new Set()} toggleExpand={() => {}} podeArrastar={false} />
+          <GradeEquip itens={e.membros} enviar={enviar} expandidos={exp} toggleExpand={alternarMembro} podeArrastar={false} />
         </div>
       )}
     </div>
