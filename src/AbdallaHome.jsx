@@ -2097,9 +2097,8 @@ function CtrlTv({ e, enviar }) {
   return (
     // Segurar aqui dentro não "pega" o cartão para arrastar (só pelo título).
     <div onPointerDown={(ev) => ev.stopPropagation()}>
-      {r.volSet && <BarraVolume e={e} enviar={enviar} />}
       {(!r.volSet || r.play) && (
-        <div className="flex gap-2" style={{ marginTop: r.volSet ? 10 : 0 }}>
+        <div className="flex gap-2" style={{ marginBottom: 2 }}>
           {!r.volSet && <BotaoAcao label="Vol −" cor={C.cinza} onClick={() => enviar("media_player", "volume_down", e.id)} />}
           {!r.volSet && <BotaoAcao label="Vol +" cor={C.pasto} onClick={() => enviar("media_player", "volume_up", e.id)} />}
           {!r.volSet && <BotaoAcao label={mudo ? "Som" : "Mudo"} cor={C.ambar} onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} />}
@@ -2108,7 +2107,7 @@ function CtrlTv({ e, enviar }) {
       )}
       {r.fonte && (
         // Fonte em lista: mostra a escolhida; tocando, abre as opções do celular.
-        <div className="flex items-center gap-3" style={{ marginTop: 12 }}>
+        <div className="flex items-center gap-3" style={{ marginTop: (!r.volSet || r.play) ? 12 : 0 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: C.cinza, flexShrink: 0 }}>Fonte</span>
           <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
             <select value={a.source || ""} onChange={(ev) => ev.target.value && enviar("media_player", "select_source", e.id, { source: ev.target.value })} aria-label="Fonte"
@@ -2121,6 +2120,8 @@ function CtrlTv({ e, enviar }) {
         </div>
       )}
       {e.streamer && <PainelStreamer s={e.streamer} enviar={enviar} />}
+      {/* Volume deste ambiente: embaixo, logo acima de "Sincronizar ambientes". */}
+      {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}><BarraVolume e={e} enviar={enviar} /></div>}
       {(e.zonas || []).length > 1 && a.source && (
         <div style={{ marginTop: 12 }}>
           {juntas.length > 0 && (
@@ -2132,6 +2133,12 @@ function CtrlTv({ e, enviar }) {
                   <BarraVolume e={z} enviar={enviar} compacto />
                 </div>
               ))}
+            </div>
+          )}
+          {r.volSet && (
+            <div style={{ borderTop: juntas.length ? "none" : `1px solid ${C.linha}`, paddingTop: juntas.length ? 0 : 10, marginBottom: 10 }}>
+              {juntas.length > 0 && <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{(e.zonas.find((z) => z.id === e.id) || {}).nome || e.nome}</div>}
+              <BarraVolume e={e} enviar={enviar} />
             </div>
           )}
           <button onClick={() => setSincronizar(true)} className="flex items-center justify-center gap-2"
