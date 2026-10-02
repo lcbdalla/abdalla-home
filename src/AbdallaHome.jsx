@@ -1596,8 +1596,8 @@ function PortaoModal({ ent, enviar, onFechar, cameras = [] }) {
   return (
     <Sheet titulo="Portão" onFechar={onFechar}>
       {cameras.map((c) => <CameraAoVivo key={c.id} cam={c} />)}
-      <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 18, padding: "14px 12px 10px" }}>
-        <svg viewBox="0 0 320 172" role="img" aria-label={`Portão: ${texto}`} style={{ width: "100%", display: "block" }}>
+      <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: "8px 10px 6px" }}>
+        <svg viewBox="0 0 320 172" role="img" aria-label={`Portão: ${texto}`} style={{ width: "100%", height: 76, display: "block" }}>
           <defs><clipPath id="vao-portao"><rect x="30" y="18" width="260" height="130" /></clipPath></defs>
           <rect x="0" y="146" width="320" height="26" rx="5" style={{ fill: alfa(C.cinzaClaro, 22) }} />
           <rect x="8" y="143" width="304" height="4" rx="2" style={{ fill: alfa(C.cinzaClaro, 70) }} />
@@ -1615,11 +1615,11 @@ function PortaoModal({ ent, enviar, onFechar, cameras = [] }) {
           {/* luz de aviso: pisca em âmbar enquanto o portão se move */}
           <circle cx="22" cy="9" r="6" className={movendo ? "ah-pisca" : ""} style={{ fill: movendo ? C.ambar : alfa(C.cinzaClaro, 60) }} />
         </svg>
-        <div className="text-center" style={{ marginTop: 6, fontSize: 15, fontWeight: 800, color: movendo ? C.ambarTexto : alvo === "aberto" ? C.ambarTexto : C.terra }}>{texto}</div>
+        <div className="text-center" style={{ marginTop: 2, fontSize: 14, fontWeight: 800, color: movendo ? C.ambarTexto : alvo === "aberto" ? C.ambarTexto : C.terra }}>{texto}</div>
       </div>
-      <div className="flex gap-2" style={{ marginTop: 14 }}>
-        <button onClick={() => acionar(true)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: C.pasto, color: "#fff", borderRadius: 14, padding: 15, fontWeight: 800, fontSize: 16 }}><DoorOpen size={19} /> Abrir</button>
-        <button onClick={() => acionar(false)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: alfa(C.cinza, 20), color: C.terra, borderRadius: 14, padding: 15, fontWeight: 800, fontSize: 16 }}><DoorClosed size={19} /> Fechar</button>
+      <div className="flex gap-2" style={{ marginTop: 10 }}>
+        <button onClick={() => acionar(true)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: C.pasto, color: "#fff", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 16 }}><DoorOpen size={19} /> Abrir</button>
+        <button onClick={() => acionar(false)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: alfa(C.cinza, 20), color: C.terra, borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 16 }}><DoorClosed size={19} /> Fechar</button>
       </div>
     </Sheet>
   );
@@ -1651,7 +1651,9 @@ function CameraAoVivo({ cam }) {
   }, [!!cam.url]); // eslint-disable-line react-hooks/exhaustive-deps
   const ok = cam.url && src && !falhou;
   return (
-    <div style={{ position: "relative", marginBottom: 10, borderRadius: 16, overflow: "hidden", background: "#000", aspectRatio: "16 / 9" }}>
+    // Cada câmera fica em 16:9, mas nunca mais alta que metade do espaço que sobra na tela
+    // (o resto do popup ocupa ~280 px): assim tudo cabe sem rolagem.
+    <div style={{ position: "relative", marginBottom: 8, borderRadius: 14, overflow: "hidden", background: "#000", width: "100%", aspectRatio: "16 / 9", maxHeight: "calc((92dvh - 280px) / 2)" }}>
       {ok
         ? <img src={src} alt={cam.nome} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         : <div className="flex items-center justify-center" style={{ width: "100%", height: "100%", color: "#ffffffaa", fontSize: 13.5, padding: 16, textAlign: "center" }}>{cam.aviso || (falhou ? "Câmera sem imagem agora." : "Carregando a câmera…")}</div>}
@@ -4012,7 +4014,7 @@ function DialogHost() {
 function Sheet({ titulo, onFechar, children }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "#0006", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onFechar}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: C.bg, width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto", borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.bg, width: "100%", maxWidth: 460, maxHeight: "92dvh", overflowY: "auto", borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
         <div style={{ position: "sticky", top: 0, background: C.bg, padding: "16px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2 }}><div className="font-bold text-lg">{titulo}</div><button onClick={onFechar} style={{ background: C.card, borderRadius: 999, padding: 7, border: `1px solid ${C.linha}` }}><X size={18} /></button></div>
         <div className="px-4 pb-6">{children}</div>
       </div>
