@@ -1476,6 +1476,8 @@ const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 
 // Só guardamos/ouvimos estes domínios: evita a enxurrada de eventos de câmeras,
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
+// As câmeras não entram em HA_SHOW (geram muitos eventos); só as do portão são acompanhadas.
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || PORTAO_CAMERAS.some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
@@ -1569,10 +1571,12 @@ function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
 
 /* ---- Popup do PORTÃO (menu ⋮ do Controle) ---- */
 const PORTAO_ID = "cover.portao_garagem";
+// Câmeras do Frigate que mostram o portão, na ordem em que aparecem no popup (29 em cima, 28 embaixo).
+const PORTAO_CAMERAS = [{ id: "camera.cam29", nome: "Câmera 29" }, { id: "camera.cam28", nome: "Câmera 28" }];
 const PORTAO_MS = 6000; // tempo da animação de abrir/fechar
 // Desenho de um portão de correr: a folha desliza para a direita ao abrir e volta ao fechar.
 // Mexe na hora em que o comando é enviado e depois acompanha o estado que o Home Assistant informa.
-function PortaoModal({ ent, enviar, onFechar }) {
+function PortaoModal({ ent, enviar, onFechar, cameras = [] }) {
   const st = ent?.state;
   // Último comando enviado. Vale até o Home Assistant informar um estado diferente do que havia
   // na hora do toque (se o sensor do portão não atualizar, o desenho não "volta" sozinho).
@@ -1591,6 +1595,7 @@ function PortaoModal({ ent, enviar, onFechar }) {
   const barras = Array.from({ length: 14 }, (_, i) => i);
   return (
     <Sheet titulo="Portão" onFechar={onFechar}>
+      {cameras.map((c) => <CameraAoVivo key={c.id} cam={c} />)}
       <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 18, padding: "14px 12px 10px" }}>
         <svg viewBox="0 0 320 172" role="img" aria-label={`Portão: ${texto}`} style={{ width: "100%", display: "block" }}>
           <defs><clipPath id="vao-portao"><rect x="30" y="18" width="260" height="130" /></clipPath></defs>
@@ -1617,6 +1622,43 @@ function PortaoModal({ ent, enviar, onFechar }) {
         <button onClick={() => acionar(false)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: alfa(C.cinza, 20), color: C.terra, borderRadius: 14, padding: 15, fontWeight: 800, fontSize: 16 }}><DoorClosed size={19} /> Fechar</button>
       </div>
     </Sheet>
+  );
+}
+
+// Câmera "ao vivo" leve para o celular: uma foto nova da câmera a cada ~1 s (camera_proxy).
+// A foto seguinte só troca quando terminou de carregar (sem piscar); para quando o popup fecha
+// ou o app vai para segundo plano. O token da câmera muda a cada ~5 min e a URL acompanha.
+const CAMERA_MS = 1000;
+function CameraAoVivo({ cam }) {
+  const [src, setSrc] = useState(null);
+  const [falhou, setFalhou] = useState(false);
+  const urlRef = useRef(cam.url);
+  urlRef.current = cam.url;
+  useEffect(() => {
+    if (!cam.url) return;
+    let vivo = true, timer = null, erros = 0;
+    const proxima = () => {
+      if (!vivo) return;
+      if (document.visibilityState !== "visible") { timer = setTimeout(proxima, CAMERA_MS); return; }
+      const img = new Image();
+      const t0 = Date.now();
+      img.onload = () => { if (!vivo) return; erros = 0; setFalhou(false); setSrc(img.src); timer = setTimeout(proxima, Math.max(150, CAMERA_MS - (Date.now() - t0))); };
+      img.onerror = () => { if (!vivo) return; erros++; if (erros >= 3) setFalhou(true); timer = setTimeout(proxima, CAMERA_MS * 2); };
+      img.src = `${urlRef.current}&t=${Date.now()}`;
+    };
+    proxima();
+    return () => { vivo = false; clearTimeout(timer); };
+  }, [!!cam.url]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ok = cam.url && src && !falhou;
+  return (
+    <div style={{ position: "relative", marginBottom: 10, borderRadius: 16, overflow: "hidden", background: "#000", aspectRatio: "16 / 9" }}>
+      {ok
+        ? <img src={src} alt={cam.nome} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        : <div className="flex items-center justify-center" style={{ width: "100%", height: "100%", color: "#ffffffaa", fontSize: 13.5, padding: 16, textAlign: "center" }}>{cam.aviso || (falhou ? "Câmera sem imagem agora." : "Carregando a câmera…")}</div>}
+      <span style={{ position: "absolute", left: 10, top: 10, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        {ok && <span className="ah-pisca" style={{ width: 7, height: 7, borderRadius: 999, background: "#e5484d" }} />}{cam.nome}
+      </span>
+    </div>
   );
 }
 
@@ -2930,7 +2972,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         }
         renovou = false;
         const map = {};
-        (data?.estados || []).forEach((s) => { const dom = s.entity_id.split(".")[0]; if (HA_SHOW.has(dom) && !ehGrupoLuz(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
+        (data?.estados || []).forEach((s) => { if (acompanhar(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
         setEnts(map); setStatus("ok"); setErro("");
       };
       const ciclo = async () => { if (!ativo) return; if (document.visibilityState === "visible") await buscar(); if (ativo) timer = setTimeout(ciclo, 3000); };
@@ -2982,7 +3024,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           }
           if (tipo === "states") {
             const map = {};
-            (m.result || []).forEach((s) => { const dom = s.entity_id.split(".")[0]; if (HA_SHOW.has(dom) && !ehGrupoLuz(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
+            (m.result || []).forEach((s) => { if (acompanhar(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
             if (ativo) { setEnts(map); setStatus("ok"); }
             return;
           }
@@ -2994,7 +3036,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         if (m.type === "event" && m.event?.event_type === "state_changed") {
           const d = m.event.data;
           const dom = d?.entity_id ? d.entity_id.split(".")[0] : "";
-          if (d?.entity_id && HA_SHOW.has(dom) && d.new_state && !ehGrupoLuz(d.entity_id, d.new_state.attributes)) setEnts((p) => ({ ...p, [d.entity_id]: { state: d.new_state.state, attributes: d.new_state.attributes || {} } }));
+          if (d?.entity_id && d.new_state && acompanhar(d.entity_id, d.new_state.attributes)) setEnts((p) => ({ ...p, [d.entity_id]: { state: d.new_state.state, attributes: d.new_state.attributes || {} } }));
         }
       };
       ws.onerror = () => { if (ativo && !conectou) { setErro("Não consegui conectar. Confira se a Nabu Casa está ligada e o token está certo."); setStatus("erro"); } };
@@ -3277,7 +3319,12 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}@keyframes ah-pisca{50%{opacity:.2}}.ah-pisca{animation:ah-pisca .8s infinite}"}</style>
         <DialogHost />
-        {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} />}
+        {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)}
+          cameras={PORTAO_CAMERAS.map((c) => {
+            const tk = entsVis[c.id]?.attributes?.access_token;
+            const aviso = usarProxy ? "Câmera disponível só para a família (conexão direta com a casa)." : !entsVis[c.id] ? "Câmera não encontrada no Home Assistant." : null;
+            return { ...c, aviso, url: !usarProxy && tk ? `${baseUrlRef.current}/api/camera_proxy/${c.id}?token=${tk}` : null };
+          })} />}
         <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
         <header style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
