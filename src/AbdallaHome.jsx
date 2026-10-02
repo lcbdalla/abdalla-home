@@ -1704,13 +1704,20 @@ function juntarZonasDoComodo(itens) {
   return fora;
 }
 // Liga/desliga todas as zonas do cômodo; ao ligar, deixa todas na fonte da principal.
+// Se o cômodo tem fonte padrão (ex.: Térreo → Som Térreo), ela é escolhida a cada vez que liga.
 function acionarZonas(e, ligar, enviar) {
   const ids = e.zonasComodo || [e.id];
   if (!ligar) { ids.forEach((id) => enviar("media_player", "turn_off", id)); return; }
   ids.forEach((id) => enviar("media_player", "turn_on", id));
-  const fonte = e.attributes?.source;
-  if (fonte && ids.length > 1) setTimeout(() => ids.forEach((id) => enviar("media_player", "select_source", id, { source: fonte })), 900);
+  const fonte = e.fontePadrao || e.attributes?.source;
+  if (fonte && (e.fontePadrao || ids.length > 1)) setTimeout(() => ids.forEach((id) => enviar("media_player", "select_source", id, { source: fonte })), 900);
 }
+// Fonte que o som de cada pavimento usa ao ligar: no Térreo, o streamer Som Térreo (Entrada 2).
+const FONTE_PADRAO_PAVIMENTO = { terreo: "Entrada 2" };
+const comFontePadrao = (itens, pavNome) => {
+  const f = FONTE_PADRAO_PAVIMENTO[norm(pavNome).replace(/[^a-z0-9]/g, "")];
+  return f ? itens.map((x) => (ehZonaAAT(x.id) ? { ...x, fontePadrao: f } : x)) : itens;
+};
 
 // Som ligado sobe para o 1º lugar do cômodo; desligado volta à posição salva (sort é estável).
 const somLigado = (x) => ehZonaAAT(x.id) && x.state === "on";
@@ -3097,7 +3104,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
     comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
-      itens: somPrimeiro(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip))),
+      itens: somPrimeiro(comFontePadrao(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), p.nome)),
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
