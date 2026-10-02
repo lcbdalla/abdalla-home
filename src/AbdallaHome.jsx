@@ -2108,26 +2108,26 @@ function ligarAlexa(e, ligar, enviar) {
 
 /* ---- Grupo de persianas numeradas (ex.: Varanda: Persiana 1 … Persiana 11) ----
    Viram um cartão "Persianas" que abre mostrando todas para escolher qual usar. */
-const RE_PERSIANA_N = /^(?:persiana|cortina)\s*(\d+)$/i;
-// Quem comanda todas juntas vira os botões do grupo: a "Todas" (grupo do HA, ex.: Sala de TV)
-// ou, sem ela, a "Persiana 0" — só quando há outras 3+ numeradas (Varanda: 0 comanda as 1–11).
-// Senão a 0 é uma persiana comum (Sala de TV: 0, 1, 2) e o grupo manda uma por vez.
+// "Persiana 3", "Persiana Sala TV 1", "Cortina 2"…: começa com persiana/cortina e termina no número.
+const RE_PERSIANA_N = /^(?:persiana|cortina)\b.*?(\d+)$/i;
+// Quem comanda todas juntas vira os botões do grupo: a "Todas" (grupo do HA) ou a de número 0
+// (Varanda: 0 comanda as 1–11; Sala de TV: 0 comanda a 1 e a 2).
 const ehPersianaTodas = (x) => x.tipo === "persiana" && /todas/i.test(`${x.nome || ""} ${x.id}`);
-const ehPersianaZero = (x) => x.tipo === "persiana" && (/^persiana\s*0$/i.test(String(x.nome || "").trim()) || /_0$/.test(String(x.id)));
+const ehPersianaZero = (x) => x.tipo === "persiana" && (/^(?:persiana|cortina)\b.*?\b0$/i.test(String(x.nome || "").trim()) || /_0$/.test(String(x.id)));
 function agruparPersianas(itens, comodoId) {
   const todas = itens.find(ehPersianaTodas);
+  // A 0 tem preferência (o Leonardo usa a 0 para abrir/fechar todas); a "Todas" do HA só sem a 0.
   const numeradas = itens.filter((x) => x.tipo === "persiana" && !ehPersianaTodas(x) && RE_PERSIANA_N.test(String(x.nome || "").trim()));
-  const zero = !todas && numeradas.filter((x) => !ehPersianaZero(x)).length >= 3 ? itens.find(ehPersianaZero) : null;
-  const mestre = todas || zero || null;
-  const membros = numeradas.filter((x) => x !== mestre);
-  if (membros.length < 3) return itens;
+  const mestre = itens.find(ehPersianaZero) || todas || null;
+  const membros = numeradas.filter((x) => x !== mestre && !ehPersianaZero(x));
+  if (membros.length < (mestre ? 2 : 3)) return itens;
   const n = (x) => Number(String(x.nome).trim().match(RE_PERSIANA_N)[1]);
   const pos = itens.indexOf(membros[0]);
   const grupo = { dbId: "grupo-persianas-" + comodoId, id: "grupo.persianas_" + comodoId, tipo: "grupoPersianas", nome: "Persianas", rotulos: {},
     // Dentro do cartão "Persianas", cada uma aparece só pelo número (cabe numa linha).
     tamanho: "g", membros: membros.slice().sort((x, y) => n(x) - n(y)).map((m) => ({ ...m, nome: `Nº ${n(m)}` })), mestre,
     disponivel: membros.some((m) => m.disponivel) || !!mestre?.disponivel, state: "" };
-  const resto = itens.filter((x) => !membros.includes(x) && x !== mestre);
+  const resto = itens.filter((x) => !membros.includes(x) && x !== mestre && !ehPersianaTodas(x));
   resto.splice(Math.min(pos, resto.length), 0, grupo);
   return resto;
 }
