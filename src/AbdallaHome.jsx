@@ -2868,31 +2868,41 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
 // acende todas, uma por vez). Tocar no título abre as luzes de dentro.
 // Cartão de botões (ex.: Coifa): cada toque aperta o botão no HA. Não há como saber se está
 // ligado (o comando vai por infravermelho), então não mostra estado.
-// A luz não informa se está acesa: o app começa considerando apagada e cada toque em "Luz"
-// inverte. ponytail: guardado só neste aparelho; toques pela Alexa ou por outro celular não
-// entram — para valer para todos, precisaria de um input_boolean no HA.
+// A coifa não informa nada (o comando vai por infravermelho): o app começa considerando tudo
+// desligado e acompanha os toques — "Luz" inverte; "Velocidade +/−" sobe/desce de 0 (motor
+// parado) até COIFA_VEL_MAX. ponytail: guardado só neste aparelho; toques pela Alexa ou por
+// outro celular não entram — para valer para todos, precisaria de ajudantes no HA.
+const COIFA_VEL_MAX = 3; // quantas velocidades a coifa tem (ajuste se for diferente)
+function proximoBotao(st, ordem) {
+  if (ordem === 0) return { ...st, luz: !st.luz };
+  if (ordem === 1) return { ...st, vel: Math.max(0, st.vel - 1) };
+  if (ordem === 2) return { ...st, vel: Math.min(COIFA_VEL_MAX, st.vel + 1) };
+  return st;
+}
 function CartaoGrupoBotoes({ e, enviar }) {
-  const luz = e.membros.find((m) => acaoBotao(m).label === "Luz");
-  const chave = luz ? "botaoLigado:" + luz.id : null;
-  const [acesa, setAcesa] = useState(() => { try { return !!chave && localStorage.getItem(chave) === "1"; } catch { return false; } });
+  const chave = "botoesEstado:" + e.dbId;
+  const [st, setSt] = useState(() => { try { return { luz: false, vel: 0, ...JSON.parse(localStorage.getItem(chave) || "{}") }; } catch { return { luz: false, vel: 0 }; } });
   const apertar = (m) => {
     enviar("input_button", "press", m.id);
-    if (m !== luz) return;
-    const n = !acesa; setAcesa(n);
-    try { localStorage.setItem(chave, n ? "1" : "0"); } catch { /* ok */ }
+    const n = proximoBotao(st, acaoBotao(m).ordem); setSt(n);
+    try { localStorage.setItem(chave, JSON.stringify(n)); } catch { /* ok */ }
   };
-  const v = { ...visualEquip(e), ativo: acesa, cor: C.ambar, luz: true };
+  // Aceso: Luz quando a luz está ligada; Velocidade −/+ quando o motor está ligado.
+  const aceso = (m) => { const o = acaoBotao(m).ordem; return o === 0 ? st.luz : o === 1 || o === 2 ? st.vel > 0 : false; };
+  const algo = e.membros.some(aceso);
+  const texto = [st.luz && "Luz acesa", st.vel > 0 && `Velocidade ${st.vel}`].filter(Boolean).join(" · ") || "Desligada";
+  const v = { ...visualEquip(e), ativo: algo, cor: C.ambar, luz: true };
   return (
-    <div style={{ background: acesa ? `color-mix(in srgb, ${C.ambar} 10%, ${C.card})` : C.bg, border: `1px solid ${acesa ? alfa(C.ambar, 38) : "transparent"}`,
+    <div style={{ background: algo ? `color-mix(in srgb, ${C.ambar} 10%, ${C.card})` : C.bg, border: `1px solid ${algo ? alfa(C.ambar, 38) : "transparent"}`,
       borderRadius: 16, padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10, transition: "background .25s, border-color .25s" }}>
       <div className="flex items-center" style={{ gap: 8 }}>
         <IconeEquip v={v} disponivel={e.disponivel} />
         <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra }}>{e.nome}</div>
-        {luz && <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: acesa ? C.ambarTexto : C.cinza }}>{acesa ? "Luz acesa" : "Luz apagada"}</span>}
+        <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: algo ? C.ambarTexto : C.cinza }}>{texto}</span>
       </div>
       <div className="flex gap-2" onPointerDown={(ev) => ev.stopPropagation()}>
         {e.membros.map((m) => { const a = acaoBotao(m); return (
-          <BotaoAcao key={m.id} icon={a.Icon} label={a.label} cor={m === luz && acesa ? C.ambar : C.lago} disabled={!m.disponivel} onClick={() => apertar(m)} />
+          <BotaoAcao key={m.id} icon={a.Icon} label={a.label} cor={aceso(m) ? C.ambar : C.cinza} disabled={!m.disponivel} onClick={() => apertar(m)} />
         ); })}
       </div>
     </div>
