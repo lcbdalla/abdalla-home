@@ -2154,18 +2154,16 @@ function CtrlTv({ e, enviar }) {
                 </button>
               </div>
             )}
-            {juntas.map((z) => (
-              <div key={z.id} style={{ marginBottom: 8 }}>
-                <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{z.nome}</div>
-                <BarraVolume e={z} enviar={enviar} compacto onSoltar={travado ? volumeEmTodas : undefined} />
-              </div>
-            ))}
-            {r.volSet && (
-              <div style={{ marginBottom: 10 }}>
-                {(juntas.length > 0 || volStreamer) && <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{(e.zonas.find((z) => z.id === e.id) || {}).nome || e.nome}</div>}
-                <BarraVolume e={e} enviar={enviar} onSoltar={travado && juntas.length ? volumeEmTodas : undefined} />
-              </div>
-            )}
+            {/* Sempre na ordem das zonas do amplificador (zona 1, 2, 3...), com a zona deste cartão no seu lugar. */}
+            {e.zonas.filter((z) => z.id === e.id ? r.volSet : juntas.some((j) => j.id === z.id)).map((z) => {
+              const esta = z.id === e.id;
+              return (
+                <div key={z.id} style={{ marginBottom: esta ? 10 : 8 }}>
+                  {(juntas.length > 0 || volStreamer) && <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{z.nome}</div>}
+                  <BarraVolume e={esta ? e : z} enviar={enviar} compacto={!esta} onSoltar={travado && juntas.length ? volumeEmTodas : undefined} />
+                </div>
+              );
+            })}
           </div>
           <button onClick={() => setSincronizar(true)} className="flex items-center justify-center gap-2"
             style={{ width: "100%", marginTop: 4, background: "transparent", border: `1px dashed ${alfa(LAGO, 55)}`, color: LAGO, borderRadius: 12, padding: 11, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
@@ -2981,7 +2979,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
   const meuSpotify = spotifyDaPessoa(entsVis, eu?.nome);
   // As 6 zonas do amplificador AAT (nome = cômodo, como estão no HA), para "Sincronizar ambientes".
-  const zonasAAT = Object.keys(entsVis).filter(ehZonaAAT).sort().map((id) => {
+  const nZona = (id) => Number(String(id).split("_").pop()) || 0;
+  const zonasAAT = Object.keys(entsVis).filter(ehZonaAAT).sort((x, y) => nZona(x) - nZona(y)).map((id) => {
     const v = entsVis[id], st = v?.state;
     return { id, tipo: "tv", nome: v?.attributes?.friendly_name || id, state: st, attributes: v?.attributes || {}, disponivel: st != null && !["unavailable", "unknown"].includes(st) };
   });
