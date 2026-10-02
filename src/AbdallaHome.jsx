@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -1839,7 +1839,31 @@ function BotaoMini({ Ic, rot, onClick, cheio }) {
 
 // Aparência de cada aparelho: ícone do tipo e a cor quando está "ativo"
 // (ligado, aberto, destrancado...). Desligado = ícone apagado.
+// Cascata: não existe no lucide; desenhada no mesmo estilo (traço, 24×24, cor do texto).
+function IconeCascata({ size = 24, strokeWidth = 2, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+      <path d="M3 4h12v3H3z" />
+      <path d="M7 7c0 3.5.6 6.5.6 10" />
+      <path d="M10.5 7c0 3.5.8 6.5.8 10" />
+      <path d="M14 7c0 3.5 1 6.5 1 10" />
+      <path d="M2 20c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 3-1.2 4.5 0 3 1.2 4.5 0" />
+    </svg>
+  );
+}
+// Ícone pela finalidade, a partir do nome (vale em qualquer cômodo).
+const ICONE_POR_NOME = [
+  [/borda/, WavesLadder, "lago"], [/cascata/, IconeCascata, "lago"], [/filtro/, Funnel, "lago"],
+  [/hidro/, Bubbles, "lago"], [/aquec/, Flame, "ambar"],
+];
+
 function visualEquip(e) {
+  const v = visualPorTipo(e);
+  const alvo = norm((e.nome || "") + " " + e.id);
+  const achou = ICONE_POR_NOME.find(([re]) => re.test(alvo));
+  return achou ? { ...v, Icon: achou[1], cor: C[achou[2]], luz: false } : v;
+}
+function visualPorTipo(e) {
   const dom = String(e.id).split(".")[0];
   const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
   if (e.tipo === "persiana") {
@@ -1874,7 +1898,7 @@ function CtrlInterruptor({ e, enviar, cardClicavel }) {
     <div className="flex items-center gap-3">
       <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (on ? C.terra : C.cinza), fontWeight: 600 }}>{ind ? "Indisponível" : (on ? "Ligado" : "Desligado")}</div>
       {/* Quando o quadro inteiro já é clicável, a chave é só um indicador visual. */}
-      <PillToggle on={on} cor={C.ambar} disabled={ind} onClick={cardClicavel ? undefined : () => enviar("homeassistant", "toggle", e.id)} />
+      <PillToggle on={on} cor={visualEquip(e).cor} disabled={ind} onClick={cardClicavel ? undefined : () => enviar("homeassistant", "toggle", e.id)} />
     </div>
   );
 }
@@ -1926,7 +1950,7 @@ function CtrlAr({ e, enviar }) {
           {ind ? "Indisponível" : (ligado ? `Ligado · ${AR_MODO_NOME[e.state] || e.state}` : "Desligado")}
           {atual != null && <span style={{ color: C.cinzaClaro }}> · ambiente {Math.round(atual)}°</span>}
         </div>
-        <PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={() => enviar("climate", ligado ? "turn_off" : "turn_on", e.id)} />
+        <PillToggle on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={() => enviar("climate", ligado ? "turn_off" : "turn_on", e.id)} />
       </div>
       {ligado && (
         <>
@@ -2306,7 +2330,7 @@ function CtrlArCompacto({ e, enviar }) {
       ) : (
         <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : C.cinza, fontWeight: 600 }}>{ind ? "Indisponível" : "Desligado"}</div>
       )}
-      <span style={{ marginLeft: "auto" }}><PillToggle pequeno on={ligado} cor={C.lago} disabled={ind} onClick={(ev) => { ev.stopPropagation(); enviar("climate", ligado ? "turn_off" : "turn_on", e.id); }} /></span>
+      <span style={{ marginLeft: "auto" }}><PillToggle pequeno on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={(ev) => { ev.stopPropagation(); enviar("climate", ligado ? "turn_off" : "turn_on", e.id); }} /></span>
     </div>
   );
 }
