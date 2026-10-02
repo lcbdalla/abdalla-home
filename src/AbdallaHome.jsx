@@ -1566,6 +1566,59 @@ function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
   );
 }
 
+/* ---- Popup do PORTÃO (menu ⋮ do Controle) ---- */
+const PORTAO_ID = "cover.portao_garagem";
+const PORTAO_MS = 6000; // tempo da animação de abrir/fechar
+// Desenho de um portão de correr: a folha desliza para a direita ao abrir e volta ao fechar.
+// Mexe na hora em que o comando é enviado e depois acompanha o estado que o Home Assistant informa.
+function PortaoModal({ ent, enviar, onFechar }) {
+  const st = ent?.state;
+  // Último comando enviado. Vale até o Home Assistant informar um estado diferente do que havia
+  // na hora do toque (se o sensor do portão não atualizar, o desenho não "volta" sozinho).
+  const [cmd, setCmd] = useState(null); // { alvo: "aberto" | "fechado", st0 }
+  const [animando, setAnimando] = useState(false);
+  useEffect(() => { if (cmd && st !== cmd.st0) setCmd(null); }, [st, cmd]);
+  useEffect(() => { if (!animando) return; const t = setTimeout(() => setAnimando(false), PORTAO_MS); return () => clearTimeout(t); }, [animando, cmd]);
+  const doHA = st === "open" || st === "opening" ? "aberto" : st === "closed" || st === "closing" ? "fechado" : null;
+  const alvo = cmd?.alvo || doHA || "fechado";
+  const movendo = animando || st === "opening" || st === "closing";
+  const ind = ent && ["unavailable", "unknown"].includes(st);
+  const texto = movendo ? (alvo === "aberto" ? "Abrindo…" : "Fechando…")
+    : cmd ? (cmd.alvo === "aberto" ? "Aberto" : "Fechado")
+      : st === "open" ? "Aberto" : st === "closed" ? "Fechado" : ind ? "Sem resposta do portão" : !ent ? "Sem sinal do portão" : haEstado(st).texto;
+  const acionar = (abrir) => { enviar("cover", abrir ? "open_cover" : "close_cover", PORTAO_ID); setCmd({ alvo: abrir ? "aberto" : "fechado", st0: st }); setAnimando(true); };
+  const barras = Array.from({ length: 14 }, (_, i) => i);
+  return (
+    <Sheet titulo="Portão" onFechar={onFechar}>
+      <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 18, padding: "14px 12px 10px" }}>
+        <svg viewBox="0 0 320 172" role="img" aria-label={`Portão: ${texto}`} style={{ width: "100%", display: "block" }}>
+          <defs><clipPath id="vao-portao"><rect x="30" y="18" width="260" height="130" /></clipPath></defs>
+          <rect x="0" y="146" width="320" height="26" rx="5" style={{ fill: alfa(C.cinzaClaro, 22) }} />
+          <rect x="8" y="143" width="304" height="4" rx="2" style={{ fill: alfa(C.cinzaClaro, 70) }} />
+          <g clipPath="url(#vao-portao)">
+            <g style={{ transform: `translateX(${alvo === "aberto" ? 252 : 0}px)`, transition: `transform ${PORTAO_MS}ms cubic-bezier(.45,.05,.35,1)` }}>
+              <rect x="30" y="32" width="260" height="9" rx="3" style={{ fill: C.pastoEsc }} />
+              <rect x="30" y="128" width="260" height="9" rx="3" style={{ fill: C.pastoEsc }} />
+              {barras.map((i) => <rect key={i} x={37 + i * 18.4} y="41" width="6" height="87" rx="2" style={{ fill: C.pasto }} />)}
+              <circle cx="62" cy="141" r="4.5" style={{ fill: C.terra }} />
+              <circle cx="258" cy="141" r="4.5" style={{ fill: C.terra }} />
+            </g>
+          </g>
+          <rect x="14" y="16" width="16" height="131" rx="3" style={{ fill: C.cinza }} />
+          <rect x="290" y="16" width="16" height="131" rx="3" style={{ fill: C.cinza }} />
+          {/* luz de aviso: pisca em âmbar enquanto o portão se move */}
+          <circle cx="22" cy="9" r="6" className={movendo ? "ah-pisca" : ""} style={{ fill: movendo ? C.ambar : alfa(C.cinzaClaro, 60) }} />
+        </svg>
+        <div className="text-center" style={{ marginTop: 6, fontSize: 15, fontWeight: 800, color: movendo ? C.ambarTexto : alvo === "aberto" ? C.ambarTexto : C.terra }}>{texto}</div>
+      </div>
+      <div className="flex gap-2" style={{ marginTop: 14 }}>
+        <button onClick={() => acionar(true)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: C.pasto, color: "#fff", borderRadius: 14, padding: 15, fontWeight: 800, fontSize: 16 }}><DoorOpen size={19} /> Abrir</button>
+        <button onClick={() => acionar(false)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: alfa(C.cinza, 20), color: C.terra, borderRadius: 14, padding: 15, fontWeight: 800, fontSize: 16 }}><DoorClosed size={19} /> Fechar</button>
+      </div>
+    </Sheet>
+  );
+}
+
 /* ---- Menu ⋮ do cabeçalho (o mesmo no app de tarefas e no Controle) ---- */
 function MenuPontinhos({ aberto, setAberto, itens }) {
   return (
@@ -2227,6 +2280,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [equipamentos, setEquipamentos] = useState([]);
   const [modo, setModo] = useState("usar"); // usar | gerenciar
   const [menuAberto, setMenuAberto] = useState(false);
+  const [portaoAberto, setPortaoAberto] = useState(false);
   const [tema, setTema] = useState(() => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
   // O que está aberto: pavimentos abertos + UM cômodo por vez. Começa tudo fechado e
   // volta a fechar depois de 8h sem uso (guardado no aparelho para valer entre aberturas).
@@ -2547,8 +2601,9 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   return (
     <div style={{ background: C.tela, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "hidden", width: "100%" }}>
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
-        <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}"}</style>
+        <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}@keyframes ah-pisca{50%{opacity:.2}}.ah-pisca{animation:ah-pisca .8s infinite}"}</style>
         <DialogHost />
+        {portaoAberto && <PortaoModal ent={ents[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} />}
         <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
         <header style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
@@ -2562,6 +2617,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             {eu?.podeMenuControle && (
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
                 // Mesmos itens do ⋮ das tarefas (com "Tarefas" no lugar de "Controle da casa") + Configuração.
+                { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => setPortaoAberto(true) },
                 ...(souGestor && modo === "usar" ? [{ key: "config", icon: Wrench, cor: C.pasto, txt: "Configuração", on: () => setModo("gerenciar") }] : []),
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
                 ...(onEquipe ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: onEquipe }] : []),
