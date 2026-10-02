@@ -3077,8 +3077,9 @@ function SeletorAparelho({ ents, areas, usados, comodo, onEscolher, onFechar }) 
     .map(([id, v]) => ({ id, nome: v.attributes?.friendly_name || id, tipo: tipoSugerido(id), grupo: "Fora da lista", ambiente: `Outros do Home Assistant${areas?.[id] ? " · " + areas[id] : ""}` })) : [];
   const itens = [...CATALOGO_LAB, ...outros]
     .filter((x) => !usados.has(x.id))
-    // Busca por palavras, em qualquer ordem ("persiana churrasqueira" acha "Persiana · Churrasqueira").
-    .filter((x) => { if (!q) return true; const alvo = norm(`${x.nome} ${x.id.replace(/[._]/g, " ")} ${x.ambiente} ${x.grupo}`); return q.split(/\s+/).filter(Boolean).every((w) => alvo.includes(w)); });
+    // Busca por palavras, em qualquer ordem ("persiana churrasqueira" acha "Persiana · Churrasqueira"),
+    // e também pelo identificador do HA como está escrito ("int_subsolo" acha switch.int_subsolo_l1).
+    .filter((x) => { if (!q) return true; const alvo = norm(`${x.nome} ${x.id} ${x.id.replace(/[._]/g, " ")} ${x.ambiente} ${x.grupo}`); return q.split(/\s+/).filter(Boolean).every((w) => alvo.includes(w)); });
   const grupos = {};
   itens.forEach((x) => { (grupos[x.ambiente || ""] ||= []).push(x); });
   const fora = (n) => n.startsWith("Outros do Home Assistant");
