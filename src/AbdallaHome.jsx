@@ -1863,13 +1863,16 @@ function TempoModal({ cl, cond, onFechar }) {
           {atualizado != null && <span>{atualizado < 1 ? "agora" : `há ${atualizado} min`}</span>}
         </div>
       </div>
-      {/* Ordem: umidade e UV · luminosidade e chance de chuva · vento · chuva (histórico) · raios. */}
+      {/* Ordem: umidade e chance de chuva · luminosidade e UV · vento · chuva (histórico) · raios. */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {s.umidade && <Bloco Icon={Droplets} titulo="Umidade externa"><Grande v={fmtC(s.umidade, 0)} u="%" /></Bloco>}
-        {uv != null && (
-          <Bloco Icon={SunMedium} titulo="Índice UV" cor={nUV[1]}>
-            <Grande v={fmtC(s.uv, 1)} u="" />
-            <div style={{ fontSize: 12.5, fontWeight: 800, color: nUV[1], marginTop: 2 }}>{nUV[0]}</div>
+        {chance != null && (
+          <Bloco Icon={CloudRain} titulo="Chance de chuva hoje">
+            <Grande v={Math.round(chance)} u="%" />
+            <div style={{ height: 6, borderRadius: 999, background: alfa(C.lago, 16), marginTop: 6, overflow: "hidden" }}>
+              <div style={{ width: `${Math.min(100, Math.max(0, chance))}%`, height: "100%", borderRadius: 999, background: C.lago }} />
+            </div>
+            <div style={{ fontSize: 12, color: C.cinza, marginTop: 4 }}>{chance < 20 ? "Pouco provável" : chance < 50 ? "Pode chover" : chance < 80 ? "Provável" : "Muito provável"}</div>
           </Bloco>
         )}
         {(s.lux || s.radiacao) && (
@@ -1878,13 +1881,10 @@ function TempoModal({ cl, cond, onFechar }) {
             {s.lux && s.radiacao && <div style={{ fontSize: 12.5, color: C.cinza, marginTop: 2 }}>{fmtC(s.radiacao, 0)} {un(s.radiacao, "W/m²")}</div>}
           </Bloco>
         )}
-        {chance != null && (
-          <Bloco Icon={CloudRain} titulo="Chance de chuva hoje">
-            <Grande v={Math.round(chance)} u="%" />
-            <div style={{ height: 6, borderRadius: 999, background: alfa(C.lago, 16), marginTop: 6, overflow: "hidden" }}>
-              <div style={{ width: `${Math.min(100, Math.max(0, chance))}%`, height: "100%", borderRadius: 999, background: C.lago }} />
-            </div>
-            <div style={{ fontSize: 12, color: C.cinza, marginTop: 4 }}>{chance < 20 ? "Pouco provável" : chance < 50 ? "Pode chover" : chance < 80 ? "Provável" : "Muito provável"}</div>
+        {uv != null && (
+          <Bloco Icon={SunMedium} titulo="Índice UV" cor={nUV[1]}>
+            <Grande v={fmtC(s.uv, 1)} u="" />
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: nUV[1], marginTop: 2 }}>{nUV[0]}</div>
           </Bloco>
         )}
         {(s.vento || s.rajada || s.rajadaMax || graus != null) && (
