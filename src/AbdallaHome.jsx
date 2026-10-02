@@ -1720,9 +1720,9 @@ function useClima() {
     let vivo = true, t;
     const buscar = async () => {
       try {
-        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${est.lat}&longitude=${est.lon}&current=weather_code,is_day,cloud_cover&timezone=auto`);
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${est.lat}&longitude=${est.lon}&current=weather_code,is_day,cloud_cover&daily=precipitation_probability_max&forecast_days=1&timezone=auto`);
         const j = await r.json();
-        if (vivo && j?.current) setCeu(j.current);
+        if (vivo && j?.current) setCeu({ ...j.current, chanceChuva: j.daily?.precipitation_probability_max?.[0] ?? null });
       } catch { /* sem internet: fica com a estação */ }
       if (vivo) t = setTimeout(buscar, 15 * 60000);
     };
@@ -1832,6 +1832,7 @@ function TempoModal({ cl, cond, onFechar }) {
   const uv = numC(s.uv), nUV = nivelUV(uv);
   const chuvaHoje = numC(s.chuvaHoje), taxa = numC(s.chuvaTaxa);
   const raios = numC(s.raios);
+  const chance = cl.ceu?.chanceChuva ?? null; // Open-Meteo: chance máxima de chuva hoje (%)
   const raioH = s.raioHora ? new Date(Date.parse(s.raioHora.state)) : null;
   const raioHoje = raioH && !isNaN(raioH) && raioH.toDateString() === new Date().toDateString();
   const un = (x, padrao) => x?.unidade || padrao;
@@ -1862,7 +1863,30 @@ function TempoModal({ cl, cond, onFechar }) {
           {atualizado != null && <span>{atualizado < 1 ? "agora" : `há ${atualizado} min`}</span>}
         </div>
       </div>
+      {/* Ordem: umidade e UV · luminosidade e chance de chuva · vento · chuva (histórico) · raios. */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {s.umidade && <Bloco Icon={Droplets} titulo="Umidade externa"><Grande v={fmtC(s.umidade, 0)} u="%" /></Bloco>}
+        {uv != null && (
+          <Bloco Icon={SunMedium} titulo="Índice UV" cor={nUV[1]}>
+            <Grande v={fmtC(s.uv, 1)} u="" />
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: nUV[1], marginTop: 2 }}>{nUV[0]}</div>
+          </Bloco>
+        )}
+        {(s.lux || s.radiacao) && (
+          <Bloco Icon={Sun} titulo="Luminosidade" cor={C.ambar}>
+            {s.lux ? <Grande v={fmtC(s.lux, 0)} u={un(s.lux, "lx")} /> : <Grande v={fmtC(s.radiacao, 0)} u={un(s.radiacao, "W/m²")} />}
+            {s.lux && s.radiacao && <div style={{ fontSize: 12.5, color: C.cinza, marginTop: 2 }}>{fmtC(s.radiacao, 0)} {un(s.radiacao, "W/m²")}</div>}
+          </Bloco>
+        )}
+        {chance != null && (
+          <Bloco Icon={CloudRain} titulo="Chance de chuva hoje">
+            <Grande v={Math.round(chance)} u="%" />
+            <div style={{ height: 6, borderRadius: 999, background: alfa(C.lago, 16), marginTop: 6, overflow: "hidden" }}>
+              <div style={{ width: `${Math.min(100, Math.max(0, chance))}%`, height: "100%", borderRadius: 999, background: C.lago }} />
+            </div>
+            <div style={{ fontSize: 12, color: C.cinza, marginTop: 4 }}>{chance < 20 ? "Pouco provável" : chance < 50 ? "Pode chover" : chance < 80 ? "Provável" : "Muito provável"}</div>
+          </Bloco>
+        )}
         {(s.vento || s.rajada || s.rajadaMax || graus != null) && (
           <Bloco Icon={Wind} titulo="Vento" largo>
             <div className="flex items-center gap-4">
@@ -1883,25 +1907,12 @@ function TempoModal({ cl, cond, onFechar }) {
             </div>
           </Bloco>
         )}
-        {s.umidade && <Bloco Icon={Droplets} titulo="Umidade externa"><Grande v={fmtC(s.umidade, 0)} u="%" /></Bloco>}
-        {uv != null && (
-          <Bloco Icon={SunMedium} titulo="Índice UV" cor={nUV[1]}>
-            <Grande v={fmtC(s.uv, 1)} u="" />
-            <div style={{ fontSize: 12.5, fontWeight: 800, color: nUV[1], marginTop: 2 }}>{nUV[0]}</div>
-          </Bloco>
-        )}
-        {(s.lux || s.radiacao) && (
-          <Bloco Icon={Sun} titulo="Luminosidade" cor={C.ambar}>
-            {s.lux ? <Grande v={fmtC(s.lux, 0)} u={un(s.lux, "lx")} /> : <Grande v={fmtC(s.radiacao, 0)} u={un(s.radiacao, "W/m²")} />}
-            {s.lux && s.radiacao && <div style={{ fontSize: 12.5, color: C.cinza, marginTop: 2 }}>{fmtC(s.radiacao, 0)} {un(s.radiacao, "W/m²")}</div>}
-          </Bloco>
-        )}
         {(s.chuvaHoje || s.chuvaMes || s.chuvaAno || s.chuvaTaxa) && (
           <Bloco Icon={Umbrella} titulo="Chuva" largo>
             {taxa != null && taxa > 0 && <div style={{ fontSize: 14, fontWeight: 800, color: C.lago, marginBottom: 4 }}>Chovendo agora · {fmtC(s.chuvaTaxa, 1)} {un(s.chuvaTaxa, "mm/h")}</div>}
-            {s.chuvaHoje && <Linha r="Hoje" v={chuvaHoje > 0 ? `${fmtC(s.chuvaHoje, 1)} ${un(s.chuvaHoje, "mm")}` : "Sem chuva"} />}
-            {s.chuvaMes && <Linha r="No mês" v={`${fmtC(s.chuvaMes, 1)} ${un(s.chuvaMes, "mm")}`} />}
-            {s.chuvaAno && <Linha r="No ano" v={`${fmtC(s.chuvaAno, 1)} ${un(s.chuvaAno, "mm")}`} />}
+            {s.chuvaHoje && <Linha r="Hoje" v={chuvaHoje > 0 ? `${fmtC(s.chuvaHoje, 1)} ${un(s.chuvaHoje, "mm")}` : "Ainda não choveu"} />}
+            {s.chuvaMes && <Linha r="No mês" v={numC(s.chuvaMes) > 0 ? `${fmtC(s.chuvaMes, 1)} ${un(s.chuvaMes, "mm")}` : "Ainda não choveu"} />}
+            {s.chuvaAno && <Linha r="No ano" v={numC(s.chuvaAno) > 0 ? `${fmtC(s.chuvaAno, 1)} ${un(s.chuvaAno, "mm")}` : "Ainda não choveu"} />}
           </Bloco>
         )}
         {((raios != null && raios > 0) || raioHoje) && (
