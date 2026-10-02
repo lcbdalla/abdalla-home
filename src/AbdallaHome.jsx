@@ -2122,13 +2122,14 @@ function agruparPersianas(itens, comodoId) {
 // tipos: o que entra no grupo (padrão só luzes); icone: desenho do cartão (padrão lâmpada).
 const GRUPOS_LUZES = [
   { re: /^banheiro\b/i, nome: "Banheiros" },
-  { re: /^brinquedoteca\b/i, nome: "Brinquedoteca", tipos: ["interruptor", "ar"], icone: ToyBrick },
+  { re: /brinquedoteca/i, nome: "Brinquedoteca", tipos: ["interruptor", "ar"], icone: ToyBrick, min: 2 },
 ];
 function agruparLuzes(itens, comodoId) {
   let lista = itens;
   GRUPOS_LUZES.forEach((g, gi) => {
-    const membros = lista.filter((x) => (g.tipos || ["interruptor"]).includes(x.tipo) && g.re.test(String(x.nome || "").trim()));
-    if (membros.length < 3) return;
+    const membros = lista.filter((x) => (g.tipos || ["interruptor"]).includes(x.tipo)
+      && g.re.test(`${String(x.nome || "").trim()} ${x.attributes?.friendly_name || ""} ${x.id}`));
+    if (membros.length < (g.min || 3)) return;
     const pos = lista.indexOf(membros[0]);
     const grupo = { dbId: `grupo-luzes-${gi}-${comodoId}`, id: `grupo.luzes_${gi}_${comodoId}`, tipo: "grupoLuzes", nome: g.nome, icone: g.icone, rotulos: {},
       tamanho: "g", membros, disponivel: membros.some((m) => m.disponivel), state: membros.some(estaLigado) ? "on" : "off" };
