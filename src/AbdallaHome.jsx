@@ -1889,16 +1889,20 @@ function estadoMidia(e) {
 
 // Barra de volume: arrasta e vê o número mudar; o comando (volume_set) vai uma vez só, ao soltar.
 // O alto-falante no começo liga/desliga o mudo: colorido = com som, cinza = mudo.
-function BarraVolume({ e, enviar, compacto }) {
+function BarraVolume({ e, enviar, compacto, onSoltar }) {
   const atual = typeof e.attributes?.volume_level === "number" ? Math.round(e.attributes.volume_level * 100) : 0;
   const mudo = e.attributes?.is_volume_muted === true;
   const [local, setLocal] = useState(null); // valor enquanto o dedo está na barra
-  const ref = useRef(null), enviarRef = useRef(enviar);
-  enviarRef.current = enviar;
+  const ref = useRef(null), enviarRef = useRef(enviar), onSoltarRef = useRef(onSoltar);
+  enviarRef.current = enviar; onSoltarRef.current = onSoltar;
   useEffect(() => {
     const el = ref.current; if (!el) return;
     // "change" do navegador só dispara quando solta a barra (o "input" dispara a cada passo).
-    const soltar = () => { enviarRef.current("media_player", "volume_set", e.id, { volume_level: Number(el.value) / 100 }); setLocal(null); };
+    const soltar = () => {
+      const v = Number(el.value) / 100;
+      if (onSoltarRef.current) onSoltarRef.current(v); else enviarRef.current("media_player", "volume_set", e.id, { volume_level: v });
+      setLocal(null);
+    };
     el.addEventListener("change", soltar);
     return () => el.removeEventListener("change", soltar);
   }, [e.id]);
@@ -2091,9 +2095,14 @@ function CtrlTv({ e, enviar }) {
   const a = e.attributes || {};
   const mudo = a.is_volume_muted === true;
   const [sincronizar, setSincronizar] = useState(false);
+  const chaveTrava = "volTravado:" + e.id;
+  const [travado, setTravado] = useState(() => { try { return localStorage.getItem(chaveTrava) === "1"; } catch { return false; } });
+  const alternarTrava = () => { const n = !travado; setTravado(n); try { localStorage.setItem(chaveTrava, n ? "1" : "0"); } catch { /* ok */ } };
   if (!ligado) return null; // o estado e a chave liga/desliga ficam no topo do cartão
   // Outras zonas do amplificador ligadas na mesma fonte = tocando junto com esta.
   const juntas = (e.zonas || []).filter((z) => z.id !== e.id && z.state === "on" && a.source && z.attributes?.source === a.source);
+  // Trava ligada: o volume escolhido vai para esta zona e para todas as que tocam junto.
+  const volumeEmTodas = (v) => [e, ...juntas].forEach((z) => enviar("media_player", "volume_set", z.id, { volume_level: v }));
   // Volume do streamer desta fonte: é o mesmo volume que o Spotify mostra para o aparelho.
   const sm = e.streamer;
   const volStreamer = sm && !sm.semSinal && sm.disponivel && typeof sm.attributes?.volume_level === "number" && (
@@ -2132,24 +2141,32 @@ function CtrlTv({ e, enviar }) {
       {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}>{volStreamer}<BarraVolume e={e} enviar={enviar} /></div>}
       {(e.zonas || []).length > 1 && a.source && (
         <div style={{ marginTop: 12 }}>
-          {juntas.length > 0 && (
-            <div style={{ borderTop: `1px solid ${C.linha}`, paddingTop: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.cinza, marginBottom: 6 }}>Tocando junto</div>
-              {juntas.map((z) => (
-                <div key={z.id} style={{ marginBottom: 8 }}>
-                  <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{z.nome}</div>
-                  <BarraVolume e={z} enviar={enviar} compacto />
-                </div>
-              ))}
-            </div>
-          )}
-          {r.volSet && (
-            <div style={{ borderTop: juntas.length ? "none" : `1px solid ${C.linha}`, paddingTop: juntas.length ? 0 : 10, marginBottom: 10 }}>
-              {volStreamer}
-              {(juntas.length > 0 || volStreamer) && <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{(e.zonas.find((z) => z.id === e.id) || {}).nome || e.nome}</div>}
-              <BarraVolume e={e} enviar={enviar} />
-            </div>
-          )}
+          <div style={{ borderTop: `1px solid ${C.linha}`, paddingTop: 10 }}>
+            {/* 1º: volume do Spotify (nunca entra na trava). */}
+            {volStreamer}
+            {juntas.length > 0 && (
+              <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+                <span className="flex-1" style={{ fontSize: 12, fontWeight: 700, color: C.cinza }}>Volume das zonas</span>
+                {/* Cadeado: travado = mexer numa zona coloca todas as zonas do cartão no mesmo volume. */}
+                <button onClick={alternarTrava} aria-pressed={travado} className="flex items-center gap-1"
+                  style={{ border: `1px solid ${travado ? LAGO : C.linha}`, background: travado ? LAGO : "transparent", color: travado ? "#fff" : C.cinza, borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  {travado ? <Lock size={13} /> : <LockOpen size={13} />} {travado ? "Travados" : "Travar"}
+                </button>
+              </div>
+            )}
+            {juntas.map((z) => (
+              <div key={z.id} style={{ marginBottom: 8 }}>
+                <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{z.nome}</div>
+                <BarraVolume e={z} enviar={enviar} compacto onSoltar={travado ? volumeEmTodas : undefined} />
+              </div>
+            ))}
+            {r.volSet && (
+              <div style={{ marginBottom: 10 }}>
+                {(juntas.length > 0 || volStreamer) && <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{(e.zonas.find((z) => z.id === e.id) || {}).nome || e.nome}</div>}
+                <BarraVolume e={e} enviar={enviar} onSoltar={travado && juntas.length ? volumeEmTodas : undefined} />
+              </div>
+            )}
+          </div>
           <button onClick={() => setSincronizar(true)} className="flex items-center justify-center gap-2"
             style={{ width: "100%", marginTop: 4, background: "transparent", border: `1px dashed ${alfa(LAGO, 55)}`, color: LAGO, borderRadius: 12, padding: 11, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
             <Link2 size={17} /> Sincronizar ambientes
