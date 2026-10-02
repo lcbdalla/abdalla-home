@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -1638,7 +1638,11 @@ function MenuPontinhos({ aberto, setAberto, itens }) {
 
 /* ---- Nomes das entradas do amplificador AAT (o comando continua usando "Entrada N") ---- */
 const FONTE_NOME_AAT = { "Entrada 1": "TV", "Entrada 2": "Som Térreo", "Entrada 4": "Som Subsolo" };
-const nomeFonte = (e, f) => (String(e?.id || "").startsWith("media_player.aat_pmr7_zona_") && FONTE_NOME_AAT[f]) || f;
+const ehZonaAAT = (id) => String(id || "").startsWith("media_player.aat_pmr7_zona_");
+const nomeFonte = (e, f) => (ehZonaAAT(e?.id) && FONTE_NOME_AAT[f]) || f;
+// Entradas do amplificador que vêm de um streamer AAT: com a zona nessa fonte, o controle do
+// streamer aparece dentro do cartão da zona.
+const STREAMER_DA_FONTE = { "Entrada 2": "media_player.som_terreo", "Entrada 4": "media_player.aat_audiocast_ac_1_aeab" };
 
 /* ---- Resposta imediata ao toque ----
    Algumas integrações (ex.: o amplificador AAT) demoram a avisar o novo estado. O app mostra o
@@ -1904,6 +1908,45 @@ function BarraVolume({ e, enviar }) {
   );
 }
 
+// Controle do streamer (Som Térreo / Audiocast) que está tocando nesta zona.
+function PainelStreamer({ s: st, enviar }) {
+  const a = st.attributes || {};
+  const f = Number(a.supported_features) || 0;
+  const tem = (b) => f === 0 || (f & b) !== 0;
+  const tocando = st.state === "playing";
+  const faixa = [a.media_title, a.media_artist].filter(Boolean).join(" · ");
+  const fontes = Array.isArray(a.source_list) ? a.source_list : [];
+  const bt = (on, Ic, rot, grande) => (
+    <button onClick={on} disabled={!st.disponivel} aria-label={rot} style={{ width: grande ? 52 : 42, height: grande ? 52 : 42, borderRadius: 999, border: "none", flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center", cursor: st.disponivel ? "pointer" : "default", opacity: st.disponivel ? 1 : 0.45,
+      background: grande ? LAGO : alfa(LAGO, 14), color: grande ? "#fff" : LAGO }}><Ic size={grande ? 24 : 19} /></button>
+  );
+  return (
+    <div style={{ marginTop: 12, borderRadius: 14, padding: "10px 12px", background: alfa(LAGO, 8), border: `1px solid ${alfa(LAGO, 22)}` }}>
+      <div className="flex items-center gap-2">
+        <Radio size={16} style={{ color: LAGO, flexShrink: 0 }} />
+        <span className="flex-1 truncate" style={{ fontWeight: 700, fontSize: 13.5, color: C.terra }}>{st.nome}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: st.disponivel ? (tocando ? LAGO : C.cinza) : C.cinzaClaro }}>
+          {st.semSinal ? "Sem sinal do streamer" : st.disponivel ? haEstado(st.state, a).texto : "Indisponível"}
+        </span>
+      </div>
+      {faixa && <div className="truncate" style={{ fontSize: 12.5, color: C.cinza, marginTop: 4 }}>{faixa}</div>}
+      {!st.semSinal && (
+        <div className="flex items-center justify-center gap-3" style={{ marginTop: 10 }}>
+          {tem(16) && bt(() => enviar("media_player", "media_previous_track", st.id), SkipBack, "Faixa anterior")}
+          {tem(1 | 16384) && bt(() => enviar("media_player", "media_play_pause", st.id), tocando ? Pause : Play, tocando ? "Pausar" : "Tocar", true)}
+          {tem(32) && bt(() => enviar("media_player", "media_next_track", st.id), SkipForward, "Próxima faixa")}
+        </div>
+      )}
+      {!st.semSinal && (f & 2048) !== 0 && fontes.length > 0 && (
+        <div className="flex flex-wrap gap-2" style={{ marginTop: 10 }}>
+          {fontes.map((x) => <CtrlChip key={x} ativo={a.source === x} cor={LAGO} onClick={() => enviar("media_player", "select_source", st.id, { source: x })}>{x}</CtrlChip>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CtrlTv({ e, enviar }) {
   const { r, ligado } = estadoMidia(e);
   const a = e.attributes || {};
@@ -1926,6 +1969,7 @@ function CtrlTv({ e, enviar }) {
           <div className="flex flex-wrap gap-2">{r.fontes.map((f) => <CtrlChip key={f} ativo={a.source === f} cor={LAGO} onClick={() => enviar("media_player", "select_source", e.id, { source: f })}>{nomeFonte(e, f)}</CtrlChip>)}</div>
         </div>
       )}
+      {e.streamer && <PainelStreamer s={e.streamer} enviar={enviar} />}
     </div>
   );
 }
@@ -2735,8 +2779,16 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
       state, attributes: live?.attributes || {}, rotulos: row.rotulos || {}, tamanho: row.tamanho === "g" ? "g" : "p",
       disponivel: state != null && !["unavailable", "unknown", "none", ""].includes(state),
+      streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : null,
     };
   };
+  function vincularStreamer(zona) {
+    const fonte = zona?.attributes?.source, sid = STREAMER_DA_FONTE[fonte];
+    if (!sid) return null;
+    const v = entsVis[sid], st = v?.state;
+    return { id: sid, tipo: "tv", nome: FONTE_NOME_AAT[fonte] || sid, state: st, attributes: v?.attributes || {},
+      disponivel: st != null && !["unavailable", "unknown", "none", ""].includes(st), semSinal: !v };
+  }
   const semPav = { id: "__sem__", nome: "Outros", ordem: 99999 };
   const listaPav = [...pavimentos, semPav].map((p) => ({
     id: p.id, nome: p.nome, ordem: p.ordem,
