@@ -2098,15 +2098,19 @@ function ligarAlexa(e, ligar, enviar) {
 /* ---- Grupo de persianas numeradas (ex.: Varanda: Persiana 1 … Persiana 11) ----
    Viram um cartão "Persianas" que abre mostrando todas para escolher qual usar. */
 const RE_PERSIANA_N = /^persiana\s*(\d+)$/i;
+// A "Persiana 0" (ou "Persiana Todas") comanda todas juntas: vira os botões do grupo.
+const ehPersianaMestre = (x) => x.tipo === "persiana" && (/^persiana\s*0$/i.test(String(x.nome || "").trim()) || /todas/i.test(String(x.nome || "")) || /_0$/.test(String(x.id)));
 function agruparPersianas(itens, comodoId) {
-  const membros = itens.filter((x) => x.tipo === "persiana" && RE_PERSIANA_N.test(String(x.nome || "").trim()));
+  const membros = itens.filter((x) => x.tipo === "persiana" && !ehPersianaMestre(x) && RE_PERSIANA_N.test(String(x.nome || "").trim()));
   if (membros.length < 3) return itens;
+  const mestre = itens.find(ehPersianaMestre) || null;
   const n = (x) => Number(String(x.nome).trim().match(RE_PERSIANA_N)[1]);
   const pos = itens.indexOf(membros[0]);
   const grupo = { dbId: "grupo-persianas-" + comodoId, id: "grupo.persianas_" + comodoId, tipo: "grupoPersianas", nome: "Persianas", rotulos: {},
     // Dentro do cartão "Persianas", cada uma aparece só pelo número (cabe numa linha).
-    tamanho: "g", membros: membros.slice().sort((x, y) => n(x) - n(y)).map((m) => ({ ...m, nome: `Nº ${n(m)}` })), disponivel: membros.some((m) => m.disponivel), state: "" };
-  const resto = itens.filter((x) => !membros.includes(x));
+    tamanho: "g", membros: membros.slice().sort((x, y) => n(x) - n(y)).map((m) => ({ ...m, nome: `Nº ${n(m)}` })), mestre,
+    disponivel: membros.some((m) => m.disponivel) || !!mestre?.disponivel, state: "" };
+  const resto = itens.filter((x) => !membros.includes(x) && x !== mestre);
   resto.splice(Math.min(pos, resto.length), 0, grupo);
   return resto;
 }
@@ -2765,12 +2769,18 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
   const alternarMembro = (id) => setExp((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const v = visualPorTipo(e);
   const abertas = e.membros.filter((m) => visualPorTipo(m).ativo).length;
-  const todas = async (abrir) => {
-    // Uma por vez, com um respiro entre elas (cada motor recebe seu comando).
+  // acao: "abrir" | "parar" | "fechar". Com a Persiana 0, um comando só move todas juntas e o app
+  // já mostra as de 1 a 11 abrindo/fechando. Sem ela, manda uma por vez.
+  const acionar = async (acao) => {
+    const svc = (m) => (acao === "parar" ? "stop_cover" : (acao === "abrir") !== ehInvertido(m) ? "open_cover" : "close_cover");
+    if (e.mestre) {
+      enviar("cover", svc(e.mestre), e.mestre.id);
+      if (acao !== "parar") e.preverEstados?.(e.membros.map((m) => [m.id, svc(m) === "open_cover" ? "opening" : "closing", svc(m) === "open_cover" ? "open" : "closed"]));
+      return;
+    }
     const lista = e.membros.filter((m) => m.disponivel);
     for (let i = 0; i < lista.length; i++) {
-      const m = lista[i], inv = ehInvertido(m);
-      enviar("cover", abrir ? (inv ? "close_cover" : "open_cover") : (inv ? "open_cover" : "close_cover"), m.id);
+      enviar("cover", svc(lista[i]), lista[i].id);
       if (i < lista.length - 1) await new Promise((r) => setTimeout(r, 400));
     }
   };
@@ -2783,12 +2793,14 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
         <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: abertas ? C.ambarTexto : C.cinza }}>{abertas ? `${abertas} ${abertas === 1 ? "aberta" : "abertas"}` : "Todas fechadas"}</span>
         <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
       </div>
+      {/* Botões sempre à vista (cartão aberto ou fechado). */}
+      <div className="flex gap-2" onPointerDown={(ev) => ev.stopPropagation()}>
+        <BotaoAcao icon={ArrowUpFromLine} label={e.mestre ? "Abrir" : "Abrir todas"} cor={C.pasto} disabled={!e.disponivel} onClick={() => acionar("abrir")} />
+        {e.mestre && <BotaoAcao icon={X} label="Parar" cor={C.ambar} disabled={!e.mestre.disponivel} onClick={() => acionar("parar")} />}
+        <BotaoAcao icon={ArrowDownToLine} label={e.mestre ? "Fechar" : "Fechar todas"} cor={C.cinza} disabled={!e.disponivel} onClick={() => acionar("fechar")} />
+      </div>
       {aberto && (
         <div onPointerDown={(ev) => ev.stopPropagation()}>
-          <div className="flex gap-2" style={{ marginBottom: 10 }}>
-            <BotaoAcao icon={ArrowUpFromLine} label="Abrir todas" cor={C.pasto} onClick={() => todas(true)} />
-            <BotaoAcao icon={ArrowDownToLine} label="Fechar todas" cor={C.cinza} onClick={() => todas(false)} />
-          </div>
           <GradeEquip itens={e.membros} enviar={enviar} expandidos={exp} toggleExpand={alternarMembro} podeArrastar={false} />
         </div>
       )}
@@ -3200,6 +3212,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [menuAberto, setMenuAberto] = useState(false);
   const [portaoAberto, setPortaoAberto] = useState(false);
   const cabRef = useRef(null), [topoPortao, setTopoPortao] = useState(null);
+  const gruposRef = useRef({}); // id do cartão de grupo -> ids reais dos aparelhos dentro dele
   const [tema, setTema] = useState(() => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
   // O que está aberto: pavimentos abertos + UM cômodo por vez. Começa tudo fechado e
   // volta a fechar depois de 8h sem uso (guardado no aparelho para valer entre aberturas).
@@ -3482,6 +3495,23 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     setOtim((o) => ({ ...o, [entityId]: { patch: junto, base, ate: Date.now() + OTIMISTA_MS } }));
   };
 
+  // As persianas 1–11 nem sempre avisam o HA quando a Persiana 0 move todas: o app mostra
+  // "abrindo/fechando" e, depois de ~25 s, "aberta/fechada", e guarda isso por até 10 min
+  // (ou até o HA informar outro estado para aquela persiana).
+  const preverEstados = (lista) => {
+    const agora = Date.now();
+    setOtim((o) => {
+      const n = { ...o };
+      lista.forEach(([id, mov]) => { if (ents[id]) n[id] = { patch: { state: mov }, base: assinatura(ents[id]), ate: agora + 25000 }; });
+      return n;
+    });
+    setTimeout(() => setOtim((o) => {
+      const n = { ...o };
+      lista.forEach(([id, , fim]) => { if (ents[id] && n[id] && n[id].patch.state !== fim) n[id] = { patch: { state: fim }, base: n[id].base, ate: Date.now() + 10 * 60000 }; });
+      return n;
+    }), 25000);
+  };
+
   // ---- Envia um comando ao Home Assistant ----
   const enviar = (domain, service, entityId, serviceData) => {
     preverToque(service, entityId, serviceData);
@@ -3525,7 +3555,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     onTipoEquip: (id, tipo) => salvar(supabase.from("controle_equipamentos").update({ tipo }).eq("id", id)),
     onNomeEquip: (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id)),
     onDelEquip: (id) => salvar(supabase.from("controle_equipamentos").delete().eq("id", id)),
-    onReordenar: async (idsTela) => {
+    onReordenar: async (idsTela0) => {
+      const idsTela = idsTela0.flatMap((id) => gruposRef.current[id] || [id]);
       // O som ligado aparece em 1º só enquanto toca: ao salvar, ele volta para a posição que tinha.
       const somOn = idsTela.find((id) => { const q = equipamentos.find((x) => x.id === id); return q && ehZonaAAT(q.entity_id) && entsVis[q.entity_id]?.state === "on"; });
       const ids = somOn && idsTela[0] === somOn ? (() => {
@@ -3627,13 +3658,20 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       spotify: meuSpotify, connect: STREAMER_CONNECT[sid], spotifyEnt: meuSpotify ? entsVis[meuSpotify] : null, conectarSpotify,
       pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
   }
+  // Cartões de grupo (persianas): recebem a previsão e anotam os aparelhos de dentro, para o
+  // arrasto mover o grupo inteiro.
+  const comGrupos = (itens) => itens.map((x) => {
+    if (x.tipo !== "grupoPersianas") return x;
+    gruposRef.current[x.dbId] = [...(x.mestre ? [x.mestre.dbId] : []), ...x.membros.map((m) => m.dbId)];
+    return { ...x, preverEstados };
+  });
   const semPav = { id: "__sem__", nome: "Outros", ordem: 99999 };
   const listaPav = [...pavimentos, semPav].map((p) => ({
     id: p.id, nome: p.nome, ordem: p.ordem,
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
     comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
-      itens: somPrimeiro(comFontePadrao(agruparPersianas(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), p.nome)),
+      itens: comGrupos(somPrimeiro(comFontePadrao(agruparPersianas(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), p.nome))),
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
