@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -1686,7 +1686,7 @@ const midiaRecursos = (e) => {
   const f = Number(e?.attributes?.supported_features) || 0;
   const tem = (bits) => f === 0 || (f & bits) !== 0;
   const fontes = Array.isArray(e?.attributes?.source_list) ? e.attributes.source_list : [];
-  return { liga: tem(128 | 256), play: tem(1 | 16384), fonte: (f & 2048) !== 0 && fontes.length > 0, fontes };
+  return { liga: tem(128 | 256), play: tem(1 | 16384), volSet: tem(4), fonte: (f & 2048) !== 0 && fontes.length > 0, fontes };
 };
 const servicoDesligar = (e) => (e.tipo === "ar" ? ["climate", "turn_off"]
   : e.tipo === "tv" ? (midiaRecursos(e).liga ? ["media_player", "turn_off"] : ["media_player", "media_pause"])
@@ -1862,6 +1862,31 @@ function CtrlAr({ e, enviar }) {
     </div>
   );
 }
+// Barra de volume: arrasta e vê o número mudar; o comando (volume_set) vai uma vez só, ao soltar.
+function BarraVolume({ e, enviar }) {
+  const atual = typeof e.attributes?.volume_level === "number" ? Math.round(e.attributes.volume_level * 100) : 0;
+  const [local, setLocal] = useState(null); // valor enquanto o dedo está na barra
+  const ref = useRef(null), enviarRef = useRef(enviar);
+  enviarRef.current = enviar;
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    // "change" do navegador só dispara quando solta a barra (o "input" dispara a cada passo).
+    const soltar = () => { enviarRef.current("media_player", "volume_set", e.id, { volume_level: Number(el.value) / 100 }); setLocal(null); };
+    el.addEventListener("change", soltar);
+    return () => el.removeEventListener("change", soltar);
+  }, [e.id]);
+  const v = local ?? atual;
+  return (
+    <div className="flex items-center gap-2" onPointerDown={(ev) => ev.stopPropagation()}>
+      <Volume2 size={18} style={{ color: LAGO, flexShrink: 0 }} />
+      <input ref={ref} type="range" min="0" max="100" step="1" value={v} aria-label="Volume"
+        onInput={(ev) => setLocal(Number(ev.target.value))} onChange={(ev) => setLocal(Number(ev.target.value))}
+        style={{ flex: 1, minWidth: 0, height: 28, accentColor: LAGO, cursor: "pointer" }} />
+      <span style={{ width: 40, textAlign: "right", fontSize: 13.5, fontWeight: 800, color: local != null ? LAGO : C.terra, fontVariantNumeric: "tabular-nums" }}>{v}%</span>
+    </div>
+  );
+}
+
 function CtrlTv({ e, enviar }) {
   const ind = !e.disponivel;
   const r = midiaRecursos(e);
@@ -1875,15 +1900,16 @@ function CtrlTv({ e, enviar }) {
     <div>
       <div className="flex items-center gap-3 mb-3">
         <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (ligado ? LAGO : C.cinza), fontWeight: 600 }}>
-          {estado}{ligado && vol != null && <span style={{ color: C.cinzaClaro }}> · volume {vol}%</span>}{ligado && r.fonte && a.source && <span style={{ color: C.cinzaClaro }}> · {nomeFonte(e, a.source)}</span>}
+          {estado}{ligado && vol != null && !r.volSet && <span style={{ color: C.cinzaClaro }}> · volume {vol}%</span>}{ligado && r.fonte && a.source && <span style={{ color: C.cinzaClaro }}> · {nomeFonte(e, a.source)}</span>}
         </div>
         {r.liga && <PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={() => enviar("media_player", ligado ? "turn_off" : "turn_on", e.id)} />}
       </div>
       {ligado && (
         <>
+          {r.volSet && <div className="mb-2"><BarraVolume e={e} enviar={enviar} /></div>}
           <div className="flex gap-2">
-            <BotaoAcao label="Vol −" cor={C.cinza} onClick={() => enviar("media_player", "volume_down", e.id)} />
-            <BotaoAcao label="Vol +" cor={C.pasto} onClick={() => enviar("media_player", "volume_up", e.id)} />
+            {!r.volSet && <BotaoAcao label="Vol −" cor={C.cinza} onClick={() => enviar("media_player", "volume_down", e.id)} />}
+            {!r.volSet && <BotaoAcao label="Vol +" cor={C.pasto} onClick={() => enviar("media_player", "volume_up", e.id)} />}
             <BotaoAcao label={mudo ? "Som" : "Mudo"} cor={C.ambar} onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} />
             {r.play && <BotaoAcao label="Play/Pausa" cor={LAGO} onClick={() => enviar("media_player", "media_play_pause", e.id)} />}
           </div>
