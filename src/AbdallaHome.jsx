@@ -2108,16 +2108,18 @@ function ligarAlexa(e, ligar, enviar) {
 
 /* ---- Grupo de persianas numeradas (ex.: Varanda: Persiana 1 … Persiana 11) ----
    Viram um cartão "Persianas" que abre mostrando todas para escolher qual usar. */
-const RE_PERSIANA_N = /^persiana\s*(\d+)$/i;
+const RE_PERSIANA_N = /^(?:persiana|cortina)\s*(\d+)$/i;
 // Quem comanda todas juntas vira os botões do grupo: a "Todas" (grupo do HA, ex.: Sala de TV)
-// ou, se o cômodo não tiver, a "Persiana 0" (ex.: Varanda). Com "Todas", a 0 é uma persiana comum.
+// ou, sem ela, a "Persiana 0" — só quando há outras 3+ numeradas (Varanda: 0 comanda as 1–11).
+// Senão a 0 é uma persiana comum (Sala de TV: 0, 1, 2) e o grupo manda uma por vez.
 const ehPersianaTodas = (x) => x.tipo === "persiana" && /todas/i.test(`${x.nome || ""} ${x.id}`);
 const ehPersianaZero = (x) => x.tipo === "persiana" && (/^persiana\s*0$/i.test(String(x.nome || "").trim()) || /_0$/.test(String(x.id)));
 function agruparPersianas(itens, comodoId) {
   const todas = itens.find(ehPersianaTodas);
-  const mestre = todas || itens.find(ehPersianaZero) || null;
-  const membros = itens.filter((x) => x.tipo === "persiana" && x !== mestre && !ehPersianaTodas(x) && (todas || !ehPersianaZero(x))
-    && RE_PERSIANA_N.test(String(x.nome || "").trim()));
+  const numeradas = itens.filter((x) => x.tipo === "persiana" && !ehPersianaTodas(x) && RE_PERSIANA_N.test(String(x.nome || "").trim()));
+  const zero = !todas && numeradas.filter((x) => !ehPersianaZero(x)).length >= 3 ? itens.find(ehPersianaZero) : null;
+  const mestre = todas || zero || null;
+  const membros = numeradas.filter((x) => x !== mestre);
   if (membros.length < 3) return itens;
   const n = (x) => Number(String(x.nome).trim().match(RE_PERSIANA_N)[1]);
   const pos = itens.indexOf(membros[0]);
