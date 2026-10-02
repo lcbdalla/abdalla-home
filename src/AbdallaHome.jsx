@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -1889,7 +1889,7 @@ function estadoMidia(e) {
 
 // Barra de volume: arrasta e vê o número mudar; o comando (volume_set) vai uma vez só, ao soltar.
 // O alto-falante no começo liga/desliga o mudo: colorido = com som, cinza = mudo.
-function BarraVolume({ e, enviar }) {
+function BarraVolume({ e, enviar, compacto }) {
   const atual = typeof e.attributes?.volume_level === "number" ? Math.round(e.attributes.volume_level * 100) : 0;
   const mudo = e.attributes?.is_volume_muted === true;
   const [local, setLocal] = useState(null); // valor enquanto o dedo está na barra
@@ -1908,14 +1908,14 @@ function BarraVolume({ e, enviar }) {
   return (
     <div className="flex items-center gap-2" onPointerDown={(ev) => ev.stopPropagation()}>
       <button onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} aria-label={mudo ? "Tirar do mudo" : "Deixar no mudo"} aria-pressed={mudo}
-        style={{ width: 46, height: 46, borderRadius: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer",
+        style={{ width: compacto ? 38 : 46, height: compacto ? 38 : 46, borderRadius: compacto ? 12 : 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer",
           background: mudo ? alfa(C.cinzaClaro, 18) : alfa(LAGO, 16), color: cor, transition: "background .2s, color .2s" }}>
-        <Icone size={26} strokeWidth={2.2} />
+        <Icone size={compacto ? 21 : 26} strokeWidth={2.2} />
       </button>
       <input ref={ref} type="range" min="0" max="100" step="1" value={v} aria-label="Volume" className="ah-vol"
         onInput={(ev) => setLocal(Number(ev.target.value))} onChange={(ev) => setLocal(Number(ev.target.value))}
         style={{ flex: 1, minWidth: 0, "--cor": cor, "--trilha": `linear-gradient(to right, ${cor} ${v}%, ${alfa(C.cinzaClaro, 30)} ${v}%)` }} />
-      <span style={{ width: 46, textAlign: "right", fontSize: 16, fontWeight: 800, color: mudo ? C.cinzaClaro : local != null ? LAGO : C.terra, fontVariantNumeric: "tabular-nums" }}>{v}%</span>
+      <span style={{ width: compacto ? 40 : 46, textAlign: "right", fontSize: compacto ? 14 : 16, fontWeight: 800, color: mudo ? C.cinzaClaro : local != null ? LAGO : C.terra, fontVariantNumeric: "tabular-nums" }}>{v}%</span>
     </div>
   );
 }
@@ -2045,13 +2045,58 @@ function PainelStreamer({ s: st, enviar }) {
   );
 }
 
+// Escolher outras zonas do amplificador para tocar a mesma fonte desta zona.
+// Marcar = liga a zona e põe na mesma fonte; desmarcar uma que tocava junto = desliga.
+function SincronizarZonas({ e, zonas, enviar, onFechar }) {
+  const fonte = e.attributes?.source;
+  const juntas = zonas.filter((z) => z.id !== e.id && z.state === "on" && z.attributes?.source === fonte).map((z) => z.id);
+  const [marcadas, setMarcadas] = useState(() => new Set(juntas));
+  const alternar = (id) => setMarcadas((m) => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const salvar = () => {
+    zonas.forEach((z) => {
+      if (z.id === e.id) return;
+      const estava = juntas.includes(z.id), fica = marcadas.has(z.id);
+      if (fica && !estava) {
+        if (z.state !== "on") enviar("media_player", "turn_on", z.id);
+        setTimeout(() => enviar("media_player", "select_source", z.id, { source: fonte }), z.state !== "on" ? 900 : 0);
+      } else if (!fica && estava) enviar("media_player", "turn_off", z.id);
+    });
+    onFechar();
+  };
+  return (
+    <Sheet titulo="Sincronizar ambientes" onFechar={onFechar}>
+      <div style={{ fontSize: 13.5, color: C.cinza }} className="mb-3">Tocar <b style={{ color: C.terra }}>{nomeFonte(e, fonte)}</b> também em:</div>
+      {zonas.filter((z) => z.id !== e.id).map((z) => {
+        const on = marcadas.has(z.id);
+        return (
+          <button key={z.id} onClick={() => alternar(z.id)} disabled={!z.disponivel} className="flex items-center gap-3"
+            style={{ width: "100%", textAlign: "left", background: on ? alfa(LAGO, 10) : C.card, border: `1px solid ${on ? alfa(LAGO, 45) : C.linha}`, borderRadius: 14, padding: "12px 14px", marginBottom: 8, cursor: "pointer", opacity: z.disponivel ? 1 : 0.5 }}>
+            <span style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: `2px solid ${on ? LAGO : C.cinzaClaro}`, background: on ? LAGO : "transparent" }}>
+              {on && <Check size={15} color="#fff" strokeWidth={3} />}
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block truncate" style={{ fontWeight: 700, fontSize: 15, color: C.terra }}>{z.nome}</span>
+              <span className="block truncate" style={{ fontSize: 12, color: C.cinza }}>{z.state === "on" ? `Ligado · ${nomeFonte(z, z.attributes?.source) || "sem fonte"}` : z.disponivel ? "Desligado" : "Indisponível"}</span>
+            </span>
+          </button>
+        );
+      })}
+      <button onClick={salvar} style={{ width: "100%", marginTop: 6, background: LAGO, color: "#fff", borderRadius: 14, padding: 14, fontWeight: 800, fontSize: 16 }}>Salvar</button>
+    </Sheet>
+  );
+}
+
 function CtrlTv({ e, enviar }) {
   const { r, ligado } = estadoMidia(e);
   const a = e.attributes || {};
   const mudo = a.is_volume_muted === true;
+  const [sincronizar, setSincronizar] = useState(false);
   if (!ligado) return null; // o estado e a chave liga/desliga ficam no topo do cartão
+  // Outras zonas do amplificador ligadas na mesma fonte = tocando junto com esta.
+  const juntas = (e.zonas || []).filter((z) => z.id !== e.id && z.state === "on" && a.source && z.attributes?.source === a.source);
   return (
-    <div>
+    // Segurar aqui dentro não "pega" o cartão para arrastar (só pelo título).
+    <div onPointerDown={(ev) => ev.stopPropagation()}>
       {r.volSet && <BarraVolume e={e} enviar={enviar} />}
       {(!r.volSet || r.play) && (
         <div className="flex gap-2" style={{ marginTop: r.volSet ? 10 : 0 }}>
@@ -2062,12 +2107,40 @@ function CtrlTv({ e, enviar }) {
         </div>
       )}
       {r.fonte && (
-        <div className="mt-3">
-          <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Fonte</div>
-          <div className="flex flex-wrap gap-2">{r.fontes.map((f) => <CtrlChip key={f} ativo={a.source === f} cor={LAGO} onClick={() => enviar("media_player", "select_source", e.id, { source: f })}>{nomeFonte(e, f)}</CtrlChip>)}</div>
+        // Fonte em lista: mostra a escolhida; tocando, abre as opções do celular.
+        <div className="flex items-center gap-3" style={{ marginTop: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: C.cinza, flexShrink: 0 }}>Fonte</span>
+          <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+            <select value={a.source || ""} onChange={(ev) => ev.target.value && enviar("media_player", "select_source", e.id, { source: ev.target.value })} aria-label="Fonte"
+              style={{ width: "100%", appearance: "none", WebkitAppearance: "none", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "11px 40px 11px 14px", fontSize: 15, fontWeight: 700, color: C.terra, cursor: "pointer", fontFamily: "inherit" }}>
+              {!a.source && <option value="">Escolha a fonte</option>}
+              {r.fontes.map((f) => <option key={f} value={f}>{nomeFonte(e, f)}</option>)}
+            </select>
+            <ChevronDown size={18} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: C.cinza, pointerEvents: "none" }} />
+          </div>
         </div>
       )}
       {e.streamer && <PainelStreamer s={e.streamer} enviar={enviar} />}
+      {(e.zonas || []).length > 1 && a.source && (
+        <div style={{ marginTop: 12 }}>
+          {juntas.length > 0 && (
+            <div style={{ borderTop: `1px solid ${C.linha}`, paddingTop: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.cinza, marginBottom: 6 }}>Tocando junto</div>
+              {juntas.map((z) => (
+                <div key={z.id} style={{ marginBottom: 8 }}>
+                  <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{z.nome}</div>
+                  <BarraVolume e={z} enviar={enviar} compacto />
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={() => setSincronizar(true)} className="flex items-center justify-center gap-2"
+            style={{ width: "100%", marginTop: 4, background: "transparent", border: `1px dashed ${alfa(LAGO, 55)}`, color: LAGO, borderRadius: 12, padding: 11, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+            <Link2 size={17} /> Sincronizar ambientes
+          </button>
+        </div>
+      )}
+      {sincronizar && <SincronizarZonas e={e} zonas={e.zonas} enviar={enviar} onFechar={() => setSincronizar(false)} />}
     </div>
   );
 }
@@ -2874,6 +2947,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
 
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
   const meuSpotify = spotifyDaPessoa(entsVis, eu?.nome);
+  // As 6 zonas do amplificador AAT (nome = cômodo, como estão no HA), para "Sincronizar ambientes".
+  const zonasAAT = Object.keys(entsVis).filter(ehZonaAAT).sort().map((id) => {
+    const v = entsVis[id], st = v?.state;
+    return { id, tipo: "tv", nome: v?.attributes?.friendly_name || id, state: st, attributes: v?.attributes || {}, disponivel: st != null && !["unavailable", "unknown"].includes(st) };
+  });
   // Pergunta algo ao HA e espera a resposta (só na conexão direta da família).
   const pedirHA = (msg) => new Promise((resolve, reject) => {
     const ws = wsRef.current;
@@ -2892,6 +2970,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       state, attributes: live?.attributes || {}, rotulos: row.rotulos || {}, tamanho: row.tamanho === "g" ? "g" : "p",
       disponivel: state != null && !["unavailable", "unknown", "none", ""].includes(state),
       streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : null,
+      zonas: ehZonaAAT(row.entity_id) ? zonasAAT : null,
     };
   };
   function vincularStreamer(zona) {
