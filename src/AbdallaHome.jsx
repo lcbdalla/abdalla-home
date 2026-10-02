@@ -1462,10 +1462,11 @@ const CTRL_TIPOS = [
   { id: "irrigacao", nome: "Irrigação", ajuda: "Iniciar · Parar" },
   { id: "fechadura", nome: "Fechadura", ajuda: "Trancar / destrancar" },
   { id: "sensor", nome: "Só leitura (sensor)", ajuda: "Mostra o valor" },
+  { id: "alexa", nome: "Alexa (Spotify)", ajuda: "Toca/pausa o seu Spotify na Alexa" },
 ];
 const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]));
 const CTRL_EMOJI = { interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
-const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao"]; // ocupam a linha inteira (têm mais botões)
+const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao", "alexa"]; // ocupam a linha inteira (têm mais botões)
 const CTRL_COMPACTAVEL = ["ar", "persiana"]; // começam pequenos; tocar no quadro amplia; encolhem ao recarregar
 // Botões de ação que dá para renomear, por tipo de aparelho. [chave, nome padrão].
 const ROTULOS_POR_TIPO = {
@@ -1676,6 +1677,7 @@ function previsto(service, v, data = {}) {
     case "volume_set": return { attributes: { volume_level: data.volume_level } };
     case "media_play_pause": return { state: v?.state === "playing" ? "paused" : "playing" };
     case "media_pause": return { state: "paused" };
+    case "media_play": return { state: "playing" };
     case "set_temperature": return { attributes: { temperature: data.temperature } };
     case "set_hvac_mode": return { state: data.hvac_mode };
     case "set_fan_mode": return { attributes: { fan_mode: data.fan_mode } };
@@ -1757,6 +1759,23 @@ const musicaDe = (itens, enviar) => {
   return som ? acoesMusica(som.streamer, enviar) : null;
 };
 
+/* ---- Alexa pelo Spotify ----
+   O HA não comanda a Alexa; o Spotify da pessoa, sim (Spotify Connect). O cartão "Alexa" toca e
+   pausa a música do Spotify nela; a Alexa em si nunca é desligada. */
+const ALEXAS = { "alexa.quarto_leo_e_pri": ["Quarto Leo e Pri Echo"] }; // nome(s) da Alexa no Spotify
+function acharConnect(sp, nomes) {
+  const lista = sp?.attributes?.source_list || [];
+  const alvo = (nomes || []).map((n) => norm(n));
+  return lista.find((x) => alvo.includes(norm(x))) || lista.find((x) => alvo.some((n) => norm(x).startsWith(n))) || null;
+}
+function ligarAlexa(e, ligar, enviar) {
+  if (!e.spotify) { abrirSpotify(); return; }
+  if (!ligar) { enviar("media_player", "media_pause", e.spotify); return; }
+  if (!e.connect) return;
+  enviar("media_player", "select_source", e.spotify, { source: e.connect });
+  setTimeout(() => enviar("media_player", "media_play", e.spotify), 1500);
+}
+
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
 // Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
 const ehDesligavel = (e) => !["persiana", "fechadura", "sensor"].includes(e.tipo);
@@ -1764,6 +1783,7 @@ const estaLigado = (e) => {
   if (!e.disponivel) return false;
   if (e.tipo === "ar") return e.state !== "off";
   if (e.tipo === "tv") return midiaRecursos(e).liga ? !["off", "idle", "standby"].includes(e.state) : e.state === "playing";
+  if (e.tipo === "alexa") return e.state === "playing";
   return e.state === "on";
 };
 // O que um media_player aceita (supported_features do HA). Sem a informação, supõe tudo.
@@ -1864,6 +1884,7 @@ function visualEquip(e) {
   return achou ? { ...v, Icon: achou[1], cor: C[achou[2]], luz: false } : v;
 }
 function visualPorTipo(e) {
+  if (e.tipo === "alexa") return { Icon: Speaker, ativo: e.state === "playing", cor: C.lago };
   const dom = String(e.id).split(".")[0];
   const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
   if (e.tipo === "persiana") {
@@ -1990,7 +2011,7 @@ function estadoMidia(e) {
 
 // Barra de volume: arrasta e vê o número mudar; o comando (volume_set) vai uma vez só, ao soltar.
 // O alto-falante no começo liga/desliga o mudo: colorido = com som, cinza = mudo.
-function BarraVolume({ e, enviar, compacto, onSoltar }) {
+function BarraVolume({ e, enviar, compacto, onSoltar, semMudo }) {
   const atual = typeof e.attributes?.volume_level === "number" ? Math.round(e.attributes.volume_level * 100) : 0;
   const mudo = e.attributes?.is_volume_muted === true;
   const [local, setLocal] = useState(null); // valor enquanto o dedo está na barra
@@ -2012,7 +2033,7 @@ function BarraVolume({ e, enviar, compacto, onSoltar }) {
   const Icone = mudo ? VolumeX : Volume2;
   return (
     <div className="flex items-center gap-2" onPointerDown={(ev) => ev.stopPropagation()}>
-      <button onClick={() => enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} aria-label={mudo ? "Tirar do mudo" : "Deixar no mudo"} aria-pressed={mudo}
+      <button onClick={() => !semMudo && enviar("media_player", "volume_mute", e.id, { is_volume_muted: !mudo })} disabled={semMudo} aria-label={mudo ? "Tirar do mudo" : "Deixar no mudo"} aria-pressed={mudo}
         style={{ width: compacto ? 38 : 46, height: compacto ? 38 : 46, borderRadius: compacto ? 12 : 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer",
           background: mudo ? alfa(C.cinzaClaro, 18) : alfa(LAGO, 16), color: cor, transition: "background .2s, color .2s" }}>
         <Icone size={compacto ? 21 : 26} strokeWidth={2.2} />
@@ -2276,6 +2297,52 @@ function CtrlTv({ e, enviar }) {
     </div>
   );
 }
+function CtrlAlexa({ e, enviar }) {
+  const [verPlaylists, setVerPlaylists] = useState(false);
+  if (!e.spotify || !e.connect) return null;
+  const a = e.attributes || {};
+  const ativo = ["playing", "paused"].includes(e.state);
+  const pic = a.entity_picture, capa = pic ? (pic.startsWith("http") ? pic : (e.baseUrl || "") + pic) : null;
+  const m = { tocando: e.state === "playing" };
+  const sp = (serv) => () => enviar("media_player", serv, e.spotify);
+  return (
+    <div onPointerDown={(ev) => ev.stopPropagation()}>
+      {ativo && (
+        <div className="flex items-center gap-3">
+          {capa ? <img src={capa} alt="" style={{ width: 58, height: 58, borderRadius: 10, objectFit: "cover", flexShrink: 0, boxShadow: "0 6px 16px -8px rgba(0,0,0,.5)" }} />
+            : <span style={{ width: 58, height: 58, borderRadius: 10, background: alfa(LAGO, 14), flexShrink: 0 }} />}
+          <div className="min-w-0 flex-1">
+            <div className="truncate" style={{ fontWeight: 700, fontSize: 14.5, color: C.terra }}>{a.media_title || "—"}</div>
+            {a.media_artist && <div className="truncate" style={{ fontSize: 12.5, color: C.cinza }}>{a.media_artist}</div>}
+            {a.media_playlist && <div className="truncate" style={{ fontSize: 12, color: LAGO, fontWeight: 700, marginTop: 2 }}>Playlist: {a.media_playlist}</div>}
+          </div>
+        </div>
+      )}
+      {ativo && (
+        <div className="flex items-center justify-center gap-3" style={{ marginTop: 10 }}>
+          <BotaoMini Ic={SkipBack} rot="Música anterior" onClick={sp("media_previous_track")} />
+          <BotaoMini Ic={m.tocando ? Pause : Play} rot={m.tocando ? "Pausar" : "Tocar"} onClick={sp("media_play_pause")} cheio />
+          <BotaoMini Ic={SkipForward} rot="Próxima música" onClick={sp("media_next_track")} />
+        </div>
+      )}
+      {ativo && typeof a.volume_level === "number" && (
+        <div style={{ marginTop: 10 }}><BarraVolume e={{ id: e.spotify, attributes: a }} enviar={enviar} compacto semMudo /></div>
+      )}
+      <div className="flex items-center gap-4" style={{ marginTop: ativo ? 8 : 0 }}>
+        {e.pedirHA && (
+          <button onClick={() => setVerPlaylists(true)} className="flex items-center gap-1" style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, fontWeight: 700, color: LAGO, cursor: "pointer" }}>
+            Minhas playlists <ChevronRight size={14} />
+          </button>
+        )}
+        <button onClick={abrirSpotify} className="flex items-center gap-1" style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, fontWeight: 700, color: C.cinza, cursor: "pointer" }}>
+          Abrir o Spotify <ChevronRight size={14} />
+        </button>
+      </div>
+      {verPlaylists && <PlaylistsSpotify st={{ spotify: e.spotify, connect: e.connect, nome: e.nome, pedirHA: e.pedirHA }} enviar={enviar} onFechar={() => setVerPlaylists(false)} />}
+    </div>
+  );
+}
+
 function CtrlIrrigacao({ e, enviar }) {
   const ind = !e.disponivel; const ativo = e.state === "on";
   return (
@@ -2308,6 +2375,7 @@ function EquipControle({ e, enviar, cardClicavel }) {
   if (e.tipo === "irrigacao") return <CtrlIrrigacao e={e} enviar={enviar} />;
   if (e.tipo === "fechadura") return <CtrlFechadura e={e} enviar={enviar} />;
   if (e.tipo === "sensor") return <CtrlSensor e={e} />;
+  if (e.tipo === "alexa") return <CtrlAlexa e={e} enviar={enviar} />;
   return <CtrlInterruptor e={e} enviar={enviar} cardClicavel={cardClicavel} />;
 }
 // Controle compacto do ar (quando o card está encolhido): liga/desliga + temperatura.
@@ -2368,6 +2436,16 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
       <div className="flex items-center" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ gap: 8, cursor: compactavel && !editando ? "pointer" : "default" }}>
         <IconeEquip v={v} disponivel={e.disponivel} />
         <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" }}>{e.nome}</div>
+        {e.tipo === "alexa" && (() => {
+          const tocando = e.state === "playing";
+          const txt = !e.spotify ? "Sem Spotify ligado" : !e.connect ? "Alexa não encontrada" : tocando ? "Tocando" : e.state === "paused" ? "Pausado" : "Parado";
+          return (<>
+            <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: tocando ? LAGO : C.cinza }}>{txt}</span>
+            {e.spotify && e.connect && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
+              <PillToggle on={tocando} cor={LAGO} onClick={() => ligarAlexa(e, !tocando, enviar)} />
+            </span>}
+          </>);
+        })()}
         {e.tipo === "tv" && (() => {
           const m = estadoMidia(e);
           return (<>
@@ -2982,7 +3060,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const ok = await Dialog.confirm({ titulo: "Desligar tudo", mensagem: `Tem certeza que quer desligar tudo em ${nivel}? (${alvo.length} ${alvo.length === 1 ? "aparelho ligado" : "aparelhos ligados"})`, okLabel: "Desligar tudo", perigo: true });
     if (!ok) return;
     for (let i = 0; i < alvo.length; i++) {
-      if (alvo[i].zonasComodo) acionarZonas(alvo[i], false, enviar);
+      if (alvo[i].tipo === "alexa") ligarAlexa(alvo[i], false, enviar);
+      else if (alvo[i].zonasComodo) acionarZonas(alvo[i], false, enviar);
       else { const [dom, serv] = servicoDesligar(alvo[i]); enviar(dom, serv, alvo[i].id); }
       if (i < alvo.length - 1) await new Promise((r) => setTimeout(r, 600));
     }
@@ -3102,6 +3181,14 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     setTimeout(() => { if (pedidosRef.current[id]) { delete pedidosRef.current[id]; reject(new Error("O Home Assistant demorou para responder.")); } }, 12000);
   });
   const mkEquip = (row) => {
+    if (row.tipo === "alexa") {
+      const sp = meuSpotify ? entsVis[meuSpotify] : null;
+      const connect = acharConnect(sp, ALEXAS[row.entity_id] || [row.nome]);
+      const aqui = !!(sp && connect && sp.attributes?.source === connect && ["playing", "paused"].includes(sp.state));
+      return { dbId: row.id, id: row.entity_id, tipo: "alexa", nome: row.nome || "Alexa", rotulos: row.rotulos || {}, tamanho: "g",
+        state: aqui ? sp.state : "idle", attributes: aqui ? sp.attributes : {}, disponivel: true,
+        spotify: meuSpotify, connect, pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
+    }
     const live = entsVis[row.entity_id];
     const state = live?.state;
     return {
