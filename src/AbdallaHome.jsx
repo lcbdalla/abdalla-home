@@ -1576,7 +1576,7 @@ const PORTAO_CAMERAS = [{ id: "camera.cam29", nome: "Câmera 29" }, { id: "camer
 const PORTAO_MS = 6000; // tempo da animação de abrir/fechar
 // Desenho de um portão de correr: a folha desliza para a direita ao abrir e volta ao fechar.
 // Mexe na hora em que o comando é enviado e depois acompanha o estado que o Home Assistant informa.
-function PortaoModal({ ent, enviar, onFechar, cameras = [] }) {
+function PortaoModal({ ent, enviar, onFechar, cameras = [], topo }) {
   const st = ent?.state;
   // Último comando enviado. Vale até o Home Assistant informar um estado diferente do que havia
   // na hora do toque (se o sensor do portão não atualizar, o desenho não "volta" sozinho).
@@ -1594,8 +1594,10 @@ function PortaoModal({ ent, enviar, onFechar, cameras = [] }) {
   const acionar = (abrir) => { enviar("cover", abrir ? "open_cover" : "close_cover", PORTAO_ID); setCmd({ alvo: abrir ? "aberto" : "fechado", st0: st }); setAnimando(true); };
   const barras = Array.from({ length: 14 }, (_, i) => i);
   return (
-    <Sheet titulo="Portão" onFechar={onFechar}>
-      {cameras.map((c) => <CameraAoVivo key={c.id} cam={c} />)}
+    <Sheet titulo="Portão" onFechar={onFechar} topo={topo}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
+        {cameras.map((c) => <CameraAoVivo key={c.id} cam={c} preencher={topo != null} />)}
+      </div>
       <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: "8px 10px 6px" }}>
         <svg viewBox="0 0 320 172" role="img" aria-label={`Portão: ${texto}`} style={{ width: "100%", height: 76, display: "block" }}>
           <defs><clipPath id="vao-portao"><rect x="30" y="18" width="260" height="130" /></clipPath></defs>
@@ -1629,7 +1631,7 @@ function PortaoModal({ ent, enviar, onFechar, cameras = [] }) {
 // A foto seguinte só troca quando terminou de carregar (sem piscar); para quando o popup fecha
 // ou o app vai para segundo plano. O token da câmera muda a cada ~5 min e a URL acompanha.
 const CAMERA_MS = 1000;
-function CameraAoVivo({ cam }) {
+function CameraAoVivo({ cam, preencher }) {
   const [src, setSrc] = useState(null);
   const [falhou, setFalhou] = useState(false);
   const urlRef = useRef(cam.url);
@@ -1653,7 +1655,8 @@ function CameraAoVivo({ cam }) {
   return (
     // Cada câmera fica em 16:9, mas nunca mais alta que metade do espaço que sobra na tela
     // (o resto do popup ocupa ~280 px): assim tudo cabe sem rolagem.
-    <div style={{ position: "relative", marginBottom: 8, borderRadius: 14, overflow: "hidden", background: "#000", width: "100%", aspectRatio: "16 / 9", maxHeight: "calc((92dvh - 280px) / 2)" }}>
+    <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", width: "100%",
+      ...(preencher ? { flex: 1, minHeight: 0 } : { aspectRatio: "16 / 9", maxHeight: "calc((92dvh - 280px) / 2)" }) }}>
       {ok
         ? <img src={src} alt={cam.nome} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         : <div className="flex items-center justify-center" style={{ width: "100%", height: "100%", color: "#ffffffaa", fontSize: 13.5, padding: 16, textAlign: "center" }}>{cam.aviso || (falhou ? "Câmera sem imagem agora." : "Carregando a câmera…")}</div>}
@@ -2879,6 +2882,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [modo, setModo] = useState("usar"); // usar | gerenciar
   const [menuAberto, setMenuAberto] = useState(false);
   const [portaoAberto, setPortaoAberto] = useState(false);
+  const cabRef = useRef(null), [topoPortao, setTopoPortao] = useState(null);
   const [tema, setTema] = useState(() => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
   // O que está aberto: pavimentos abertos + UM cômodo por vez. Começa tudo fechado e
   // volta a fechar depois de 8h sem uso (guardado no aparelho para valer entre aberturas).
@@ -3321,7 +3325,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}@keyframes ah-pisca{50%{opacity:.2}}.ah-pisca{animation:ah-pisca .8s infinite}"}</style>
         <DialogHost />
-        {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)}
+        {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} topo={topoPortao}
           cameras={PORTAO_CAMERAS.map((c) => {
             const tk = entsVis[c.id]?.attributes?.access_token;
             const aviso = usarProxy ? "Câmera disponível só para a família (conexão direta com a casa)." : !entsVis[c.id] ? "Câmera não encontrada no Home Assistant." : null;
@@ -3329,7 +3333,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           })} />}
         <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
-        <header style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
+        <header ref={cabRef} style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
           <div className="flex items-center gap-2">
             {onVoltar && <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><ChevronLeft size={18} /></button>}
             <div style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex" }}><Home size={18} /></div>
@@ -3340,7 +3344,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             {eu?.podeMenuControle && (
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
                 // Mesmos itens do ⋮ das tarefas (com "Tarefas" no lugar de "Controle da casa") + Configuração.
-                { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => setPortaoAberto(true) },
+                { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => { setTopoPortao(Math.max(0, Math.round(cabRef.current?.getBoundingClientRect().bottom || 0)) + 6); setPortaoAberto(true); } },
                 ...(souGestor && modo === "usar" ? [{ key: "config", icon: Wrench, cor: C.pasto, txt: "Configuração", on: () => setModo("gerenciar") }] : []),
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
                 ...(onEquipe ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: onEquipe }] : []),
@@ -4011,12 +4015,16 @@ function DialogHost() {
     )
   );
 }
-function Sheet({ titulo, onFechar, children }) {
+// topo (px): o popup começa ali (ex.: logo abaixo do cabeçalho) e ocupa até o fim da tela;
+// o conteúdo vira uma coluna que pode esticar (flex: 1) para preencher a altura.
+function Sheet({ titulo, onFechar, children, topo }) {
+  const cheio = topo != null;
   return (
     <div style={{ position: "fixed", inset: 0, background: "#0006", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onFechar}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: C.bg, width: "100%", maxWidth: 460, maxHeight: "92dvh", overflowY: "auto", borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
-        <div style={{ position: "sticky", top: 0, background: C.bg, padding: "16px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2 }}><div className="font-bold text-lg">{titulo}</div><button onClick={onFechar} style={{ background: C.card, borderRadius: 999, padding: 7, border: `1px solid ${C.linha}` }}><X size={18} /></button></div>
-        <div className="px-4 pb-6">{children}</div>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.bg, width: "100%", maxWidth: 460, borderTopLeftRadius: 22, borderTopRightRadius: 22,
+        ...(cheio ? { height: `calc(100dvh - ${topo}px)`, display: "flex", flexDirection: "column", overflow: "hidden" } : { maxHeight: "92dvh", overflowY: "auto" }) }}>
+        <div style={{ position: "sticky", top: 0, background: C.bg, padding: "16px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2, flexShrink: 0 }}><div className="font-bold text-lg">{titulo}</div><button onClick={onFechar} style={{ background: C.card, borderRadius: 999, padding: 7, border: `1px solid ${C.linha}` }}><X size={18} /></button></div>
+        <div className="px-4 pb-6" style={cheio ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : undefined}>{children}</div>
       </div>
     </div>
   );
