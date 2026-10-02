@@ -1643,6 +1643,18 @@ const nomeFonte = (e, f) => (ehZonaAAT(e?.id) && FONTE_NOME_AAT[f]) || f;
 // Entradas do amplificador que vêm de um streamer AAT: com a zona nessa fonte, o controle do
 // streamer aparece dentro do cartão da zona.
 const STREAMER_DA_FONTE = { "Entrada 2": "media_player.som_terreo", "Entrada 4": "media_player.aat_audiocast_ac_1_aeab" };
+// Nome de cada streamer na lista de dispositivos do Spotify (Spotify Connect).
+const STREAMER_CONNECT = { "media_player.som_terreo": "SOM TERREO", "media_player.aat_audiocast_ac_1_aeab": "SOM SUBSOLO" };
+// Cada pessoa usa o próprio Spotify: no HA cada conta vira media_player.spotify_<nome da conta>
+// ("Spotify Leo Abdalla"). Acha a da pessoa logada pelo nome do perfil no app.
+function spotifyDaPessoa(ents, nome) {
+  const alvo = norm(nome).replace(/[^a-z0-9]+/g, " ").trim();
+  if (!alvo) return null;
+  const ids = Object.keys(ents).filter((id) => id.startsWith("media_player.spotify_"));
+  const limpa = (t) => norm(t).replace(/^spotify\s*/, "").replace(/[^a-z0-9]+/g, " ").trim();
+  return ids.find((id) => limpa(ents[id]?.attributes?.friendly_name || "") === alvo)
+    || ids.find((id) => limpa(id.slice("media_player.spotify_".length)) === alvo) || null;
+}
 
 /* ---- Resposta imediata ao toque ----
    Algumas integrações (ex.: o amplificador AAT) demoram a avisar o novo estado. O app mostra o
@@ -1931,6 +1943,12 @@ function PainelStreamer({ s: st, enviar }) {
   const faixa = [a.media_title, a.media_artist].filter(Boolean).join(" · ");
   // Nada carregado no streamer: o Play não teria o que tocar. Aí ele abre o Spotify.
   const semMusica = !a.media_title && !["playing", "paused"].includes(st.state);
+  // Leva o Spotify da pessoa para este streamer (Spotify Connect) e dá play na última música/playlist.
+  const tocarSpotify = () => {
+    if (!st.spotify || !st.connect) { abrirSpotify(); return; }
+    enviar("media_player", "select_source", st.spotify, { source: st.connect });
+    setTimeout(() => enviar("media_player", "media_play", st.spotify), 1500);
+  };
   const bt = (on, Ic, rot, grande) => (
     <button onClick={on} disabled={!st.disponivel} aria-label={rot} style={{ width: grande ? 52 : 42, height: grande ? 52 : 42, borderRadius: 999, border: "none", flexShrink: 0,
       display: "flex", alignItems: "center", justifyContent: "center", cursor: st.disponivel ? "pointer" : "default", opacity: st.disponivel ? 1 : 0.45,
@@ -1946,10 +1964,15 @@ function PainelStreamer({ s: st, enviar }) {
         </span>
       </div>
       {faixa && <div className="truncate" style={{ fontSize: 12.5, color: C.cinza, marginTop: 4 }}>{faixa}</div>}
+      {st.spotify && !st.semSinal && (
+        <button onClick={abrirSpotify} className="flex items-center gap-1" style={{ marginTop: 6, background: "none", border: "none", padding: 0, fontSize: 12.5, fontWeight: 700, color: LAGO, cursor: "pointer" }}>
+          Escolher música no Spotify <ChevronRight size={14} />
+        </button>
+      )}
       {!st.semSinal && (
         <div className="flex items-center justify-center gap-3" style={{ marginTop: 10 }}>
           {tem(16) && bt(() => enviar("media_player", "media_previous_track", st.id), SkipBack, "Faixa anterior")}
-          {tem(1 | 16384) && bt(() => (semMusica ? abrirSpotify() : enviar("media_player", "media_play_pause", st.id)), tocando ? Pause : Play, semMusica ? "Abrir o Spotify" : tocando ? "Pausar" : "Tocar", true)}
+          {tem(1 | 16384) && bt(() => (semMusica ? tocarSpotify() : enviar("media_player", "media_play_pause", st.id)), tocando ? Pause : Play, semMusica ? "Abrir o Spotify" : tocando ? "Pausar" : "Tocar", true)}
           {tem(32) && bt(() => enviar("media_player", "media_next_track", st.id), SkipForward, "Próxima faixa")}
         </div>
       )}
@@ -2781,6 +2804,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   };
 
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
+  const meuSpotify = spotifyDaPessoa(entsVis, eu?.nome);
   const mkEquip = (row) => {
     const live = entsVis[row.entity_id];
     const state = live?.state;
@@ -2797,7 +2821,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     if (!sid) return null;
     const v = entsVis[sid], st = v?.state;
     return { id: sid, tipo: "tv", nome: FONTE_NOME_AAT[fonte] || sid, state: st, attributes: v?.attributes || {},
-      disponivel: st != null && !["unavailable", "unknown", "none", ""].includes(st), semSinal: !v };
+      disponivel: st != null && !["unavailable", "unknown", "none", ""].includes(st), semSinal: !v,
+      spotify: meuSpotify, connect: STREAMER_CONNECT[sid] };
   }
   const semPav = { id: "__sem__", nome: "Outros", ordem: 99999 };
   const listaPav = [...pavimentos, semPav].map((p) => ({
