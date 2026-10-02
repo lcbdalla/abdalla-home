@@ -165,5 +165,8 @@
 {"id": "media_player.aat_pmr7_zona_6", "nome": "Som Ofurô", "tipo": "tv", "grupo": "Som", "ambiente": "Piscina"},
 {"id": "media_player.som_terreo", "nome": "Som Térreo (streamer)", "tipo": "tv", "grupo": "Som", "ambiente": ""},
 {"id": "media_player.aat_audiocast_ac_1_aeab", "nome": "Som Subsolo (Audiocast)", "tipo": "tv", "grupo": "Som", "ambiente": ""},
-{"id": "alexa.quarto_leo_e_pri", "nome": "Alexa", "tipo": "alexa", "grupo": "Som", "ambiente": "Quarto Leo e Pri"}
+{"id": "alexa.quarto_leo_e_pri", "nome": "Alexa", "tipo": "alexa", "grupo": "Som", "ambiente": "Quarto Leo e Pri"},
+{"id": "input_button.coifa_luz", "nome": "Coifa Luz", "tipo": "botao", "grupo": "Coifa", "ambiente": "Cozinha"},
+{"id": "input_button.coifa_diminuir", "nome": "Coifa Velocidade −", "tipo": "botao", "grupo": "Coifa", "ambiente": "Cozinha"},
+{"id": "input_button.coifa_aumentar", "nome": "Coifa Velocidade +", "tipo": "botao", "grupo": "Coifa", "ambiente": "Cozinha"}
 ]

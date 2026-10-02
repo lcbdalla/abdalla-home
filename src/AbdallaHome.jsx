@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -1465,10 +1465,11 @@ const CTRL_TIPOS = [
   { id: "fechadura", nome: "Fechadura", ajuda: "Trancar / destrancar" },
   { id: "sensor", nome: "Só leitura (sensor)", ajuda: "Mostra o valor" },
   { id: "alexa", nome: "Alexa (Spotify)", ajuda: "Toca/pausa o seu Spotify na Alexa" },
+  { id: "botao", nome: "Botão (apertar)", ajuda: "Um toque; sem ligado/desligado" },
 ];
 const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]));
-const CTRL_EMOJI = { interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
-const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao", "alexa", "grupoPersianas", "grupoLuzes"]; // ocupam a linha inteira (têm mais botões)
+const CTRL_EMOJI = { botao: "🔘", interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
+const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao", "alexa", "grupoPersianas", "grupoLuzes", "grupoBotoes"]; // ocupam a linha inteira (têm mais botões)
 const CTRL_COMPACTAVEL = ["ar", "persiana"]; // começam pequenos; tocar no quadro amplia; encolhem ao recarregar
 // Botões de ação que dá para renomear, por tipo de aparelho. [chave, nome padrão].
 const ROTULOS_POR_TIPO = {
@@ -1480,13 +1481,13 @@ const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
 // As câmeras não entram em HA_SHOW (geram muitos eventos); só as do portão são acompanhadas.
 const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || PORTAO_CAMERAS.some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
-const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean"]);
+const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
 // Grupo de luz (entidade light que só junta outras) — não mostramos para não duplicar.
 const ehGrupoLuz = (id, attrs) => id.split(".")[0] === "light" && Array.isArray(attrs?.entity_id);
 // Domínios que aparecem para o gestor escolher (o resto é ruído).
-const HA_ESCOLHIVEIS = ["light", "switch", "fan", "cover", "climate", "media_player", "lock", "input_boolean"];
+const HA_ESCOLHIVEIS = ["light", "switch", "fan", "cover", "climate", "media_player", "lock", "input_boolean", "input_button"];
 
 // Sugere um tipo de controle a partir do identificador do aparelho (ex.: climate.sala).
 function tipoSugerido(entityId) {
@@ -1495,6 +1496,7 @@ function tipoSugerido(entityId) {
   if (d === "climate") return "ar";
   if (d === "media_player") return "tv";
   if (d === "lock") return "fechadura";
+  if (d === "input_button") return "botao";
   if (["light", "switch", "fan", "input_boolean"].includes(d)) return "interruptor";
   return "sensor";
 }
@@ -2137,9 +2139,35 @@ function agruparLuzes(itens, comodoId) {
   return lista;
 }
 
+/* ---- Botões do HA do mesmo aparelho viram um cartão (ex.: input_button.coifa_* → "Coifa") ---- */
+const chaveBotao = (x) => (String(x.id).match(/^input_button\.([a-z0-9]+)_/) || [])[1];
+function agruparBotoes(itens, comodoId) {
+  let lista = itens;
+  const chaves = [...new Set(itens.filter((x) => x.tipo === "botao").map(chaveBotao).filter(Boolean))];
+  chaves.forEach((k) => {
+    const membros = lista.filter((x) => x.tipo === "botao" && chaveBotao(x) === k);
+    if (membros.length < 2) return;
+    const pos = lista.indexOf(membros[0]);
+    const grupo = { dbId: `grupo-botoes-${k}-${comodoId}`, id: `grupo.botoes_${k}_${comodoId}`, tipo: "grupoBotoes", nome: k[0].toUpperCase() + k.slice(1), rotulos: {},
+      tamanho: "g", membros: membros.slice().sort((a, b) => acaoBotao(a).ordem - acaoBotao(b).ordem), disponivel: membros.some((m) => m.disponivel), state: "" };
+    const resto = lista.filter((x) => !membros.includes(x));
+    resto.splice(Math.min(pos, resto.length), 0, grupo);
+    lista = resto;
+  });
+  return lista;
+}
+// Nome curto e ícone de cada botão, pelo que ele faz.
+function acaoBotao(m) {
+  const t = norm(`${m.nome} ${m.id}`);
+  if (/luz/.test(t)) return { label: "Luz", Icon: Lightbulb, ordem: 0 };
+  if (/diminu|menos/.test(t)) return { label: "Velocidade −", Icon: Minus, ordem: 1 };
+  if (/aument|mais/.test(t)) return { label: "Velocidade +", Icon: Plus, ordem: 2 };
+  return { label: m.nome, Icon: CircleDot, ordem: 3 };
+}
+
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
 // Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
-const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas", "grupoLuzes"].includes(e.tipo);
+const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas", "grupoLuzes", "botao", "grupoBotoes"].includes(e.tipo);
 const estaLigado = (e) => {
   if (!e.disponivel) return false;
   if (e.tipo === "ar") return e.state !== "off";
@@ -2237,7 +2265,7 @@ function IconeCascata({ size = 24, strokeWidth = 2, ...props }) {
 // Ícone pela finalidade, a partir do nome (vale em qualquer cômodo).
 const ICONE_POR_NOME = [
   [/borda/, WavesLadder, "lago"], [/cascata/, IconeCascata, "lago"], [/filtro/, Funnel, "lago"],
-  [/hidro/, Bubbles, "lago"], [/aquec/, Flame, "ambar"], [/abajur/, LampDesk, "ambar", true],
+  [/hidro/, Bubbles, "lago"], [/aquec/, Flame, "ambar"], [/coifa/, AirVent, "lago"], [/abajur/, LampDesk, "ambar", true],
 ];
 
 function visualEquip(e) {
@@ -2249,6 +2277,7 @@ function visualEquip(e) {
 function visualPorTipo(e) {
   if (e.tipo === "grupoPersianas") return { Icon: Blinds, ativo: e.membros.some((m) => visualPorTipo(m).ativo), cor: C.ambar };
   if (e.tipo === "grupoLuzes") return { Icon: e.icone || Lightbulb, ativo: e.membros.some(estaLigado), cor: C.ambar, luz: true };
+  if (e.tipo === "botao" || e.tipo === "grupoBotoes") return { Icon: CircleDot, ativo: false, cor: C.lago };
   if (e.tipo === "alexa") return { Icon: Speaker, ativo: ["playing", "paused"].includes(e.state), cor: C.lago };
   const dom = String(e.id).split(".")[0];
   const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
@@ -2747,6 +2776,7 @@ function EquipControle({ e, enviar, cardClicavel }) {
   if (e.tipo === "fechadura") return <CtrlFechadura e={e} enviar={enviar} />;
   if (e.tipo === "sensor") return <CtrlSensor e={e} />;
   if (e.tipo === "alexa") return <CtrlAlexa e={e} enviar={enviar} />;
+  if (e.tipo === "botao") return <BotaoAcao icon={acaoBotao(e).Icon} label="Apertar" cor={C.lago} disabled={!e.disponivel} onClick={() => enviar("input_button", "press", e.id)} />;
   return <CtrlInterruptor e={e} enviar={enviar} cardClicavel={cardClicavel} />;
 }
 // Controle compacto do ar (quando o card está encolhido): liga/desliga + temperatura.
@@ -2835,6 +2865,24 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
 
 // Cartão de grupo de luzes: resumo + chave (alguma acesa → apaga todas; todas apagadas →
 // acende todas, uma por vez). Tocar no título abre as luzes de dentro.
+// Cartão de botões (ex.: Coifa): cada toque aperta o botão no HA. Não há como saber se está
+// ligado (o comando vai por infravermelho), então não mostra estado.
+function CartaoGrupoBotoes({ e, enviar }) {
+  return (
+    <div style={{ background: C.bg, borderRadius: 16, padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="flex items-center" style={{ gap: 8 }}>
+        <IconeEquip v={visualEquip(e)} disponivel={e.disponivel} />
+        <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra }}>{e.nome}</div>
+      </div>
+      <div className="flex gap-2" onPointerDown={(ev) => ev.stopPropagation()}>
+        {e.membros.map((m) => { const a = acaoBotao(m); return (
+          <BotaoAcao key={m.id} icon={a.Icon} label={a.label} cor={C.lago} disabled={!m.disponivel} onClick={() => enviar("input_button", "press", m.id)} />
+        ); })}
+      </div>
+    </div>
+  );
+}
+
 function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
   const [exp, setExp] = useState(() => new Set());
   const alternarMembro = (id) => setExp((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -2873,6 +2921,7 @@ function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
 }
 
 function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
+  if (e.tipo === "grupoBotoes") return <CartaoGrupoBotoes e={e} enviar={enviar} />;
   if (e.tipo === "grupoLuzes") return <CartaoGrupoLuzes e={e} enviar={enviar} aberto={expandido} onAlternar={onExpandir} editando={editando} />;
   if (e.tipo === "grupoPersianas") return <CartaoGrupoPersianas e={e} enviar={enviar} aberto={expandido} onAlternar={onExpandir} editando={editando} />;
   const v = visualEquip(e);
@@ -3709,7 +3758,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       dbId: row.id, id: row.entity_id, tipo: row.tipo,
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
       state, attributes: live?.attributes || {}, rotulos: row.rotulos || {}, tamanho: row.tamanho === "g" ? "g" : "p",
-      disponivel: state != null && !["unavailable", "unknown", "none", ""].includes(state),
+      disponivel: row.tipo === "botao" ? state != null && state !== "unavailable" : state != null && !["unavailable", "unknown", "none", ""].includes(state),
       streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : null,
       zonas: ehZonaAAT(row.entity_id) ? zonasAAT : null,
     };
@@ -3726,7 +3775,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Cartões de grupo (persianas): recebem a previsão e anotam os aparelhos de dentro, para o
   // arrasto mover o grupo inteiro.
   const comGrupos = (itens) => itens.map((x) => {
-    if (x.tipo === "grupoLuzes") { gruposRef.current[x.dbId] = x.membros.map((m) => m.dbId); return x; }
+    if (x.tipo === "grupoLuzes" || x.tipo === "grupoBotoes") { gruposRef.current[x.dbId] = x.membros.map((m) => m.dbId); return x; }
     if (x.tipo !== "grupoPersianas") return x;
     gruposRef.current[x.dbId] = [...(x.mestre ? [x.mestre.dbId] : []), ...x.membros.map((m) => m.dbId)];
     return { ...x, preverEstados };
@@ -3737,7 +3786,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
     comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
-      itens: comGrupos(somPrimeiro(comFontePadrao(agruparLuzes(agruparPersianas(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), a.id), p.nome))),
+      itens: comGrupos(somPrimeiro(comFontePadrao(agruparBotoes(agruparLuzes(agruparPersianas(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), a.id), a.id), p.nome))),
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
