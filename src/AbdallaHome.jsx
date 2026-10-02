@@ -1726,8 +1726,9 @@ function acoesMusica(st, enviar) {
   const a = st.attributes || {};
   const semMusica = !a.media_title && !["playing", "paused"].includes(st.state);
   const alvo = spAqui ? st.spotify : st.id;
-  const f = Number((spAqui ? sp : st).attributes?.supported_features) || 0;
-  const tem = (b) => spAqui || f === 0 || (f & b) !== 0;
+  // Voltar/próxima aparecem sempre (tocando ou pausado). Vão para o Spotify da pessoa quando ela
+  // tem um ligado ao HA (o Spotify comanda o aparelho em que está tocando); senão, para o streamer.
+  const alvoPulo = spAqui || st.spotify ? st.spotify : st.id;
   return {
     tocando: (spAqui ? sp.state : st.state) === "playing",
     tocar: () => {
@@ -1739,8 +1740,8 @@ function acoesMusica(st, enviar) {
       }
       enviar("media_player", "media_play_pause", alvo);
     },
-    anterior: tem(16) ? () => enviar("media_player", "media_previous_track", alvo) : null,
-    proxima: tem(32) ? () => enviar("media_player", "media_next_track", alvo) : null,
+    anterior: () => enviar("media_player", "media_previous_track", alvoPulo),
+    proxima: () => enviar("media_player", "media_next_track", alvoPulo),
   };
 }
 // Do conjunto de aparelhos de um cômodo/pavimento, o 1º som ligado tocando um streamer.
