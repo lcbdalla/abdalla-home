@@ -517,7 +517,7 @@ export default function App() {
     try { if ("caches" in window) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } } catch { /* ok */ }
     try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); } catch { /* ok */ }
     // Recarrega furando o cache do navegador (URL única).
-    window.location.href = import.meta.env.BASE_URL + "?v=" + Date.now();
+    window.location.href = import.meta.env.BASE_URL + "?v=" + Date.now() + window.location.hash;
   };
 
   // ---------- Mutações (gravam no Supabase; o realtime propaga aos outros) ----------
@@ -662,6 +662,16 @@ export default function App() {
     reloadEstoque();
   }
 
+  // Barra "Nova versão" (bottom: altura acima da barra de abas; no Controle não há abas).
+  const barraAtualizar = (bottom) => temAtualizacao && (
+    <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom, width: "calc(100% - 24px)", maxWidth: 436, background: C.pastoEsc, color: "#fff", borderRadius: 14, padding: "10px 12px", zIndex: 65, boxShadow: "0 8px 22px #0004", display: "flex", alignItems: "center", gap: 10 }}>
+      <RefreshCw size={18} style={{ flexShrink: 0 }} />
+      <div className="flex-1" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2 }}>Nova versão disponível</div>
+      <button onClick={() => setTemAtualizacao(false)} title="Agora não" style={{ color: "#ffffffcc", padding: 4 }}><X size={18} /></button>
+      <button onClick={atualizarAgora} style={{ background: C.card, color: C.pastoEsc, borderRadius: 10, padding: "8px 16px", fontWeight: 700, fontSize: 14 }}>Atualizar</button>
+    </div>
+  );
+
   // ---------- Telas de porta de entrada ----------
   if (session === undefined || perfil === undefined) return <TelaCarregando />;
   if (!session) return logandoQR ? <TelaCarregando /> : (<><LoginScreen /><InstalarPrompt /><DialogHost /></>);
@@ -669,17 +679,17 @@ export default function App() {
   if (perfil === "expirado") return (<><AcessoExpirado onSair={sair} /><DialogHost /></>);
   // Criança e visitante: só o Controle da Casa, sem o app de tarefas (nem carregam os dados dele).
   if (souCrianca || souVisitante) {
-    return <ControleApp eu={eu} onSair={sair} />;
+    return (<><ControleApp eu={eu} onSair={sair} />{barraAtualizar(16)}</>);
   }
   if (!carregado) return <TelaCarregando />;
 
   // App separado de Controle da Casa (mesmo login), aberto por #controle.
   if (rota === "controle") {
-    return (eu?.podeControle || eu?.podeGerirControle)
+    return (<>{barraAtualizar(16)}{(eu?.podeControle || eu?.podeGerirControle)
       ? <ControleApp eu={eu} onVoltar={() => { window.location.hash = ""; }} onSair={sair}
           onEquipe={souAdmin ? () => { setAba("equipe"); window.location.hash = ""; } : null}
           onSobre={souAdmin ? () => { setInfoAberto(true); window.location.hash = ""; } : null} />
-      : <ControleSemAcesso onVoltar={() => { window.location.hash = ""; }} />;
+      : <ControleSemAcesso onVoltar={() => { window.location.hash = ""; }} />}</>);
   }
 
   const ABAS = [
@@ -765,14 +775,7 @@ export default function App() {
         {modal?.tipo === "movimento" && <MovimentoModal {...{ tipo: modal.mov, produtos, estoque, onFechar: () => setModal(null), onAplicar: (lista) => { aplicarMovimentos(lista, modal.mov, "manual"); showToast((modal.mov === "saida" ? "Saída" : "Entrada") + " registrada (" + lista.length + (lista.length === 1 ? " item" : " itens") + ")"); setModal(null); } }} />}
 
         {toast && <div style={{ position: "fixed", bottom: 96, left: "50%", transform: "translateX(-50%)", background: C.terra, color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 14, fontWeight: 600, zIndex: 60, boxShadow: "0 4px 14px #0003", whiteSpace: "nowrap" }}>{toast}</div>}
-        {temAtualizacao && (
-          <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 74, width: "calc(100% - 24px)", maxWidth: 436, background: C.pastoEsc, color: "#fff", borderRadius: 14, padding: "10px 12px", zIndex: 65, boxShadow: "0 8px 22px #0004", display: "flex", alignItems: "center", gap: 10 }}>
-            <RefreshCw size={18} style={{ flexShrink: 0 }} />
-            <div className="flex-1" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2 }}>Nova versão disponível</div>
-            <button onClick={() => setTemAtualizacao(false)} title="Agora não" style={{ color: "#ffffffcc", padding: 4 }}><X size={18} /></button>
-            <button onClick={atualizarAgora} style={{ background: C.card, color: C.pastoEsc, borderRadius: 10, padding: "8px 16px", fontWeight: 700, fontSize: 14 }}>Atualizar</button>
-          </div>
-        )}
+        {barraAtualizar(74)}
         <InstalarPrompt />
         <DialogHost />
       </div>
