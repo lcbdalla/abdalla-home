@@ -1636,6 +1636,41 @@ function MenuPontinhos({ aberto, setAberto, itens }) {
   );
 }
 
+/* ---- Nomes das entradas do amplificador AAT (o comando continua usando "Entrada N") ---- */
+const FONTE_NOME_AAT = { "Entrada 1": "TV", "Entrada 2": "Som Térreo", "Entrada 4": "Som Subsolo" };
+const nomeFonte = (e, f) => (String(e?.id || "").startsWith("media_player.aat_pmr7_zona_") && FONTE_NOME_AAT[f]) || f;
+
+/* ---- Resposta imediata ao toque ----
+   Algumas integrações (ex.: o amplificador AAT) demoram a avisar o novo estado. O app mostra o
+   resultado esperado do comando na hora e mantém isso até o Home Assistant informar uma mudança
+   (ou por até 20 s); aí vale o estado real. */
+const OTIMISTA_MS = 20000;
+const assinatura = (v) => JSON.stringify([v?.state, v?.attributes?.volume_level, v?.attributes?.is_volume_muted, v?.attributes?.source, v?.attributes?.temperature, v?.attributes?.fan_mode]);
+function previsto(service, v, data = {}) {
+  const a = v?.attributes || {};
+  const vol = (d) => (typeof a.volume_level === "number" ? { attributes: { volume_level: Math.min(1, Math.max(0, Math.round((a.volume_level + d) * 100) / 100)) } } : null);
+  switch (service) {
+    case "toggle": return v ? { state: v.state === "on" ? "off" : "on" } : null;
+    case "turn_on": return { state: "on" };
+    case "turn_off": return { state: "off" };
+    case "volume_mute": return { attributes: { is_volume_muted: !!data.is_volume_muted } };
+    case "select_source": return { attributes: { source: data.source } };
+    case "volume_up": return vol(0.05);
+    case "volume_down": return vol(-0.05);
+    case "volume_set": return { attributes: { volume_level: data.volume_level } };
+    case "media_play_pause": return { state: v?.state === "playing" ? "paused" : "playing" };
+    case "media_pause": return { state: "paused" };
+    case "set_temperature": return { attributes: { temperature: data.temperature } };
+    case "set_hvac_mode": return { state: data.hvac_mode };
+    case "set_fan_mode": return { attributes: { fan_mode: data.fan_mode } };
+    case "open_cover": return { state: "opening" };
+    case "close_cover": return { state: "closing" };
+    case "lock": return { state: "locked" };
+    case "unlock": return { state: "unlocked" };
+    default: return null;
+  }
+}
+
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
 // Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
 const ehDesligavel = (e) => !["persiana", "fechadura", "sensor"].includes(e.tipo);
@@ -1840,7 +1875,7 @@ function CtrlTv({ e, enviar }) {
     <div>
       <div className="flex items-center gap-3 mb-3">
         <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (ligado ? LAGO : C.cinza), fontWeight: 600 }}>
-          {estado}{ligado && vol != null && <span style={{ color: C.cinzaClaro }}> · volume {vol}%</span>}{ligado && r.fonte && a.source && <span style={{ color: C.cinzaClaro }}> · {a.source}</span>}
+          {estado}{ligado && vol != null && <span style={{ color: C.cinzaClaro }}> · volume {vol}%</span>}{ligado && r.fonte && a.source && <span style={{ color: C.cinzaClaro }}> · {nomeFonte(e, a.source)}</span>}
         </div>
         {r.liga && <PillToggle on={ligado} cor={LAGO} disabled={ind} onClick={() => enviar("media_player", ligado ? "turn_off" : "turn_on", e.id)} />}
       </div>
@@ -1855,7 +1890,7 @@ function CtrlTv({ e, enviar }) {
           {r.fonte && (
             <div className="mt-3">
               <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Fonte</div>
-              <div className="flex flex-wrap gap-2">{r.fontes.map((f) => <CtrlChip key={f} ativo={a.source === f} cor={LAGO} onClick={() => enviar("media_player", "select_source", e.id, { source: f })}>{f}</CtrlChip>)}</div>
+              <div className="flex flex-wrap gap-2">{r.fontes.map((f) => <CtrlChip key={f} ativo={a.source === f} cor={LAGO} onClick={() => enviar("media_player", "select_source", e.id, { source: f })}>{nomeFonte(e, f)}</CtrlChip>)}</div>
             </div>
           )}
         </>
@@ -2308,6 +2343,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const toggleExpand = (id) => setExpandidos((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [editando, setEditando] = useState(false);
   const [ents, setEnts] = useState({});
+  const [otim, setOtim] = useState({}); // entity_id -> { patch, base (assinatura antes do toque), ate }
   const [areas, setAreas] = useState(null); // entity_id -> nome da área no Home Assistant
   const [tentativa, setTentativa] = useState(0);
   const [aviso, setAviso] = useState(null);
@@ -2560,12 +2596,49 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     }
   };
 
+  // Estado mostrado = real + o que o toque prevê, enquanto o HA não informar mudança.
+  const entsVis = React.useMemo(() => {
+    const ids = Object.keys(otim); if (!ids.length) return ents;
+    const agora = Date.now(); const out = { ...ents };
+    ids.forEach((id) => {
+      const o = otim[id], v = ents[id];
+      if (!v || agora > o.ate || assinatura(v) !== o.base) return;
+      out[id] = { ...v, ...(o.patch.state != null ? { state: o.patch.state } : {}), attributes: { ...v.attributes, ...(o.patch.attributes || {}) } };
+    });
+    return out;
+  }, [ents, otim]);
+  // Limpa previsões vencidas ou já confirmadas/substituídas pelo HA.
+  useEffect(() => {
+    const ids = Object.keys(otim); if (!ids.length) return;
+    const agora = Date.now();
+    const vivos = ids.filter((id) => ents[id] && agora <= otim[id].ate && assinatura(ents[id]) === otim[id].base);
+    if (vivos.length !== ids.length) { setOtim((o) => Object.fromEntries(Object.entries(o).filter(([id]) => vivos.includes(id)))); return; }
+    const prox = Math.min(...vivos.map((id) => otim[id].ate)) - agora;
+    const t = setTimeout(() => setOtim((o) => ({ ...o })), Math.max(50, prox + 10));
+    return () => clearTimeout(t);
+  }, [ents, otim]);
+  const preverToque = (service, entityId, data) => {
+    const v = entsVis[entityId]; const patch = previsto(service, v, data || {});
+    if (!patch || !ents[entityId]) return;
+    // Encadeia toques rápidos (ex.: Vol + várias vezes) sobre a última previsão.
+    const atual = otim[entityId];
+    const base = atual && assinatura(ents[entityId]) === atual.base ? atual.base : assinatura(ents[entityId]);
+    const junto = atual && base === atual.base
+      ? { state: patch.state ?? atual.patch.state, attributes: { ...(atual.patch.attributes || {}), ...(patch.attributes || {}) } }
+      : patch;
+    setOtim((o) => ({ ...o, [entityId]: { patch: junto, base, ate: Date.now() + OTIMISTA_MS } }));
+  };
+
   // ---- Envia um comando ao Home Assistant ----
   const enviar = (domain, service, entityId, serviceData) => {
+    preverToque(service, entityId, serviceData);
     if (usarProxy) {
       setAviso({ texto: "Comando enviado…" });
       supabase.functions.invoke(PROXY_FN, { body: { acao: "servico", domain, service, entity_id: entityId, data: serviceData || {} } }).then(async ({ error }) => {
-        if (error) { let msg = ""; try { msg = (await error.context.json())?.error || ""; } catch { /* sem corpo */ } setAviso({ erro: true, texto: "Não consegui executar: " + (msg || error.message) }); return; }
+        if (error) {
+          setOtim((o) => { const n = { ...o }; delete n[entityId]; return n; }); // não deu: volta a mostrar o estado real
+          let msg = ""; try { msg = (await error.context.json())?.error || ""; } catch { /* sem corpo */ } setAviso({ erro: true, texto: "Não consegui executar: " + (msg || error.message) }); return;
+        }
         setTimeout(() => proxyRefresh.current?.(), 400);  // mostra o novo estado logo
         setTimeout(() => proxyRefresh.current?.(), 1800); // e de novo (persiana e ar demoram)
       });
@@ -2615,7 +2688,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
 
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
   const mkEquip = (row) => {
-    const live = ents[row.entity_id];
+    const live = entsVis[row.entity_id];
     const state = live?.state;
     return {
       dbId: row.id, id: row.entity_id, tipo: row.tipo,
@@ -2639,7 +2712,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}@keyframes ah-pisca{50%{opacity:.2}}.ah-pisca{animation:ah-pisca .8s infinite}"}</style>
         <DialogHost />
-        {portaoAberto && <PortaoModal ent={ents[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} />}
+        {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} />}
         <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
         <header style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
