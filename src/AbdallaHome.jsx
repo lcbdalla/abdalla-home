@@ -1944,17 +1944,23 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
 // Busca de aparelho novo: só os equipamentos da lista do painel LAB (src/catalogoLab.json),
 // agrupados pelo cômodo sugerido — o grupo do cômodo que está sendo montado vem primeiro.
 // Cada item já traz o nome e o tipo de controle da lista.
-function SeletorAparelho({ ents, usados, comodo, onEscolher, onFechar }) {
+function SeletorAparelho({ ents, areas, usados, comodo, onEscolher, onFechar }) {
   const [busca, setBusca] = useState("");
+  const [todos, setTodos] = useState(false); // também os aparelhos do HA que não estão na lista
   const q = norm(busca);
   const aqui = norm(comodo || "");
-  const itens = CATALOGO_LAB
+  const naLista = new Set(CATALOGO_LAB.map((x) => x.id));
+  const outros = todos ? Object.entries(ents)
+    .filter(([id]) => HA_ESCOLHIVEIS.includes(id.split(".")[0]) && !naLista.has(id))
+    .map(([id, v]) => ({ id, nome: v.attributes?.friendly_name || id, tipo: tipoSugerido(id), grupo: "Fora da lista", ambiente: `Outros do Home Assistant${areas?.[id] ? " · " + areas[id] : ""}` })) : [];
+  const itens = [...CATALOGO_LAB, ...outros]
     .filter((x) => !usados.has(x.id))
     .filter((x) => !q || norm(`${x.nome} ${x.id} ${x.ambiente} ${x.grupo}`).includes(q));
   const grupos = {};
   itens.forEach((x) => { (grupos[x.ambiente || ""] ||= []).push(x); });
+  const fora = (n) => n.startsWith("Outros do Home Assistant");
   const nomes = Object.keys(grupos).sort((a, b) =>
-    (norm(b) === aqui) - (norm(a) === aqui) || (a === "") - (b === "") || a.localeCompare(b, "pt-BR"));
+    (norm(b) === aqui) - (norm(a) === aqui) || fora(a) - fora(b) || (a === "") - (b === "") || a.localeCompare(b, "pt-BR"));
   const restam = CATALOGO_LAB.filter((x) => !usados.has(x.id)).length;
   return (
     <div style={{ border: `1px dashed ${LAGO}66`, borderRadius: 12, background: C.lagoClaro, padding: 10, marginTop: 8 }}>
@@ -1963,6 +1969,11 @@ function SeletorAparelho({ ents, usados, comodo, onEscolher, onFechar }) {
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar por nome ou cômodo…" style={{ ...inpControle, background: C.card }} autoFocus />
         <button onClick={onFechar} aria-label="Fechar" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: 8 }}><X size={16} /></button>
       </div>
+      <div className="flex items-center gap-2 mb-2" style={{ background: todos ? C.card : "transparent", border: `1px solid ${todos ? alfa(LAGO, 40) : C.linha}`, borderRadius: 10, padding: "7px 10px", fontSize: 12.5, fontWeight: 700, color: LAGO_ESC }}>
+        <Search size={13} /> <span className="flex-1">{todos ? "Mostrando também os outros aparelhos do Home Assistant" : "Mostrar outros aparelhos do Home Assistant"}</span>
+        <Toggle on={todos} onToggle={() => setTodos((v) => !v)} />
+      </div>
+      {todos && Object.keys(ents).length === 0 && <div style={{ color: C.cinza, fontSize: 12.5 }} className="pb-2 text-center">Os outros aparelhos só aparecem com o Controle conectado ao Home Assistant.</div>}
       {restam === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Todos os aparelhos da lista já foram adicionados.</div>}
       {restam > 0 && itens.length === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Nada encontrado com “{busca}”.</div>}
       <div style={{ maxHeight: 380, overflowY: "auto" }}>
@@ -2076,7 +2087,7 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
         })}
 
         {abrindoSel
-          ? <SeletorAparelho ents={ents} usados={usados} comodo={amb.nome} onEscolher={(x) => { onAddEquip(amb.id, x.id, { nome: x.nome, tipo: x.tipo }); }} onFechar={() => setAbrindoSel(false)} />
+          ? <SeletorAparelho ents={ents} areas={areas} usados={usados} comodo={amb.nome} onEscolher={(x) => { onAddEquip(amb.id, x.id, { nome: x.nome, tipo: x.tipo }); }} onFechar={() => setAbrindoSel(false)} />
           : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 2, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${alfa(C.pasto, 20)}`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Adicionar aparelho</button>}
       </div>)}
     </div>
