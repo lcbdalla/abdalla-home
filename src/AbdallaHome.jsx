@@ -1687,6 +1687,31 @@ function previsto(service, v, data = {}) {
   }
 }
 
+/* ---- Cômodo com mais de uma zona de som (ex.: Varanda = Varanda + Churrasqueira) ----
+   Vira um cartão só: liga/desliga e a fonte valem para todas as zonas do cômodo. */
+function juntarZonasDoComodo(itens) {
+  const zonas = itens.filter((x) => ehZonaAAT(x.id));
+  if (zonas.length < 2) return itens;
+  const n = (id) => Number(String(id).split("_").pop()) || 0;
+  const ord = zonas.slice().sort((x, y) => n(x.id) - n(y.id));
+  const algumaLigada = ord.some((z) => z.state === "on");
+  // O principal é a primeira zona ligada (ou a de menor número); dele vêm volume e fonte.
+  const base = ord.find((z) => z.state === "on") || ord[0];
+  const unico = { ...base, nome: "Som", state: algumaLigada ? "on" : base.state, zonasComodo: ord.map((z) => z.id) };
+  const pos = itens.findIndex((x) => ehZonaAAT(x.id));
+  const fora = itens.filter((x) => !ehZonaAAT(x.id));
+  fora.splice(pos, 0, unico);
+  return fora;
+}
+// Liga/desliga todas as zonas do cômodo; ao ligar, deixa todas na fonte da principal.
+function acionarZonas(e, ligar, enviar) {
+  const ids = e.zonasComodo || [e.id];
+  if (!ligar) { ids.forEach((id) => enviar("media_player", "turn_off", id)); return; }
+  ids.forEach((id) => enviar("media_player", "turn_on", id));
+  const fonte = e.attributes?.source;
+  if (fonte && ids.length > 1) setTimeout(() => ids.forEach((id) => enviar("media_player", "select_source", id, { source: fonte })), 900);
+}
+
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
 // Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
 const ehDesligavel = (e) => !["persiana", "fechadura", "sensor"].includes(e.tipo);
@@ -2116,7 +2141,7 @@ function CtrlTv({ e, enviar }) {
         <div className="flex items-center gap-3" style={{ marginTop: (!r.volSet || r.play) ? 12 : 0 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: C.cinza, flexShrink: 0 }}>Fonte</span>
           <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
-            <select value={a.source || ""} onChange={(ev) => ev.target.value && enviar("media_player", "select_source", e.id, { source: ev.target.value })} aria-label="Fonte"
+            <select value={a.source || ""} onChange={(ev) => ev.target.value && (e.zonasComodo || [e.id]).forEach((id) => enviar("media_player", "select_source", id, { source: ev.target.value }))} aria-label="Fonte"
               style={{ width: "100%", appearance: "none", WebkitAppearance: "none", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "11px 40px 11px 14px", fontSize: 15, fontWeight: 700, color: C.terra, cursor: "pointer", fontFamily: "inherit" }}>
               {!a.source && <option value="">Escolha a fonte</option>}
               {r.fontes.map((f) => <option key={f} value={f}>{nomeFonte(e, f)}</option>)}
@@ -2127,7 +2152,7 @@ function CtrlTv({ e, enviar }) {
       )}
       {e.streamer && <PainelStreamer s={e.streamer} enviar={enviar} />}
       {/* Volume deste ambiente: embaixo, logo acima de "Sincronizar ambientes". */}
-      {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}>{volStreamer}<BarraVolume e={e} enviar={enviar} /></div>}
+      {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}>{volStreamer}<BarraVolume e={e} enviar={enviar} compacto /></div>}
       {(e.zonas || []).length > 1 && a.source && (
         <div style={{ marginTop: 12 }}>
           <div style={{ borderTop: `1px solid ${C.linha}`, paddingTop: 10 }}>
@@ -2149,7 +2174,7 @@ function CtrlTv({ e, enviar }) {
               return (
                 <div key={z.id} style={{ marginBottom: esta ? 10 : 8 }}>
                   {(juntas.length > 0 || volStreamer) && <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{z.nome}</div>}
-                  <BarraVolume e={esta ? e : z} enviar={enviar} compacto={!esta} onSoltar={travado && juntas.length ? volumeEmTodas : undefined} />
+                  <BarraVolume e={esta ? e : z} enviar={enviar} compacto onSoltar={travado && juntas.length ? volumeEmTodas : undefined} />
                 </div>
               );
             })}
@@ -2261,7 +2286,7 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
           return (<>
             <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: m.ind ? C.cinzaClaro : m.ligado ? LAGO : C.cinza }}>{m.texto}</span>
             {m.r.liga && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
-              <PillToggle on={m.ligado} cor={LAGO} disabled={m.ind} onClick={() => enviar("media_player", m.ligado ? "turn_off" : "turn_on", e.id)} />
+              <PillToggle on={m.ligado} cor={LAGO} disabled={m.ind} onClick={() => acionarZonas(e, !m.ligado, enviar)} />
             </span>}
           </>);
         })()}
@@ -2869,8 +2894,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const ok = await Dialog.confirm({ titulo: "Desligar tudo", mensagem: `Tem certeza que quer desligar tudo em ${nivel}? (${alvo.length} ${alvo.length === 1 ? "aparelho ligado" : "aparelhos ligados"})`, okLabel: "Desligar tudo", perigo: true });
     if (!ok) return;
     for (let i = 0; i < alvo.length; i++) {
-      const [dom, serv] = servicoDesligar(alvo[i]);
-      enviar(dom, serv, alvo[i].id);
+      if (alvo[i].zonasComodo) acionarZonas(alvo[i], false, enviar);
+      else { const [dom, serv] = servicoDesligar(alvo[i]); enviar(dom, serv, alvo[i].id); }
       if (i < alvo.length - 1) await new Promise((r) => setTimeout(r, 600));
     }
   };
@@ -3009,7 +3034,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
     comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
-      itens: equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip),
+      itens: juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)),
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
