@@ -93,6 +93,7 @@
 {"id": "cover.persiana_salatv_0", "nome": "Persiana 0", "tipo": "persiana", "grupo": "Persianas", "ambiente": "Sala de TV"},
 {"id": "cover.persiana_salatv_1", "nome": "Persiana 1", "tipo": "persiana", "grupo": "Persianas", "ambiente": "Sala de TV"},
 {"id": "cover.persiana_salatv_2", "nome": "Persiana 2", "tipo": "persiana", "grupo": "Persianas", "ambiente": "Sala de TV"},
+{"id": "cover.persiana_sala_tv_todas", "nome": "Todas as persianas", "tipo": "persiana", "grupo": "Persianas", "ambiente": "Sala de TV"},
 {"id": "cover.persiana_varanda_1", "nome": "Persiana 1", "tipo": "persiana", "grupo": "Persianas", "ambiente": "Varanda"},
 {"id": "cover.persiana_varanda_2", "nome": "Persiana 2", "tipo": "persiana", "grupo": "Persianas", "ambiente": "Varanda"},
 {"id": "cover.persiana_varanda_3", "nome": "Persiana 3", "tipo": "persiana", "grupo": "Persianas", "ambiente": "Varanda"},

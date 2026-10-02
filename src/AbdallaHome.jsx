@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, AirVent, CircleDot, Minus,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Thermometer, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -1979,7 +1979,12 @@ function previsto(service, v, data = {}) {
   const vol = (d) => (typeof a.volume_level === "number" ? { attributes: { volume_level: Math.min(1, Math.max(0, Math.round((a.volume_level + d) * 100) / 100)) } } : null);
   switch (service) {
     case "toggle": return v ? { state: v.state === "on" ? "off" : "on" } : null;
-    case "turn_on": return { state: "on" };
+    case "turn_on": {
+      const at = {}; // brilho/temperatura da luz já aparecem antes de o HA confirmar
+      if (data.brightness_pct != null) at.brightness = Math.round(data.brightness_pct * 2.55);
+      if (data.color_temp_kelvin != null) at.color_temp_kelvin = data.color_temp_kelvin;
+      return Object.keys(at).length ? { state: "on", attributes: at } : { state: "on" };
+    }
     case "turn_off": return { state: "off" };
     case "volume_mute": return { attributes: { is_volume_muted: !!data.is_volume_muted } };
     case "select_source": return { attributes: { source: data.source } };
@@ -2101,12 +2106,16 @@ function ligarAlexa(e, ligar, enviar) {
 /* ---- Grupo de persianas numeradas (ex.: Varanda: Persiana 1 … Persiana 11) ----
    Viram um cartão "Persianas" que abre mostrando todas para escolher qual usar. */
 const RE_PERSIANA_N = /^persiana\s*(\d+)$/i;
-// A "Persiana 0" (ou "Persiana Todas") comanda todas juntas: vira os botões do grupo.
-const ehPersianaMestre = (x) => x.tipo === "persiana" && (/^persiana\s*0$/i.test(String(x.nome || "").trim()) || /todas/i.test(String(x.nome || "")) || /_0$/.test(String(x.id)));
+// Quem comanda todas juntas vira os botões do grupo: a "Todas" (grupo do HA, ex.: Sala de TV)
+// ou, se o cômodo não tiver, a "Persiana 0" (ex.: Varanda). Com "Todas", a 0 é uma persiana comum.
+const ehPersianaTodas = (x) => x.tipo === "persiana" && /todas/i.test(`${x.nome || ""} ${x.id}`);
+const ehPersianaZero = (x) => x.tipo === "persiana" && (/^persiana\s*0$/i.test(String(x.nome || "").trim()) || /_0$/.test(String(x.id)));
 function agruparPersianas(itens, comodoId) {
-  const membros = itens.filter((x) => x.tipo === "persiana" && !ehPersianaMestre(x) && RE_PERSIANA_N.test(String(x.nome || "").trim()));
+  const todas = itens.find(ehPersianaTodas);
+  const mestre = todas || itens.find(ehPersianaZero) || null;
+  const membros = itens.filter((x) => x.tipo === "persiana" && x !== mestre && !ehPersianaTodas(x) && (todas || !ehPersianaZero(x))
+    && RE_PERSIANA_N.test(String(x.nome || "").trim()));
   if (membros.length < 3) return itens;
-  const mestre = itens.find(ehPersianaMestre) || null;
   const n = (x) => Number(String(x.nome).trim().match(RE_PERSIANA_N)[1]);
   const pos = itens.indexOf(membros[0]);
   const grupo = { dbId: "grupo-persianas-" + comodoId, id: "grupo.persianas_" + comodoId, tipo: "grupoPersianas", nome: "Persianas", rotulos: {},
@@ -2318,6 +2327,50 @@ function CtrlInterruptor({ e, enviar, cardClicavel }) {
     </div>
   );
 }
+// Luz com brilho (e às vezes temperatura de cor): o cartão ganha um cantinho que abre os ajustes.
+const luzAjustavel = (e) => e.tipo === "interruptor" && String(e.id).startsWith("light.")
+  && (e.attributes?.supported_color_modes || []).some((m) => m !== "onoff");
+// Barra que só manda o valor ao soltar (não inunda o Zigbee a cada passo).
+function BarraLuz({ valor, min, max, step, rotulo, Icone, trilha, fmt, onSoltar }) {
+  const ref = useRef(null), [local, setLocal] = useState(null);
+  const soltarRef = useRef(onSoltar); soltarRef.current = onSoltar;
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const soltar = () => { soltarRef.current(Number(el.value)); setLocal(null); };
+    el.addEventListener("change", soltar);
+    return () => el.removeEventListener("change", soltar);
+  }, []);
+  const v = local ?? valor, pct = ((v - min) / (max - min)) * 100;
+  return (
+    <div className="flex items-center gap-2">
+      <Icone size={20} style={{ color: C.cinza, flexShrink: 0 }} />
+      <input ref={ref} type="range" min={min} max={max} step={step} value={v} aria-label={rotulo} className="ah-vol"
+        onInput={(ev) => setLocal(Number(ev.target.value))} onChange={(ev) => setLocal(Number(ev.target.value))}
+        style={{ flex: 1, minWidth: 0, "--cor": C.ambar, "--trilha": trilha(pct) }} />
+      <span style={{ width: 52, textAlign: "right", fontSize: 14, fontWeight: 800, color: C.terra, fontVariantNumeric: "tabular-nums" }}>{fmt(v)}</span>
+    </div>
+  );
+}
+function CtrlLuzAjuste({ e, enviar }) {
+  const a = e.attributes || {}, on = e.state === "on";
+  const temTemp = (a.supported_color_modes || []).includes("color_temp");
+  const kMin = a.min_color_temp_kelvin || 2000, kMax = a.max_color_temp_kelvin || 6500;
+  const brilho = on && a.brightness != null ? Math.max(1, Math.round(a.brightness / 2.55)) : 1;
+  const kelvin = a.color_temp_kelvin ?? Math.round((kMin + kMax) / 2);
+  const cinza = alfa(C.cinzaClaro, 30);
+  return (
+    <div className="flex flex-col" style={{ gap: 4 }} onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()}>
+      <BarraLuz valor={brilho} min={1} max={100} step={1} rotulo="Brilho" Icone={Sun} fmt={(v) => `${v}%`}
+        trilha={(pct) => `linear-gradient(to right, ${C.ambar} ${pct}%, ${cinza} ${pct}%)`}
+        onSoltar={(v) => enviar("light", "turn_on", e.id, { brightness_pct: v })} />
+      {temTemp && <BarraLuz valor={kelvin} min={kMin} max={kMax} step={50} rotulo="Temperatura da luz" Icone={Thermometer}
+        fmt={(v) => (v < 3300 ? "Quente" : v < 5000 ? "Neutra" : "Fria")}
+        trilha={() => "linear-gradient(to right, #ffa94d, #fff1d6, #cfe4ff)"}
+        onSoltar={(v) => enviar("light", "turn_on", e.id, { color_temp_kelvin: v })} />}
+    </div>
+  );
+}
+
 // Flap: cobertura com o comando físico invertido (abrir/fechar trocados no HA).
 // Regra: qualquer equipamento cujo nome contenha "flap" segue essa inversão.
 const HA_INVERTER = ["flap"];
@@ -2988,11 +3041,18 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
           </>);
         })()}
         {e.tipo === "persiana" && !compacto && (() => { const st = estadoPersiana(e); return <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: st.cor }}>{st.texto}</span>; })()}
+        {luzAjustavel(e) && !editando && (
+          <button onClick={(ev) => { ev.stopPropagation(); onExpandir(); }} onPointerDown={(ev) => ev.stopPropagation()} aria-label={expandido ? "Fechar ajustes da luz" : "Ajustar brilho e cor"} aria-expanded={expandido}
+            style={{ flexShrink: 0, width: 30, height: 30, margin: "-6px -6px 0 0", alignSelf: "flex-start", display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 10, background: "transparent", color: C.cinza, cursor: "pointer" }}>
+            <ChevronDown size={18} style={{ transform: expandido ? "rotate(180deg)" : "none", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+          </button>
+        )}
         {compactavel && !grande && !editando && <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: expandido ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />}
       </div>
       {compacto
         ? (e.tipo === "ar" ? <CtrlArCompacto e={e} enviar={enviar} /> : <CtrlPersianaCompacto e={e} enviar={enviar} />)
         : <EquipControle e={e} enviar={enviar} cardClicavel={e.tipo === "interruptor" && !!cardClick} />}
+      {luzAjustavel(e) && expandido && <CtrlLuzAjuste e={e} enviar={enviar} />}
     </div>
   );
 }
@@ -3249,7 +3309,8 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
 
   const byId = Object.fromEntries(itens.map((e) => [e.dbId, e]));
   const ordenados = ordem.map((id) => byId[id]).filter(Boolean);
-  const largoDe = (e) => e.tamanho === "g" || (CTRL_LARGO.includes(e.tipo) && (!CTRL_COMPACTAVEL.includes(e.tipo) || expandidos.has(e.dbId)));
+  const largoDe = (e) => e.tamanho === "g" || (CTRL_LARGO.includes(e.tipo) && (!CTRL_COMPACTAVEL.includes(e.tipo) || expandidos.has(e.dbId)))
+    || (luzAjustavel(e) && expandidos.has(e.dbId));
 
   function pegar() {
     const p = press.current; if (!p || arrastando != null) return;
