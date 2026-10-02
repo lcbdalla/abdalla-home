@@ -1768,6 +1768,45 @@ function condicaoTempo(cl) {
   return { Icon: Sun, texto: "Sol", fundo: "sol" };
 }
 
+// Ilustração colorida do tempo (para o destaque do popup): sol amarelo, nuvem branca,
+// gotas azuis, raio amarelo, lua dourada. Escolhida a partir do ícone da condição.
+function ArteTempo({ Icon, size = 72 }) {
+  const tipo = new Map([[Sun, "sol"], [Moon, "lua"], [CloudSun, "solNuvem"], [CloudMoon, "luaNuvem"], [Cloudy, "nuvens"], [Cloud, "nuvens"],
+    [CloudFog, "neblina"], [CloudDrizzle, "garoa"], [CloudRain, "chuva"], [CloudRainWind, "chuvaForte"], [CloudLightning, "raio"]]).get(Icon) || "nuvens";
+  const sol = (cx, cy, r) => (
+    <g>
+      {Array.from({ length: 8 }, (_, i) => { const a = (i * Math.PI) / 4; return <line key={i} x1={cx + Math.cos(a) * (r + 4)} y1={cy + Math.sin(a) * (r + 4)} x2={cx + Math.cos(a) * (r + 9)} y2={cy + Math.sin(a) * (r + 9)} stroke="#FFB52E" strokeWidth="3.2" strokeLinecap="round" />; })}
+      <circle cx={cx} cy={cy} r={r} fill="url(#solG)" />
+    </g>
+  );
+  const lua = (dx = 0, dy = 0, k = 1) => <path transform={`translate(${dx} ${dy}) scale(${k})`} d="M38 8a20 20 0 1 0 18 28A16 16 0 1 1 38 8z" fill="url(#luaG)" />;
+  const nuvem = (dx = 0, dy = 0, k = 1, cor = "#FFFFFF", sombra = "#D7E2EC") => (
+    <g transform={`translate(${dx} ${dy}) scale(${k})`}>
+      <path d="M17 50h31a11 11 0 0 0 1-22 15 15 0 0 0-28.6-3.6A12.5 12.5 0 0 0 17 50z" fill={cor} />
+      <path d="M17 50h31a11 11 0 0 0 10.6-8H6.5A12.5 12.5 0 0 0 17 50z" fill={sombra} opacity=".9" />
+    </g>
+  );
+  const gotas = (n, forte) => Array.from({ length: n }, (_, i) => <line key={i} x1={20 + i * 10} y1={54} x2={(forte ? 15 : 17) + i * 10} y2={forte ? 63 : 61} stroke="#4FA8FF" strokeWidth="3.2" strokeLinecap="round" />);
+  return (
+    <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" style={{ flexShrink: 0, filter: "drop-shadow(0 6px 10px rgba(0,0,0,.25))" }}>
+      <defs>
+        <radialGradient id="solG" cx="40%" cy="35%" r="70%"><stop offset="0%" stopColor="#FFE680" /><stop offset="100%" stopColor="#FFA31A" /></radialGradient>
+        <linearGradient id="luaG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#FFF4C2" /><stop offset="100%" stopColor="#F2C65B" /></linearGradient>
+      </defs>
+      {tipo === "sol" && sol(32, 32, 14)}
+      {tipo === "lua" && lua(-4, 4)}
+      {tipo === "solNuvem" && <>{sol(40, 22, 11)}{nuvem(-2, 6, 0.95)}</>}
+      {tipo === "luaNuvem" && <>{lua(8, -2, 0.75)}{nuvem(-2, 6, 0.95)}</>}
+      {tipo === "nuvens" && <>{nuvem(10, -6, 0.75, "#EEF3F8", "#C9D5E1")}{nuvem(-3, 4)}</>}
+      {tipo === "neblina" && <>{nuvem(0, -6, 0.9)}{[48, 55, 62].map((y, i) => <line key={y} x1={10 + i * 3} y1={y - 4} x2={54 - i * 4} y2={y - 4} stroke="#EEF3F7" strokeWidth="3.2" strokeLinecap="round" />)}</>}
+      {tipo === "garoa" && <>{nuvem(0, -6)}{gotas(3)}</>}
+      {tipo === "chuva" && <>{nuvem(0, -6)}{gotas(4)}</>}
+      {tipo === "chuvaForte" && <>{nuvem(0, -8, 1, "#E4EBF2", "#B9C7D5")}{gotas(4, true)}</>}
+      {tipo === "raio" && <>{nuvem(0, -8, 1, "#DCE3EC", "#AEBCCB")}<path d="M33 40l-8 13h7l-4 11 12-15h-7l5-9z" fill="#FFD43B" stroke="#E8A400" strokeWidth="1.2" strokeLinejoin="round" /></>}
+    </svg>
+  );
+}
+
 // Botão do cabeçalho: ícone do céu + temperatura da estação.
 function BotaoTempo() {
   const cl = useClima();
@@ -1812,7 +1851,7 @@ function TempoModal({ cl, cond, onFechar }) {
       {/* Destaque: céu, temperatura e sensação, com fundo na cor do tempo. */}
       <div style={{ background: FUNDOS_TEMPO[cond.fundo], color: "#fff", borderRadius: 20, padding: "16px 18px", marginBottom: 10, boxShadow: "0 14px 30px -18px rgba(0,0,0,.6)" }}>
         <div className="flex items-center gap-3">
-          <cond.Icon size={58} strokeWidth={1.6} />
+          <ArteTempo Icon={cond.Icon} size={76} />
           <div className="flex-1 min-w-0">
             <div style={{ fontSize: 48, fontWeight: 800, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{fmtC(s.temp, 1)}°</div>
             <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>{cond.texto}</div>
