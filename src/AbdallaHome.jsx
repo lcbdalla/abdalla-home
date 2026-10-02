@@ -1763,16 +1763,23 @@ const musicaDe = (itens, enviar) => {
    O HA não comanda a Alexa; o Spotify da pessoa, sim (Spotify Connect). O cartão "Alexa" toca e
    pausa a música do Spotify nela; a Alexa em si nunca é desligada. */
 const ALEXAS = { "alexa.quarto_leo_e_pri": ["Quarto Leo e Pri Echo"] }; // nome(s) da Alexa no Spotify
+// Grupo de música da Alexa com outra Alexa (ex.: quarto + banheiro). O Spotify toca num aparelho
+// por vez; o grupo aparece para ele como mais um. A chave do cartão alterna entre a Alexa e o grupo.
+const ALEXA_GRUPO = { "alexa.quarto_leo_e_pri": { rotulo: "Tocar também no banheiro", nomes: ["Quarto e Banheiro Leo e Pri"] } };
 function acharConnect(sp, nomes) {
   const lista = sp?.attributes?.source_list || [];
   const alvo = (nomes || []).map((n) => norm(n));
   return lista.find((x) => alvo.includes(norm(x))) || lista.find((x) => alvo.some((n) => norm(x).startsWith(n))) || null;
 }
+function juntarAlexa(e, juntar, enviar) {
+  const destino = juntar ? e.grupoConnect : e.connect;
+  if (e.spotify && destino) enviar("media_player", "select_source", e.spotify, { source: destino });
+}
 function ligarAlexa(e, ligar, enviar) {
   if (!e.spotify) { abrirSpotify(); return; }
   if (!ligar) { enviar("media_player", "media_pause", e.spotify); return; }
   if (!e.connect) return;
-  enviar("media_player", "select_source", e.spotify, { source: e.connect });
+  enviar("media_player", "select_source", e.spotify, { source: e.noGrupo ? e.grupoConnect : e.connect });
   setTimeout(() => enviar("media_player", "media_play", e.spotify), 1500);
 }
 
@@ -2327,6 +2334,13 @@ function CtrlAlexa({ e, enviar }) {
       )}
       {ativo && typeof a.volume_level === "number" && (
         <div style={{ marginTop: 10 }}><BarraVolume e={{ id: e.spotify, attributes: a }} enviar={enviar} compacto semMudo /></div>
+      )}
+      {ativo && e.grupoConnect && (
+        <div className="flex items-center gap-2" style={{ marginTop: 10, background: e.noGrupo ? alfa(LAGO, 10) : "transparent", border: `1px solid ${e.noGrupo ? alfa(LAGO, 40) : C.linha}`, borderRadius: 12, padding: "8px 10px" }}>
+          <Link2 size={16} style={{ color: e.noGrupo ? LAGO : C.cinza, flexShrink: 0 }} />
+          <span className="flex-1" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra }}>{e.grupoRotulo || "Tocar no grupo"}</span>
+          <PillToggle pequeno on={e.noGrupo} cor={LAGO} onClick={() => juntarAlexa(e, !e.noGrupo, enviar)} />
+        </div>
       )}
       <div className="flex items-center gap-4" style={{ marginTop: ativo ? 8 : 0 }}>
         {e.pedirHA && (
@@ -3184,10 +3198,16 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     if (row.tipo === "alexa") {
       const sp = meuSpotify ? entsVis[meuSpotify] : null;
       const connect = acharConnect(sp, ALEXAS[row.entity_id] || [row.nome]);
-      const aqui = !!(sp && connect && sp.attributes?.source === connect && ["playing", "paused"].includes(sp.state));
+      const g = ALEXA_GRUPO[row.entity_id];
+      const grupoConnect = g ? acharConnect(sp, g.nomes) : null;
+      const fonte = sp?.attributes?.source;
+      const tocandoSp = !!sp && ["playing", "paused"].includes(sp.state);
+      const noGrupo = !!(tocandoSp && grupoConnect && fonte === grupoConnect);
+      const aqui = !!(tocandoSp && connect && (fonte === connect || noGrupo));
       return { dbId: row.id, id: row.entity_id, tipo: "alexa", nome: row.nome || "Alexa", rotulos: row.rotulos || {}, tamanho: "g",
         state: aqui ? sp.state : "idle", attributes: aqui ? sp.attributes : {}, disponivel: true,
-        spotify: meuSpotify, connect, pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
+        spotify: meuSpotify, connect, grupoConnect, grupoRotulo: g?.rotulo, noGrupo,
+        pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
     }
     const live = entsVis[row.entity_id];
     const state = live?.state;
