@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -700,6 +700,7 @@ export default function App() {
               <div><div className="font-bold text-lg leading-tight">Abdalla Home</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">Rancho Abdalla</div></div>
             </div>
             <div className="flex items-center gap-2">
+              <BotaoTempo />
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
                 ...(souAdmin ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: () => setAba("equipe") }] : []),
@@ -1669,6 +1670,211 @@ function CameraAoVivo({ cam, topo }) {
         {ok && <span className="ah-pisca" style={{ width: 7, height: 7, borderRadius: 999, background: "#e5484d" }} />}{cam.nome}
       </span>
     </div>
+  );
+}
+
+/* ===================== TEMPO (estação Ecowitt GW3000C + Open-Meteo) =====================
+   Os números vêm da estação do rancho no HA (pelo intermediário, para todos os usuários); o
+   desenho do céu (sol, nublado...) vem do Open-Meteo pela localização da casa. Chuva ou raio
+   medidos pela estação têm prioridade sobre o Open-Meteo. */
+const CLIMA_PAPEIS = [
+  ["temp", /outdoor temp/], ["sensacao", /feels like/], ["umidade", /^gw3000c (outdoor )?humidity$/],
+  ["rajadaMax", /max.*gust|gust.*max/], ["rajada", /gust/], ["vento", /wind speed/], ["direcao", /wind dir/],
+  ["uv", /\buv\b/], ["lux", /lux|illuminance|light intensity/], ["radiacao", /solar rad/],
+  ["chuvaTaxa", /rain rate/], ["chuvaHoje", /daily rain|rain daily|24h rain/], ["chuvaMes", /monthly rain/], ["chuvaAno", /yearly rain/],
+  ["raios", /lightning (strikes|count)/], ["raioDist", /lightning dist/], ["raioHora", /last lightning|lightning (time|strike)$/],
+];
+function lerClima(sensores) {
+  const out = {}, usados = new Set();
+  for (const [papel, re] of CLIMA_PAPEIS) {
+    const s = sensores.find((x) => !usados.has(x.id) && re.test(norm(x.nome)) && !["unknown", "unavailable", ""].includes(x.state));
+    if (s) { out[papel] = s; usados.add(s.id); }
+  }
+  return out;
+}
+const numC = (s) => { const n = Number(s?.state); return Number.isFinite(n) ? n : null; };
+const fmtC = (s, casas = 1) => { const n = numC(s); return n == null ? "—" : n.toLocaleString("pt-BR", { maximumFractionDigits: casas }); };
+const DIRECOES = ["N", "NE", "L", "SE", "S", "SO", "O", "NO"];
+const direcaoTexto = (g) => (g == null ? "" : DIRECOES[Math.round(((g % 360) + 360) % 360 / 45) % 8]);
+
+// Busca a estação a cada 60 s (só com o app na tela) e o céu do Open-Meteo a cada 15 min.
+function useClima() {
+  const [est, setEst] = useState(null);
+  const [ceu, setCeu] = useState(null);
+  useEffect(() => {
+    let vivo = true, t;
+    const buscar = async () => {
+      if (document.visibilityState === "visible") {
+        const { data, error } = await supabase.functions.invoke(PROXY_FN, { body: { acao: "clima" } });
+        if (vivo && !error && Array.isArray(data?.sensores) && data.sensores.length) setEst({ s: lerClima(data.sensores), lat: data.lat, lon: data.lon, em: Date.now() });
+      }
+      if (vivo) t = setTimeout(buscar, 60000);
+    };
+    buscar();
+    const voltar = () => { if (document.visibilityState === "visible") { clearTimeout(t); buscar(); } };
+    document.addEventListener("visibilitychange", voltar);
+    return () => { vivo = false; clearTimeout(t); document.removeEventListener("visibilitychange", voltar); };
+  }, []);
+  useEffect(() => {
+    if (est?.lat == null || est?.lon == null) return;
+    let vivo = true, t;
+    const buscar = async () => {
+      try {
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${est.lat}&longitude=${est.lon}&current=weather_code,is_day,cloud_cover&timezone=auto`);
+        const j = await r.json();
+        if (vivo && j?.current) setCeu(j.current);
+      } catch { /* sem internet: fica com a estação */ }
+      if (vivo) t = setTimeout(buscar, 15 * 60000);
+    };
+    buscar();
+    return () => { vivo = false; clearTimeout(t); };
+  }, [est?.lat, est?.lon]);
+  return est ? { ...est, ceu } : null;
+}
+
+const FUNDOS_TEMPO = {
+  sol: "linear-gradient(160deg, #f7bb4f 0%, #e57a35 100%)",
+  parcial: "linear-gradient(160deg, #4f9fd4 0%, #e8b25e 100%)",
+  nublado: "linear-gradient(160deg, #8492a0 0%, #4c5a68 100%)",
+  chuva: "linear-gradient(160deg, #3f72a3 0%, #213f5c 100%)",
+  raio: "linear-gradient(160deg, #474b80 0%, #1b1d3a 100%)",
+  neblina: "linear-gradient(160deg, #a2acb4 0%, #6a757e 100%)",
+  noite: "linear-gradient(160deg, #26356a 0%, #0d1330 100%)",
+  noiteNuvem: "linear-gradient(160deg, #3b4766 0%, #161c33 100%)",
+};
+function condicaoTempo(cl) {
+  const s = cl.s, c = cl.ceu;
+  const h = new Date().getHours();
+  const dia = c ? c.is_day === 1 : h >= 6 && h < 18;
+  const taxa = numC(s.chuvaTaxa);
+  const ultimoRaio = s.raioHora ? Date.parse(s.raioHora.state) : NaN;
+  if (Number.isFinite(ultimoRaio) && Date.now() - ultimoRaio < 30 * 60000) return { Icon: CloudLightning, texto: "Raios por perto", fundo: "raio" };
+  if (taxa != null && taxa > 0) return taxa >= 10 ? { Icon: CloudRainWind, texto: "Chuva forte", fundo: "chuva" } : { Icon: CloudRain, texto: "Chovendo", fundo: "chuva" };
+  const code = c?.weather_code;
+  if (code != null) {
+    if (code === 0) return dia ? { Icon: Sun, texto: "Céu limpo", fundo: "sol" } : { Icon: Moon, texto: "Céu limpo", fundo: "noite" };
+    if (code <= 2) return dia ? { Icon: CloudSun, texto: code === 1 ? "Poucas nuvens" : "Parcialmente nublado", fundo: "parcial" } : { Icon: CloudMoon, texto: code === 1 ? "Poucas nuvens" : "Parcialmente nublado", fundo: "noiteNuvem" };
+    if (code === 3) return { Icon: Cloudy, texto: "Nublado", fundo: dia ? "nublado" : "noiteNuvem" };
+    if (code === 45 || code === 48) return { Icon: CloudFog, texto: "Neblina", fundo: "neblina" };
+    if (code >= 51 && code <= 57) return { Icon: CloudDrizzle, texto: "Garoa", fundo: "chuva" };
+    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return { Icon: CloudRain, texto: "Chuva", fundo: "chuva" };
+    if (code >= 95) return { Icon: CloudLightning, texto: "Tempestade", fundo: "raio" };
+    return { Icon: Cloud, texto: "Nublado", fundo: dia ? "nublado" : "noiteNuvem" };
+  }
+  // Sem o Open-Meteo: usa a luz medida pela estação.
+  const lux = numC(s.lux);
+  if (!dia) return { Icon: Moon, texto: "Noite", fundo: "noite" };
+  if (lux != null && lux < 8000) return { Icon: Cloudy, texto: "Nublado", fundo: "nublado" };
+  return { Icon: Sun, texto: "Sol", fundo: "sol" };
+}
+
+// Botão do cabeçalho: ícone do céu + temperatura da estação.
+function BotaoTempo() {
+  const cl = useClima();
+  const [aberto, setAberto] = useState(false);
+  if (!cl || !cl.s.temp) return null;
+  const cond = condicaoTempo(cl);
+  return (
+    <>
+      <button onClick={() => setAberto(true)} title={`${cond.texto} · toque para ver o tempo`} aria-label={`Tempo: ${cond.texto}, ${fmtC(cl.s.temp, 0)} graus`}
+        className="flex items-center" style={{ background: "#ffffff22", borderRadius: 10, padding: "6px 10px", gap: 6, color: "#fff", fontWeight: 800, fontSize: 15, fontVariantNumeric: "tabular-nums" }}>
+        <cond.Icon size={19} /> {fmtC(cl.s.temp, 0)}°
+      </button>
+      {aberto && <TempoModal cl={cl} cond={cond} onFechar={() => setAberto(false)} />}
+    </>
+  );
+}
+
+const nivelUV = (uv) => (uv == null ? null : uv < 3 ? ["Baixo", "#3aa35b"] : uv < 6 ? ["Moderado", "#d8a32a"] : uv < 8 ? ["Alto", "#e2732f"] : uv < 11 ? ["Muito alto", "#d4483b"] : ["Extremo", "#8b4bc4"]);
+
+function TempoModal({ cl, cond, onFechar }) {
+  const s = cl.s;
+  const graus = numC(s.direcao);
+  const uv = numC(s.uv), nUV = nivelUV(uv);
+  const chuvaHoje = numC(s.chuvaHoje), taxa = numC(s.chuvaTaxa);
+  const raios = numC(s.raios);
+  const raioH = s.raioHora ? new Date(Date.parse(s.raioHora.state)) : null;
+  const raioHoje = raioH && !isNaN(raioH) && raioH.toDateString() === new Date().toDateString();
+  const un = (x, padrao) => x?.unidade || padrao;
+  const atualizado = s.temp?.mudou ? Math.max(0, Math.round((Date.now() - Date.parse(s.temp.mudou)) / 60000)) : null;
+  const Bloco = ({ Icon, titulo, children, largo, cor }) => (
+    <div style={{ gridColumn: largo ? "1 / -1" : "auto", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: "11px 12px" }}>
+      <div className="flex items-center gap-2" style={{ fontSize: 12, fontWeight: 700, color: C.cinza, marginBottom: 6 }}>
+        <Icon size={15} style={{ color: cor || C.lago }} /> {titulo}
+      </div>
+      {children}
+    </div>
+  );
+  const Grande = ({ v, u }) => (<div style={{ fontSize: 22, fontWeight: 800, color: C.terra, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{v}<span style={{ fontSize: 13, fontWeight: 700, color: C.cinza, marginLeft: 3 }}>{u}</span></div>);
+  const Linha = ({ r, v }) => (<div className="flex items-center justify-between" style={{ fontSize: 13.5, padding: "3px 0" }}><span style={{ color: C.cinza }}>{r}</span><b style={{ color: C.terra, fontVariantNumeric: "tabular-nums" }}>{v}</b></div>);
+  return (
+    <Sheet titulo="Tempo no rancho" onFechar={onFechar}>
+      {/* Destaque: céu, temperatura e sensação, com fundo na cor do tempo. */}
+      <div style={{ background: FUNDOS_TEMPO[cond.fundo], color: "#fff", borderRadius: 20, padding: "16px 18px", marginBottom: 10, boxShadow: "0 14px 30px -18px rgba(0,0,0,.6)" }}>
+        <div className="flex items-center gap-3">
+          <cond.Icon size={58} strokeWidth={1.6} />
+          <div className="flex-1 min-w-0">
+            <div style={{ fontSize: 48, fontWeight: 800, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{fmtC(s.temp, 1)}°</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>{cond.texto}</div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between" style={{ marginTop: 10, fontSize: 13, opacity: 0.92 }}>
+          {s.sensacao ? <span>Sensação térmica <b>{fmtC(s.sensacao, 1)}°</b></span> : <span />}
+          {atualizado != null && <span>{atualizado < 1 ? "agora" : `há ${atualizado} min`}</span>}
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {(s.vento || s.rajada || s.rajadaMax || graus != null) && (
+          <Bloco Icon={Wind} titulo="Vento" largo>
+            <div className="flex items-center gap-4">
+              {graus != null && (
+                // Rosa dos ventos: a seta aponta para onde o vento vai (vem de graus°).
+                <svg viewBox="0 0 64 64" width="64" height="64" aria-label={`Vento de ${direcaoTexto(graus)}`} style={{ flexShrink: 0 }}>
+                  <circle cx="32" cy="32" r="29" fill="none" stroke={C.linha} strokeWidth="2" />
+                  {["N", "L", "S", "O"].map((d, i) => <text key={d} x={32 + 21 * Math.sin(i * Math.PI / 2)} y={32 - 21 * Math.cos(i * Math.PI / 2) + 4} textAnchor="middle" fontSize="10" fontWeight="700" fill={C.cinza}>{d}</text>)}
+                  <g transform={`rotate(${graus + 180} 32 32)`}><path d="M32 12 L38 34 L32 30 L26 34 Z" fill={C.lago} /></g>
+                </svg>
+              )}
+              <div className="flex-1 min-w-0">
+                {s.vento && <Grande v={fmtC(s.vento, 1)} u={un(s.vento, "km/h")} />}
+                {graus != null && <div style={{ fontSize: 13, color: C.cinza, marginTop: 2 }}>Vindo de <b style={{ color: C.terra }}>{direcaoTexto(graus)}</b> ({fmtC(s.direcao, 0)}°)</div>}
+                {s.rajada && <Linha r="Rajada agora" v={`${fmtC(s.rajada, 1)} ${un(s.rajada, "km/h")}`} />}
+                {s.rajadaMax && <Linha r="Rajada máxima hoje" v={`${fmtC(s.rajadaMax, 1)} ${un(s.rajadaMax, "km/h")}`} />}
+              </div>
+            </div>
+          </Bloco>
+        )}
+        {s.umidade && <Bloco Icon={Droplets} titulo="Umidade externa"><Grande v={fmtC(s.umidade, 0)} u="%" /></Bloco>}
+        {uv != null && (
+          <Bloco Icon={SunMedium} titulo="Índice UV" cor={nUV[1]}>
+            <Grande v={fmtC(s.uv, 1)} u="" />
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: nUV[1], marginTop: 2 }}>{nUV[0]}</div>
+          </Bloco>
+        )}
+        {(s.lux || s.radiacao) && (
+          <Bloco Icon={Sun} titulo="Luminosidade" cor={C.ambar}>
+            {s.lux ? <Grande v={fmtC(s.lux, 0)} u={un(s.lux, "lx")} /> : <Grande v={fmtC(s.radiacao, 0)} u={un(s.radiacao, "W/m²")} />}
+            {s.lux && s.radiacao && <div style={{ fontSize: 12.5, color: C.cinza, marginTop: 2 }}>{fmtC(s.radiacao, 0)} {un(s.radiacao, "W/m²")}</div>}
+          </Bloco>
+        )}
+        {(s.chuvaHoje || s.chuvaMes || s.chuvaAno || s.chuvaTaxa) && (
+          <Bloco Icon={Umbrella} titulo="Chuva" largo>
+            {taxa != null && taxa > 0 && <div style={{ fontSize: 14, fontWeight: 800, color: C.lago, marginBottom: 4 }}>Chovendo agora · {fmtC(s.chuvaTaxa, 1)} {un(s.chuvaTaxa, "mm/h")}</div>}
+            {s.chuvaHoje && <Linha r="Hoje" v={chuvaHoje > 0 ? `${fmtC(s.chuvaHoje, 1)} ${un(s.chuvaHoje, "mm")}` : "Sem chuva"} />}
+            {s.chuvaMes && <Linha r="No mês" v={`${fmtC(s.chuvaMes, 1)} ${un(s.chuvaMes, "mm")}`} />}
+            {s.chuvaAno && <Linha r="No ano" v={`${fmtC(s.chuvaAno, 1)} ${un(s.chuvaAno, "mm")}`} />}
+          </Bloco>
+        )}
+        {((raios != null && raios > 0) || raioHoje) && (
+          <Bloco Icon={Zap} titulo="Raios" largo cor="#8b4bc4">
+            {raios != null && <Linha r="Hoje" v={`${fmtC(s.raios, 0)} ${raios === 1 ? "raio" : "raios"}`} />}
+            {s.raioDist && <Linha r="Último a" v={`${fmtC(s.raioDist, 0)} ${un(s.raioDist, "km")}`} />}
+            {raioHoje && <Linha r="Último às" v={raioH.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} />}
+          </Bloco>
+        )}
+      </div>
+      <div style={{ fontSize: 11.5, color: C.cinzaClaro, textAlign: "center", marginTop: 10 }}>Estação meteorológica do rancho · céu: Open-Meteo</div>
+    </Sheet>
   );
 }
 
@@ -3345,6 +3551,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             <div className="flex-1 min-w-0"><div className="font-bold leading-tight truncate" style={{ fontSize: 16 }}>Controle da Casa</div><div style={{ color: "#ffffffcc", fontSize: 11.5 }} className="leading-tight truncate">{modo === "gerenciar" ? "Organizando ambientes" : "Rancho Abdalla"}</div></div>
             {/* Configurando: o "Pronto" fica à vista para voltar; o resto mora no menu ⋮. */}
             {modo === "gerenciar" && <button onClick={() => setModo("usar")} title="Terminar de configurar" style={{ background: "#ffffff33", borderRadius: 10, padding: "7px 11px", display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 700 }}><Check size={16} /> Pronto</button>}
+            <BotaoTempo />
             {/* O menu ⋮ só aparece para quem tem a chave "Menu ⋮ do Controle" ligada na Equipe. */}
             {eu?.podeMenuControle && (
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[

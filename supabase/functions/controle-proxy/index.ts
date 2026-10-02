@@ -47,15 +47,33 @@ Deno.serve(async (req) => {
     .select("ativo, papel, pode_controle, pode_gerir_controle, expira_em")
     .eq("id", quem.user.id)
     .maybeSingle();
-  if (!p || p.ativo === false || !(p.pode_controle || p.pode_gerir_controle)) {
-    return json({ error: "Você não tem acesso ao controle da casa." }, 403);
-  }
+  if (!p || p.ativo === false) return json({ error: "Seu acesso ao app foi removido." }, 403);
   if (p.expira_em && new Date(p.expira_em).getTime() <= Date.now()) {
     return json({ error: "Seu acesso de visitante expirou. Peça um novo QR Code." }, 403);
   }
 
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "Pedido inválido." }, 400); }
+
+  // 1b) Tempo: qualquer pessoa ativa do app pode LER a estação meteorológica (nada é comandado).
+  if (body?.acao === "clima") {
+    const { data: cfgC } = await admin.from("ha_config").select("base_url, token").eq("id", "default").maybeSingle();
+    if (!cfgC?.base_url || !cfgC?.token) return json({ error: "O controle da casa ainda não foi configurado." }, 500);
+    const baseC = String(cfgC.base_url).replace(/\/+$/, "");
+    const cab = { Authorization: "Bearer " + cfgC.token };
+    const [rs, rc] = await Promise.all([fetch(baseC + "/api/states", { headers: cab }), fetch(baseC + "/api/config", { headers: cab })]);
+    if (!rs.ok) return json({ error: `O Home Assistant não respondeu (${rs.status}).` }, 502);
+    const todos = await rs.json();
+    const conf = rc.ok ? await rc.json() : {};
+    // Só os sensores da estação Ecowitt (GW3000C): nome, valor e unidade.
+    const sensores = (Array.isArray(todos) ? todos : [])
+      .filter((x: any) => String(x.entity_id).startsWith("sensor.") && /^gw3000c/i.test(String(x.attributes?.friendly_name || x.entity_id.slice(7))))
+      .map((x: any) => ({ id: x.entity_id, nome: x.attributes?.friendly_name || x.entity_id, state: x.state, unidade: x.attributes?.unit_of_measurement || "", tipo: x.attributes?.device_class || "", mudou: x.last_changed }));
+    return json({ sensores, lat: conf.latitude ?? null, lon: conf.longitude ?? null });
+  }
+
+  // Daqui para baixo é o Controle da Casa: precisa da permissão de controle.
+  if (!(p.pode_controle || p.pode_gerir_controle)) return json({ error: "Você não tem acesso ao controle da casa." }, 403);
 
   // 2) Configuração do Home Assistant e lista de aparelhos cadastrados.
   const { data: cfg } = await admin.from("ha_config").select("base_url, token").eq("id", "default").maybeSingle();
