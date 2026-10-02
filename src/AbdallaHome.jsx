@@ -2094,6 +2094,14 @@ function CtrlTv({ e, enviar }) {
   if (!ligado) return null; // o estado e a chave liga/desliga ficam no topo do cartão
   // Outras zonas do amplificador ligadas na mesma fonte = tocando junto com esta.
   const juntas = (e.zonas || []).filter((z) => z.id !== e.id && z.state === "on" && a.source && z.attributes?.source === a.source);
+  // Volume do streamer desta fonte: é o mesmo volume que o Spotify mostra para o aparelho.
+  const sm = e.streamer;
+  const volStreamer = sm && !sm.semSinal && sm.disponivel && typeof sm.attributes?.volume_level === "number" && (
+    <div style={{ marginBottom: 10 }}>
+      <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>Volume do Spotify <span style={{ color: C.cinzaClaro, fontWeight: 600 }}>· {sm.nome}</span></div>
+      <BarraVolume e={sm} enviar={enviar} compacto />
+    </div>
+  );
   return (
     // Segurar aqui dentro não "pega" o cartão para arrastar (só pelo título).
     <div onPointerDown={(ev) => ev.stopPropagation()}>
@@ -2121,7 +2129,7 @@ function CtrlTv({ e, enviar }) {
       )}
       {e.streamer && <PainelStreamer s={e.streamer} enviar={enviar} />}
       {/* Volume deste ambiente: embaixo, logo acima de "Sincronizar ambientes". */}
-      {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}><BarraVolume e={e} enviar={enviar} /></div>}
+      {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}>{volStreamer}<BarraVolume e={e} enviar={enviar} /></div>}
       {(e.zonas || []).length > 1 && a.source && (
         <div style={{ marginTop: 12 }}>
           {juntas.length > 0 && (
@@ -2137,7 +2145,8 @@ function CtrlTv({ e, enviar }) {
           )}
           {r.volSet && (
             <div style={{ borderTop: juntas.length ? "none" : `1px solid ${C.linha}`, paddingTop: juntas.length ? 0 : 10, marginBottom: 10 }}>
-              {juntas.length > 0 && <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{(e.zonas.find((z) => z.id === e.id) || {}).nome || e.nome}</div>}
+              {volStreamer}
+              {(juntas.length > 0 || volStreamer) && <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra, marginBottom: 2 }}>{(e.zonas.find((z) => z.id === e.id) || {}).nome || e.nome}</div>}
               <BarraVolume e={e} enviar={enviar} />
             </div>
           )}
