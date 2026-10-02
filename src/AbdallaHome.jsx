@@ -1920,6 +1920,46 @@ function BarraVolume({ e, enviar }) {
   );
 }
 
+// Lista as playlists do Spotify da pessoa (pelo "navegar mídia" do HA) e toca a escolhida no streamer.
+function PlaylistsSpotify({ st, enviar, onFechar }) {
+  const [lista, setLista] = useState(null), [erro, setErro] = useState("");
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        // A raiz do Spotify traz a pasta "Playlists"; dela vêm as playlists da conta.
+        const raiz = await st.pedirHA({ type: "media_player/browse_media", entity_id: st.spotify });
+        const pasta = (raiz?.children || []).find((c) => /playlist/i.test(c.media_content_type || "") || /playlist/i.test(c.title || ""));
+        if (!pasta) throw new Error("Não achei as playlists desta conta.");
+        const r = await st.pedirHA({ type: "media_player/browse_media", entity_id: st.spotify, media_content_id: pasta.media_content_id, media_content_type: pasta.media_content_type });
+        if (vivo) setLista((r?.children || []).filter((c) => c.can_play));
+      } catch (e) { if (vivo) setErro(e.message || String(e)); }
+    })();
+    return () => { vivo = false; };
+  }, [st.spotify]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tocar = (pl) => {
+    enviar("media_player", "select_source", st.spotify, { source: st.connect }); // leva o Spotify para este streamer
+    setTimeout(() => enviar("media_player", "play_media", st.spotify, { media_content_id: pl.media_content_id, media_content_type: pl.media_content_type }), 1500);
+    onFechar();
+  };
+  return (
+    <Sheet titulo={`Playlists · ${st.nome}`} onFechar={onFechar}>
+      {!lista && !erro && <div className="text-center py-10" style={{ color: C.cinza }}>Buscando suas playlists…</div>}
+      {erro && <div style={{ background: C.vermelhoClaro, color: C.vermelho, borderRadius: 12, fontSize: 14 }} className="p-3">{erro}</div>}
+      {lista && lista.length === 0 && <div className="text-center py-10" style={{ color: C.cinza }}>Nenhuma playlist nesta conta.</div>}
+      {lista && lista.map((pl) => (
+        <button key={pl.media_content_id} onClick={() => tocar(pl)} className="flex items-center gap-3" style={{ width: "100%", textAlign: "left", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, padding: 8, marginBottom: 8, cursor: "pointer" }}>
+          {pl.thumbnail
+            ? <img src={pl.thumbnail} alt="" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+            : <span style={{ width: 52, height: 52, borderRadius: 10, background: alfa(LAGO, 14), flexShrink: 0 }} />}
+          <span className="flex-1 min-w-0 truncate" style={{ fontWeight: 700, fontSize: 15, color: C.terra }}>{pl.title}</span>
+          <Play size={18} style={{ color: LAGO, flexShrink: 0 }} />
+        </button>
+      ))}
+    </Sheet>
+  );
+}
+
 // Controle do streamer (Som Térreo / Audiocast) que está tocando nesta zona. Sem escolha de
 // fonte do streamer: fica sempre no Wifi (Bluetooth/USB não alcançam de onde se usa o app).
 // Abre o app do Spotify (para escolher a música e o streamer em "Dispositivos").
@@ -1943,6 +1983,12 @@ function PainelStreamer({ s: st, enviar }) {
   const faixa = [a.media_title, a.media_artist].filter(Boolean).join(" · ");
   // Nada carregado no streamer: o Play não teria o que tocar. Aí ele abre o Spotify.
   const semMusica = !a.media_title && !["playing", "paused"].includes(st.state);
+  const [verPlaylists, setVerPlaylists] = useState(false);
+  // O Spotify da pessoa está tocando NESTE streamer? (a fonte dele é o nome Connect do streamer)
+  const spE = st.spotifyEnt;
+  const sp = spE && spE.attributes?.source === st.connect && ["playing", "paused"].includes(spE.state) ? spE.attributes : null;
+  const pic = sp?.entity_picture;
+  const capa = pic ? (pic.startsWith("http") ? pic : (st.baseUrl || "") + pic) : null;
   // Leva o Spotify da pessoa para este streamer (Spotify Connect) e dá play na última música/playlist.
   const tocarSpotify = () => {
     if (!st.spotify || !st.connect) { abrirSpotify(); return; }
@@ -1963,12 +2009,31 @@ function PainelStreamer({ s: st, enviar }) {
           {st.semSinal ? "Sem sinal do streamer" : !st.disponivel ? "Indisponível" : semMusica ? "Nada tocando" : haEstado(st.state, a).texto}
         </span>
       </div>
-      {faixa && <div className="truncate" style={{ fontSize: 12.5, color: C.cinza, marginTop: 4 }}>{faixa}</div>}
+      {sp ? (
+        // Tocando pelo Spotify da pessoa neste streamer: capa, música, artista e a playlist.
+        <div className="flex items-center gap-3" style={{ marginTop: 8 }}>
+          {capa ? <img src={capa} alt="" style={{ width: 58, height: 58, borderRadius: 10, objectFit: "cover", flexShrink: 0, boxShadow: "0 6px 16px -8px rgba(0,0,0,.5)" }} />
+            : <span style={{ width: 58, height: 58, borderRadius: 10, background: alfa(LAGO, 14), flexShrink: 0 }} />}
+          <div className="min-w-0 flex-1">
+            <div className="truncate" style={{ fontWeight: 700, fontSize: 14.5, color: C.terra }}>{sp.media_title || "—"}</div>
+            {sp.media_artist && <div className="truncate" style={{ fontSize: 12.5, color: C.cinza }}>{sp.media_artist}</div>}
+            {sp.media_playlist && <div className="truncate" style={{ fontSize: 12, color: LAGO, fontWeight: 700, marginTop: 2 }}>Playlist: {sp.media_playlist}</div>}
+          </div>
+        </div>
+      ) : faixa && <div className="truncate" style={{ fontSize: 12.5, color: C.cinza, marginTop: 4 }}>{faixa}</div>}
       {st.spotify && !st.semSinal && (
-        <button onClick={abrirSpotify} className="flex items-center gap-1" style={{ marginTop: 6, background: "none", border: "none", padding: 0, fontSize: 12.5, fontWeight: 700, color: LAGO, cursor: "pointer" }}>
-          Escolher música no Spotify <ChevronRight size={14} />
-        </button>
+        <div className="flex items-center gap-4" style={{ marginTop: 8 }}>
+          {st.pedirHA && (
+            <button onClick={() => setVerPlaylists(true)} className="flex items-center gap-1" style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, fontWeight: 700, color: LAGO, cursor: "pointer" }}>
+              Minhas playlists <ChevronRight size={14} />
+            </button>
+          )}
+          <button onClick={abrirSpotify} className="flex items-center gap-1" style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, fontWeight: 700, color: C.cinza, cursor: "pointer" }}>
+            Abrir o Spotify <ChevronRight size={14} />
+          </button>
+        </div>
       )}
+      {verPlaylists && <PlaylistsSpotify st={st} enviar={enviar} onFechar={() => setVerPlaylists(false)} />}
       {!st.semSinal && (
         <div className="flex items-center justify-center gap-3" style={{ marginTop: 10 }}>
           {tem(16) && bt(() => enviar("media_player", "media_previous_track", st.id), SkipBack, "Faixa anterior")}
@@ -2483,6 +2548,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   });
   const usoRef = useRef(Date.now());
   const wsRef = useRef(null);
+  const pedidosRef = useRef({}); // id -> resolve (pedidos que esperam resposta do HA)
+  const baseUrlRef = useRef(""); // endereço do HA (para as capas: /api/media_player_proxy/...)
   const idRef = useRef(1);
   // Família (administrador com controle) fala direto com o Home Assistant: rápido e ao vivo.
   // Os demais (colaborador, criança, visitante) passam pelo intermediário "controle-proxy",
@@ -2587,6 +2654,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       if (error) { setErro("Não consegui ler a configuração: " + error.message); setStatus("erro"); return; }
       if (!data?.base_url || !data?.token) { setErro("Falta o endereço ou o token do Home Assistant no Supabase."); setStatus("erro"); return; }
       const wsUrl = data.base_url.replace(/^http/, "ws").replace(/\/+$/, "") + "/api/websocket";
+      baseUrlRef.current = data.base_url.replace(/\/+$/, "");
       try { ws = new WebSocket(wsUrl); } catch (e) { setErro("Não consegui abrir a conexão: " + (e?.message || e)); setStatus("erro"); return; }
       wsRef.current = ws;
       const send = (o) => { const id = idRef.current++; const tipo = o.tipo; delete o.tipo; if (tipo) pend[id] = tipo; ws.send(JSON.stringify({ id, ...o })); };
@@ -2604,6 +2672,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           return;
         }
         if (m.type === "result") {
+          if (pedidosRef.current[m.id]) { const resp = pedidosRef.current[m.id]; delete pedidosRef.current[m.id]; resp(m); return; }
           const tipo = pend[m.id]; delete pend[m.id];
           if (m.success === false) {
             if (tipo === "states") { setErro("Falha ao ler estados: " + (m.error?.message || "")); setStatus("erro"); }
@@ -2805,6 +2874,15 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
 
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
   const meuSpotify = spotifyDaPessoa(entsVis, eu?.nome);
+  // Pergunta algo ao HA e espera a resposta (só na conexão direta da família).
+  const pedirHA = (msg) => new Promise((resolve, reject) => {
+    const ws = wsRef.current;
+    if (usarProxy || !ws || ws.readyState !== 1) { reject(new Error("Sem conexão direta com a casa.")); return; }
+    const id = idRef.current++;
+    pedidosRef.current[id] = (m) => (m.success === false ? reject(new Error(m.error?.message || "erro do Home Assistant")) : resolve(m.result));
+    ws.send(JSON.stringify({ id, ...msg }));
+    setTimeout(() => { if (pedidosRef.current[id]) { delete pedidosRef.current[id]; reject(new Error("O Home Assistant demorou para responder.")); } }, 12000);
+  });
   const mkEquip = (row) => {
     const live = entsVis[row.entity_id];
     const state = live?.state;
@@ -2822,7 +2900,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const v = entsVis[sid], st = v?.state;
     return { id: sid, tipo: "tv", nome: FONTE_NOME_AAT[fonte] || sid, state: st, attributes: v?.attributes || {},
       disponivel: st != null && !["unavailable", "unknown", "none", ""].includes(st), semSinal: !v,
-      spotify: meuSpotify, connect: STREAMER_CONNECT[sid] };
+      spotify: meuSpotify, connect: STREAMER_CONNECT[sid], spotifyEnt: meuSpotify ? entsVis[meuSpotify] : null,
+      pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
   }
   const semPav = { id: "__sem__", nome: "Outros", ordem: 99999 };
   const listaPav = [...pavimentos, semPav].map((p) => ({
