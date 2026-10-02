@@ -1467,7 +1467,7 @@ const CTRL_TIPOS = [
 ];
 const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]));
 const CTRL_EMOJI = { interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
-const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao", "alexa"]; // ocupam a linha inteira (têm mais botões)
+const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao", "alexa", "grupoPersianas"]; // ocupam a linha inteira (têm mais botões)
 const CTRL_COMPACTAVEL = ["ar", "persiana"]; // começam pequenos; tocar no quadro amplia; encolhem ao recarregar
 // Botões de ação que dá para renomear, por tipo de aparelho. [chave, nome padrão].
 const ROTULOS_POR_TIPO = {
@@ -2095,9 +2095,25 @@ function ligarAlexa(e, ligar, enviar) {
   e.conectarSpotify(e.spotify, e.noGrupo ? e.grupoConnect : e.connect, (v) => { if (v.state !== "playing") enviar("media_player", "media_play", e.spotify); });
 }
 
+/* ---- Grupo de persianas numeradas (ex.: Varanda: Persiana 1 … Persiana 11) ----
+   Viram um cartão "Persianas" que abre mostrando todas para escolher qual usar. */
+const RE_PERSIANA_N = /^persiana\s*(\d+)$/i;
+function agruparPersianas(itens, comodoId) {
+  const membros = itens.filter((x) => x.tipo === "persiana" && RE_PERSIANA_N.test(String(x.nome || "").trim()));
+  if (membros.length < 3) return itens;
+  const n = (x) => Number(String(x.nome).trim().match(RE_PERSIANA_N)[1]);
+  const pos = itens.indexOf(membros[0]);
+  const grupo = { dbId: "grupo-persianas-" + comodoId, id: "grupo.persianas_" + comodoId, tipo: "grupoPersianas", nome: "Persianas", rotulos: {},
+    // Dentro do cartão "Persianas", cada uma aparece só pelo número (cabe numa linha).
+    tamanho: "g", membros: membros.slice().sort((x, y) => n(x) - n(y)).map((m) => ({ ...m, nome: `Nº ${n(m)}` })), disponivel: membros.some((m) => m.disponivel), state: "" };
+  const resto = itens.filter((x) => !membros.includes(x));
+  resto.splice(Math.min(pos, resto.length), 0, grupo);
+  return resto;
+}
+
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
 // Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
-const ehDesligavel = (e) => !["persiana", "fechadura", "sensor"].includes(e.tipo);
+const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas"].includes(e.tipo);
 const estaLigado = (e) => {
   if (!e.disponivel) return false;
   if (e.tipo === "ar") return e.state !== "off";
@@ -2203,6 +2219,7 @@ function visualEquip(e) {
   return achou ? { ...v, Icon: achou[1], cor: C[achou[2]], luz: false } : v;
 }
 function visualPorTipo(e) {
+  if (e.tipo === "grupoPersianas") return { Icon: Blinds, ativo: e.membros.some((m) => visualPorTipo(m).ativo), cor: C.ambar };
   if (e.tipo === "alexa") return { Icon: Speaker, ativo: ["playing", "paused"].includes(e.state), cor: C.lago };
   const dom = String(e.id).split(".")[0];
   const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
@@ -2742,7 +2759,45 @@ function CtrlPersianaCompacto({ e, enviar }) {
     </div>
   );
 }
+// Cartão "Persianas": fechado mostra o resumo; aberto mostra todas (e abrir/fechar todas).
+function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
+  const [exp, setExp] = useState(() => new Set());
+  const alternarMembro = (id) => setExp((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const v = visualPorTipo(e);
+  const abertas = e.membros.filter((m) => visualPorTipo(m).ativo).length;
+  const todas = async (abrir) => {
+    // Uma por vez, com um respiro entre elas (cada motor recebe seu comando).
+    const lista = e.membros.filter((m) => m.disponivel);
+    for (let i = 0; i < lista.length; i++) {
+      const m = lista[i], inv = ehInvertido(m);
+      enviar("cover", abrir ? (inv ? "close_cover" : "open_cover") : (inv ? "open_cover" : "close_cover"), m.id);
+      if (i < lista.length - 1) await new Promise((r) => setTimeout(r, 400));
+    }
+  };
+  return (
+    <div style={{ background: v.ativo ? `color-mix(in srgb, ${v.cor} 10%, ${C.card})` : C.bg, border: `1px solid ${v.ativo ? alfa(v.cor, 38) : "transparent"}`,
+      borderRadius: 16, padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10, transition: "background .25s, border-color .25s" }}>
+      <div className="flex items-center" onClick={editando ? undefined : onAlternar} role="button" style={{ gap: 8, cursor: editando ? "default" : "pointer" }}>
+        <IconeEquip v={v} disponivel={e.disponivel} />
+        <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra }}>{e.nome} <span style={{ color: C.cinzaClaro, fontWeight: 600 }}>({e.membros.length})</span></div>
+        <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: abertas ? C.ambarTexto : C.cinza }}>{abertas ? `${abertas} ${abertas === 1 ? "aberta" : "abertas"}` : "Todas fechadas"}</span>
+        <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+      </div>
+      {aberto && (
+        <div onPointerDown={(ev) => ev.stopPropagation()}>
+          <div className="flex gap-2" style={{ marginBottom: 10 }}>
+            <BotaoAcao icon={ArrowUpFromLine} label="Abrir todas" cor={C.pasto} onClick={() => todas(true)} />
+            <BotaoAcao icon={ArrowDownToLine} label="Fechar todas" cor={C.cinza} onClick={() => todas(false)} />
+          </div>
+          <GradeEquip itens={e.membros} enviar={enviar} expandidos={exp} toggleExpand={alternarMembro} podeArrastar={false} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
+  if (e.tipo === "grupoPersianas") return <CartaoGrupoPersianas e={e} enviar={enviar} aberto={expandido} onAlternar={onExpandir} editando={editando} />;
   const v = visualEquip(e);
   const ativo = v.ativo && e.disponivel;
   const compactavel = CTRL_COMPACTAVEL.includes(e.tipo);
@@ -3578,7 +3633,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
     comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
-      itens: somPrimeiro(comFontePadrao(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), p.nome)),
+      itens: somPrimeiro(comFontePadrao(agruparPersianas(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), p.nome)),
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
