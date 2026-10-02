@@ -1721,8 +1721,8 @@ const comFontePadrao = (itens, pavNome) => {
   return f ? itens.map((x) => (ehZonaAAT(x.id) ? { ...x, fontePadrao: f } : x)) : itens;
 };
 
-// Som ligado sobe para o 1º lugar do cômodo; desligado volta à posição salva (sort é estável).
-const somLigado = (x) => ehZonaAAT(x.id) && x.state === "on";
+// Som ligado (ou Alexa tocando) sobe para o 1º lugar do cômodo; desligado volta à posição salva (sort é estável).
+const somLigado = (x) => (ehZonaAAT(x.id) && x.state === "on") || (x.tipo === "alexa" && x.state === "playing");
 const somPrimeiro = (itens) => itens.slice().sort((x, y) => somLigado(y) - somLigado(x));
 
 // Controles de música de um streamer: se o Spotify da pessoa está tocando nele, comanda o
@@ -1756,7 +1756,12 @@ function acoesMusica(st, enviar) {
 // Do conjunto de aparelhos de um cômodo/pavimento, o 1º som ligado tocando um streamer.
 const musicaDe = (itens, enviar) => {
   const som = itens.find((x) => somLigado(x) && x.streamer && !x.streamer.semSinal);
-  return som ? acoesMusica(som.streamer, enviar) : null;
+  if (som) return acoesMusica(som.streamer, enviar);
+  // Alexa tocando (ou pausada) o Spotify da pessoa: os botões comandam o Spotify.
+  const alexa = itens.find((x) => x.tipo === "alexa" && x.spotify && ["playing", "paused"].includes(x.state));
+  if (!alexa) return null;
+  const sp = (serv) => () => enviar("media_player", serv, alexa.spotify);
+  return { tocando: alexa.state === "playing", tocar: sp("media_play_pause"), anterior: sp("media_previous_track"), proxima: sp("media_next_track") };
 };
 
 /* ---- Alexa pelo Spotify ----
