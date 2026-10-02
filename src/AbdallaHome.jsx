@@ -3,7 +3,8 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge,
+  LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -2232,14 +2233,14 @@ function IconeCascata({ size = 24, strokeWidth = 2, ...props }) {
 // Ícone pela finalidade, a partir do nome (vale em qualquer cômodo).
 const ICONE_POR_NOME = [
   [/borda/, WavesLadder, "lago"], [/cascata/, IconeCascata, "lago"], [/filtro/, Funnel, "lago"],
-  [/hidro/, Bubbles, "lago"], [/aquec/, Flame, "ambar"],
+  [/hidro/, Bubbles, "lago"], [/aquec/, Flame, "ambar"], [/abajur/, LampDesk, "ambar", true],
 ];
 
 function visualEquip(e) {
   const v = visualPorTipo(e);
   const alvo = norm((e.nome || "") + " " + e.id);
   const achou = ICONE_POR_NOME.find(([re]) => re.test(alvo));
-  return achou ? { ...v, Icon: achou[1], cor: C[achou[2]], luz: false } : v;
+  return achou ? { ...v, Icon: achou[1], cor: C[achou[2]], luz: !!achou[3] } : v;
 }
 function visualPorTipo(e) {
   if (e.tipo === "grupoPersianas") return { Icon: Blinds, ativo: e.membros.some((m) => visualPorTipo(m).ativo), cor: C.ambar };
