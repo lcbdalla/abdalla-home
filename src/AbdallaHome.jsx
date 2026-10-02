@@ -1722,7 +1722,7 @@ const comFontePadrao = (itens, pavNome) => {
 };
 
 // Som ligado (ou Alexa tocando) sobe para o 1º lugar do cômodo; desligado volta à posição salva (sort é estável).
-const somLigado = (x) => (ehZonaAAT(x.id) && x.state === "on") || (x.tipo === "alexa" && x.state === "playing");
+const somLigado = (x) => (ehZonaAAT(x.id) && x.state === "on") || (x.tipo === "alexa" && ["playing", "paused"].includes(x.state));
 const somPrimeiro = (itens) => itens.slice().sort((x, y) => somLigado(y) - somLigado(x));
 
 // Controles de música de um streamer: se o Spotify da pessoa está tocando nele, comanda o
@@ -1781,6 +1781,7 @@ function juntarAlexa(e, juntar, enviar) {
 }
 function ligarAlexa(e, ligar, enviar) {
   if (!e.spotify) { abrirSpotify(); return; }
+  e.marcarDesligada?.(!ligar);
   if (!ligar) { enviar("media_player", "media_pause", e.spotify); return; }
   if (!e.connect) return;
   e.conectarSpotify(e.spotify, e.noGrupo ? e.grupoConnect : e.connect, (v) => { if (v.state !== "playing") enviar("media_player", "media_play", e.spotify); });
@@ -1793,7 +1794,7 @@ const estaLigado = (e) => {
   if (!e.disponivel) return false;
   if (e.tipo === "ar") return e.state !== "off";
   if (e.tipo === "tv") return midiaRecursos(e).liga ? !["off", "idle", "standby"].includes(e.state) : e.state === "playing";
-  if (e.tipo === "alexa") return e.state === "playing";
+  if (e.tipo === "alexa") return ["playing", "paused"].includes(e.state);
   return e.state === "on";
 };
 // O que um media_player aceita (supported_features do HA). Sem a informação, supõe tudo.
@@ -1894,7 +1895,7 @@ function visualEquip(e) {
   return achou ? { ...v, Icon: achou[1], cor: C[achou[2]], luz: false } : v;
 }
 function visualPorTipo(e) {
-  if (e.tipo === "alexa") return { Icon: Speaker, ativo: e.state === "playing", cor: C.lago };
+  if (e.tipo === "alexa") return { Icon: Speaker, ativo: ["playing", "paused"].includes(e.state), cor: C.lago };
   const dom = String(e.id).split(".")[0];
   const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
   if (e.tipo === "persiana") {
@@ -2453,12 +2454,12 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
         <IconeEquip v={v} disponivel={e.disponivel} />
         <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" }}>{e.nome}</div>
         {e.tipo === "alexa" && (() => {
-          const tocando = e.state === "playing";
-          const txt = !e.spotify ? "Sem Spotify ligado" : !e.connect ? "Alexa não encontrada" : tocando ? "Tocando" : e.state === "paused" ? "Pausado" : "Parado";
+          const tocando = e.state === "playing", ligada = ["playing", "paused"].includes(e.state);
+          const txt = !e.spotify ? "Sem Spotify ligado" : !e.connect ? "Alexa não encontrada" : tocando ? "Tocando" : ligada ? "Pausado" : "Desligado";
           return (<>
-            <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: tocando ? LAGO : C.cinza }}>{txt}</span>
+            <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: ligada ? LAGO : C.cinza }}>{txt}</span>
             {e.spotify && e.connect && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
-              <PillToggle on={tocando} cor={LAGO} onClick={() => ligarAlexa(e, !tocando, enviar)} />
+              <PillToggle on={ligada} cor={LAGO} onClick={() => ligarAlexa(e, !ligada, enviar)} />
             </span>}
           </>);
         })()}
@@ -3181,6 +3182,16 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
 
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
   const meuSpotify = spotifyDaPessoa(entsVis, eu?.nome);
+  // Alexa desligada pela chave: a música fica pausada e o cartão desligado até ligar de novo
+  // (ou até a música voltar a tocar por outro caminho).
+  const [alexaOff, setAlexaOff] = useState(() => { try { return JSON.parse(localStorage.getItem("alexaDesligada") || "[]"); } catch { return []; } });
+  const marcarAlexa = (id, off) => setAlexaOff((l) => {
+    const n = off ? [...new Set([...l, id])] : l.filter((x) => x !== id);
+    try { localStorage.setItem("alexaDesligada", JSON.stringify(n)); } catch { /* ok */ }
+    return n;
+  });
+  const spState = meuSpotify ? entsVis[meuSpotify]?.state : null;
+  useEffect(() => { if (spState === "playing" && alexaOff.length) { setAlexaOff([]); try { localStorage.setItem("alexaDesligada", "[]"); } catch { /* ok */ } } }, [spState]); // eslint-disable-line react-hooks/exhaustive-deps
   // Com o Spotify parado, o HA só aceita "escolher o aparelho"; tocar/play_media só depois que o
   // Spotify conecta nele. Então: escolhe o aparelho, espera o estado mostrar a conexão e segue.
   const entsRef = useRef(entsVis);
@@ -3195,7 +3206,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       const f = Number(v?.attributes?.supported_features) || 0;
       const pronto = v && v.attributes?.source === connect && (["playing", "paused"].includes(v.state) || (f & (1 | 512 | 16384)) !== 0);
       if (pronto) { setAviso(null); depois(v); return; }
-      if (Date.now() - t0 > 35000) { setAviso({ erro: true, texto: "O Spotify não respondeu. Abra o Spotify, escolha o aparelho e dê o play por lá." }); return; }
+      if (Date.now() - t0 > 25000) { setAviso(null); abrirSpotify(); return; } // não conectou: abre o Spotify para escolher o aparelho
       setTimeout(checar, 700);
     };
     setTimeout(checar, 700);
@@ -3224,10 +3235,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       const fonte = sp?.attributes?.source;
       const tocandoSp = !!sp && ["playing", "paused"].includes(sp.state);
       const noGrupo = !!(tocandoSp && grupoConnect && fonte === grupoConnect);
-      const aqui = !!(tocandoSp && connect && (fonte === connect || noGrupo));
+      const aqui = !!(tocandoSp && connect && (fonte === connect || noGrupo)) && !(sp.state === "paused" && alexaOff.includes(row.entity_id));
       return { dbId: row.id, id: row.entity_id, tipo: "alexa", nome: row.nome || "Alexa", rotulos: row.rotulos || {}, tamanho: "g",
         state: aqui ? sp.state : "idle", attributes: aqui ? sp.attributes : {}, disponivel: true,
         spotify: meuSpotify, connect, grupoConnect, grupoRotulo: g?.rotulo, noGrupo, conectarSpotify,
+        marcarDesligada: (off) => marcarAlexa(row.entity_id, off),
         pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
     }
     const live = entsVis[row.entity_id];
