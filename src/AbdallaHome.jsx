@@ -2903,7 +2903,7 @@ function ajustarMesa(e, novaFonte, enviar) {
   const precisa = novaFonte === m.cfg.fonte || outrasNaTv;
   const ligado = m.ents[m.cfg.plug]?.state === "on";
   if (precisa && !ligado) enviar("switch", "turn_on", m.cfg.plug);
-  // Desligar fica por conta do ControleApp: 30 min depois que nenhuma zona estiver mais na TV.
+  // Desligar a mesa: por enquanto só manual (o automático foi tirado; ver ControleApp).
 }
 // Canais 1 e 4 e o Main da mesa, dentro do cartão quando a fonte é TV. Enquanto a mesa liga
 // (uns 20–40 s depois do plug), mostra "Ligando a mesa…".
@@ -2919,7 +2919,7 @@ function PainelMesa({ e, enviar }) {
         <span className="flex-1" style={{ fontSize: 13.5, fontWeight: 800, color: C.terra }}>Mesa de som</span>
         {!pronta && (
           <span className={plug?.state === "on" ? "ah-pisca" : ""} style={{ fontSize: 12.5, fontWeight: 700, color: C.cinza }}>
-            {!plug ? "Sem sinal do plug" : plug.state === "on" ? "Ligando a mesa (até 1 min)…" : "Mesa desligada"}
+            {!plug ? "Sem sinal do plug" : plug.state === "on" ? "Ligando a mesa…" : "Mesa desligada"}
           </span>
         )}
         {!pronta && plug && plug.state !== "on" && <button onClick={() => enviar("switch", "turn_on", cfg.plug)} style={{ background: LAGO, color: "#fff", border: "none", borderRadius: 10, padding: "5px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Ligar</button>}
@@ -4140,46 +4140,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Spotify conecta nele. Então: escolhe o aparelho, espera o estado mostrar a conexão e segue.
   const entsRef = useRef(entsVis);
   entsRef.current = entsVis;
-  // Mesa XR18: a integração do HA leva ~6 min para reconectar sozinha depois que o plug liga.
-  // Com o plug ligado e a mesa ainda sem sinal, o app pede ao HA para recarregar a integração
-  // (aos 30, 40, 50 e 70 s, só enquanto ela não aparece) — assim a mesa surge em menos de 1 min.
-  const plugMesa = entsVis[MESA_TV.plug]?.state;
-  const semMesa = (v) => !v || ["unavailable", "unknown"].includes(v.state);
-  // Mesa ligada e nenhuma zona ligada na TV: desliga o plug 30 min depois (trocas rápidas de fonte
-  // não fazem a mesa reiniciar). O horário fica guardado no aparelho; vale enquanto o app estiver
-  // aberto ou ao abrir de novo. ponytail: com o app fechado ninguém desliga; se precisar garantir,
-  // uma automação no HA faz o mesmo.
-  const MESA_ESPERA_MS = 30 * 60000;
-  const naTv = (vs) => Object.entries(vs).some(([id, v]) => ehZonaAAT(id) && v?.state === "on" && v.attributes?.source === MESA_TV.fonte);
-  const algumaNaTv = naTv(entsVis);
-  useEffect(() => {
-    const ler = () => { try { return Number(localStorage.getItem("mesaDesligarEm")) || 0; } catch { return 0; } };
-    const gravar = (t) => { try { if (t) localStorage.setItem("mesaDesligarEm", String(t)); else localStorage.removeItem("mesaDesligarEm"); } catch { /* ok */ } };
-    if (plugMesa !== "on" || algumaNaTv) { gravar(0); return; }
-    if (!ler()) gravar(Date.now() + MESA_ESPERA_MS);
-    const conferir = () => {
-      const t = ler();
-      if (t && Date.now() >= t && entsRef.current[MESA_TV.plug]?.state === "on" && !naTv(entsRef.current)) { enviar("switch", "turn_off", MESA_TV.plug); gravar(0); }
-    };
-    conferir();
-    const iv = setInterval(conferir, 30000);
-    return () => clearInterval(iv);
-  }, [plugMesa, algumaNaTv]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Só logo depois de o plug LIGAR (visto por este app): se a mesa piscar sem sinal depois, não
-  // recarrega de novo — recarregar derruba a conexão e virava um ciclo de quedas.
-  const plugAntes = useRef(plugMesa);
-  useEffect(() => {
-    const ligou = plugAntes.current === "off" && plugMesa === "on";
-    plugAntes.current = plugMesa;
-    if (!ligou) return;
-    let feito = false;
-    const ts = [30000, 40000, 50000, 70000].map((ms) => setTimeout(() => {
-      if (feito) return;
-      if (!semMesa(entsRef.current["number.main_fader"])) { feito = true; return; }
-      enviar("homeassistant", "reload_config_entry", "number.main_fader");
-    }, ms));
-    return () => ts.forEach(clearTimeout);
-  }, [plugMesa]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Mesa XR18: o app NÃO mexe mais nela sozinho (reconectar a integração e desligar depois de
+  // 30 min foram tirados: estavam derrubando a conexão da mesa). Só liga o plug ao escolher a TV.
   const conectarSpotify = (spId, connect, depois) => {
     if (!spId || !connect) return;
     enviar("media_player", "select_source", spId, { source: connect });
