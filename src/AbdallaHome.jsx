@@ -3786,7 +3786,23 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     ? { pavs: a.pavs.filter((x) => x !== id), amb: comodoIds.includes(a.amb) ? null : a.amb }
     : { pavs: [id], amb: comodoIds.includes(a.amb) ? a.amb : null });
   // Abrir um cômodo fecha o anterior e deixa aberto só o pavimento dele.
-  const alternarAmb = (id, pavId) => setAbertos((a) => (a.amb === id ? { ...a, amb: null } : { pavs: [pavId], amb: id }));
+  const alternarAmb = (id, pavId) => setAbertos((a) => {
+    if (a.amb === id) return { ...a, amb: null };
+    rolarPara.current = id;
+    return { pavs: [pavId], amb: id };
+  });
+  // Ao abrir um cômodo, a tela rola até o título dele ficar logo abaixo do cabeçalho verde (fixo).
+  const rolarPara = useRef(null);
+  useEffect(() => {
+    const id = rolarPara.current; rolarPara.current = null;
+    if (!id || abertos.amb !== id) return;
+    // Espera o cômodo anterior fechar (as posições mudam) antes de medir.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-comodo="${id}"]`); if (!el) return;
+      const topoCab = cabRef.current ? cabRef.current.getBoundingClientRect().bottom : 0;
+      window.scrollTo({ top: Math.max(0, window.scrollY + el.getBoundingClientRect().top - topoCab - 8), behavior: "smooth" });
+    }));
+  }, [abertos.amb]);
 
   useEffect(() => { try { localStorage.setItem("controleAbertos", JSON.stringify(abertos)); } catch { /* ok */ } }, [abertos]);
   // Marca o uso (toque na tela) e fecha tudo se passar 8h parado — aberto na tela ou não.
@@ -4393,7 +4409,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                     const acesoC = contarLigados(c.itens).on > 0; // algo ligado: a caixa ganha um tom âmbar
                     return (
                       // Cômodo com algo ligado "acende": fundo âmbar em degradê, borda mais forte e um brilho em volta.
-                      <div key={c.id} style={{ border: `1px solid ${acesoC ? alfa(C.aceso, 75) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
+                      <div key={c.id} data-comodo={c.id} style={{ border: `1px solid ${acesoC ? alfa(C.aceso, 75) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
                         background: acesoC ? `linear-gradient(160deg, color-mix(in srgb, ${C.aceso} 26%, ${C.card}) 0%, color-mix(in srgb, ${C.aceso} 9%, ${C.card}) 100%)` : C.card, padding: "6px 12px",
                         boxShadow: acesoC ? `0 0 0 3px ${alfa(C.aceso, 18)}, 0 12px 30px -12px ${alfa(C.aceso, 70)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
                         transition: "box-shadow .25s, border-color .25s, background .25s" }}>
