@@ -2176,7 +2176,7 @@ function acionarReceiver(e, ligar, enviar) {
     if (!e.tvNaSala) setTimeout(() => enviar("media_player", "turn_off", e.id), 1500);
     return;
   }
-  const jaLigado = e.state === "on";
+  const jaLigado = !!e.state && !["off", "standby", "unavailable", "unknown"].includes(e.state);
   if (!jaLigado) enviar("media_player", "turn_on", e.id);
   // Logo depois de ligar o receiver ainda não aceita trocar de entrada: espera um pouco.
   setTimeout(() => {
@@ -2210,7 +2210,7 @@ const somPrimeiro = (itens) => itens.slice().sort((x, y) => somLigado(y) - somLi
 function acoesMusica(st, enviar) {
   if (!st || st.semSinal || !st.disponivel) return null;
   const sp = st.spotifyEnt;
-  const spAqui = sp && sp.attributes?.source === st.connect && ["playing", "paused"].includes(sp.state);
+  const spAqui = sp && (st.qualquerFonte || sp.attributes?.source === st.connect) && ["playing", "paused"].includes(sp.state);
   const a = st.attributes || {};
   const semMusica = !a.media_title && !["playing", "paused"].includes(st.state);
   const alvo = spAqui ? st.spotify : st.id;
@@ -2618,8 +2618,9 @@ function CtrlAr({ e, enviar }) {
 function estadoMidia(e) {
   const r = midiaRecursos(e), ind = !e.disponivel;
   if (e.receiver) {
-    const ligado = !ind && e.state === "on" && e.attributes?.source !== e.receiver.tv;
-    return { r, ind, ligado, texto: ind ? "Indisponível" : ligado ? "Ligado" : e.state === "on" ? "Na TV" : "Desligado" };
+    const aceso = !ind && !["off", "standby"].includes(e.state);
+    const ligado = aceso && e.attributes?.source !== e.receiver.tv;
+    return { r, ind, ligado, texto: ind ? "Indisponível" : ligado ? "Ligado" : aceso ? "Na TV" : "Desligado" };
   }
   // Sem liga/desliga (streamer): considerado sempre "ativo" para mostrar os controles.
   const ligado = r.liga ? (!["off", "idle", "standby"].includes(e.state) && !ind) : !ind;
@@ -2719,6 +2720,29 @@ function abrirSpotify() {
   window.open("https://open.spotify.com/", "_blank");
 }
 
+// Entrada de música do receiver: Bluetooth (celular) ou Spotify (HEOS). Spotify: põe no HEOS e
+// leva a música para o receiver (ou abre o Spotify para escolher o aparelho, se o nome não é conhecido).
+function EntradasReceiver({ e, enviar }) {
+  const fonte = e.attributes?.source;
+  const opcoes = [["Bluetooth", "Bluetooth"], ["Spotify", e.receiver.musica]];
+  const escolher = (f) => {
+    if (fonte !== f) enviar("media_player", "select_source", e.id, { source: f });
+    if (f !== e.receiver.musica) return;
+    if (e.receiver.connect && e.spotify) e.conectarSpotify?.(e.spotify, e.receiver.connect);
+    else abrirSpotify();
+  };
+  return (
+    <div className="flex gap-2" style={{ marginBottom: 10 }}>
+      {opcoes.map(([rot, f]) => {
+        const sel = fonte === f;
+        return (
+          <button key={f} onClick={() => escolher(f)} aria-pressed={sel}
+            style={{ flex: 1, borderRadius: 12, padding: "9px 6px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", border: `1px solid ${sel ? LAGO : C.linha}`, background: sel ? LAGO : C.card, color: sel ? "#fff" : C.terra }}>{rot}</button>
+        );
+      })}
+    </div>
+  );
+}
 function PainelStreamer({ s: st, enviar }) {
   const a = st.attributes || {};
   const f = Number(a.supported_features) || 0;
@@ -2730,7 +2754,7 @@ function PainelStreamer({ s: st, enviar }) {
   const [verPlaylists, setVerPlaylists] = useState(false);
   // O Spotify da pessoa está tocando NESTE streamer? (a fonte dele é o nome Connect do streamer)
   const spE = st.spotifyEnt;
-  const sp = spE && spE.attributes?.source === st.connect && ["playing", "paused"].includes(spE.state) ? spE.attributes : null;
+  const sp = spE && (st.qualquerFonte || spE.attributes?.source === st.connect) && ["playing", "paused"].includes(spE.state) ? spE.attributes : null;
   const pic = sp?.entity_picture;
   const capa = pic ? (pic.startsWith("http") ? pic : (st.baseUrl || "") + pic) : null;
   // Leva o Spotify da pessoa para este streamer (Spotify Connect) e dá play na última música/playlist.
@@ -2780,7 +2804,7 @@ function PainelStreamer({ s: st, enviar }) {
       {!st.semSinal && (
         <div className="flex items-center justify-center gap-3" style={{ marginTop: 10 }}>
           {tem(16) && bt(() => enviar("media_player", "media_previous_track", st.id), SkipBack, "Faixa anterior")}
-          {tem(1 | 16384) && bt(() => (semMusica ? tocarSpotify() : enviar("media_player", "media_play_pause", st.id)), tocando ? Pause : Play, semMusica ? "Abrir o Spotify" : tocando ? "Pausar" : "Tocar", true)}
+          {!st.semPlay && tem(1 | 16384) && bt(() => (semMusica ? tocarSpotify() : enviar("media_player", "media_play_pause", st.id)), tocando ? Pause : Play, semMusica ? "Abrir o Spotify" : tocando ? "Pausar" : "Tocar", true)}
           {tem(32) && bt(() => enviar("media_player", "media_next_track", st.id), SkipForward, "Próxima faixa")}
         </div>
       )}
@@ -2875,20 +2899,9 @@ function CtrlTv({ e, enviar }) {
           </div>
         </div>
       )}
-      {e.receiver && (
-        <div className="flex gap-2">
-          {[["Spotify", e.receiver.musica], ["Bluetooth", "Bluetooth"]].map(([rot, fonte]) => {
-            const sel = a.source === fonte;
-            return (
-              <button key={fonte} onClick={() => !sel && enviar("media_player", "select_source", e.id, { source: fonte })} aria-pressed={sel}
-                style={{ flex: 1, borderRadius: 12, padding: "9px 6px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", border: `1px solid ${sel ? LAGO : C.linha}`, background: sel ? LAGO : C.card, color: sel ? "#fff" : C.terra }}>{rot}</button>
-            );
-          })}
-        </div>
-      )}
       {e.streamer && <PainelStreamer s={e.streamer} enviar={enviar} />}
       {/* Volume deste ambiente: embaixo, logo acima de "Sincronizar ambientes". */}
-      {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}>{volStreamer}<BarraVolume e={e} enviar={enviar} compacto
+      {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}>{e.receiver && <EntradasReceiver e={e} enviar={enviar} />}{volStreamer}<BarraVolume e={e} enviar={enviar} compacto
         onSoltar={e.receiver ? (v) => enviar("media_player", "volume_set", e.id, { volume_level: Math.min(TV_VOL_MAX, v) }) : undefined} /></div>}
       {(e.zonas || []).length > 1 && a.source && (
         <div style={{ marginTop: 12 }}>
@@ -4049,7 +4062,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const v = entsVis[meuSpotify];
     return { id: meuSpotify, tipo: "tv", nome: "Spotify", state: v?.state, attributes: v?.attributes || {},
       disponivel: !!v && !["unavailable", "unknown"].includes(v.state), semSinal: !v,
-      spotify: meuSpotify, connect: cfg.connect, spotifyEnt: v, conectarSpotify, pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
+      spotify: meuSpotify, connect: cfg.connect, spotifyEnt: v, conectarSpotify, pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current,
+      qualquerFonte: true, semPlay: true };
   }
   function vincularStreamer(zona) {
     const fonte = zona?.attributes?.source, sid = STREAMER_DA_FONTE[fonte];
