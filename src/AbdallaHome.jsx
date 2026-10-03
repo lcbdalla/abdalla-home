@@ -2267,7 +2267,7 @@ function acharConnect(sp, nomes) {
 }
 function juntarAlexa(e, juntar, enviar) {
   // Sair do grupo: o multiambiente da Alexa ignora a transferência direta do grupo para um membro.
-  if (!juntar && e.sairDoGrupo && e.spotify && e.connect) { e.sairDoGrupo(e.spotify, e.connect); return; }
+  if (!juntar && e.sairDoGrupo && e.spotify && e.connect) { e.sairDoGrupo(e.spotify, e.connect, e.grupoConnect); return; }
   const destino = juntar ? e.grupoConnect : e.connect;
   if (e.spotify && destino) enviar("media_player", "select_source", e.spotify, { source: destino });
 }
@@ -4017,23 +4017,35 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     };
     setTimeout(checar, 700);
   };
-  // Tira o Spotify do grupo de Alexas e deixa só numa: pausa → transfere → confere. Se o grupo
-  // "segurou", passa por um degrau fora do grupo (streamer do Térreo) e volta para a Alexa.
-  const sairDoGrupo = (spId, membro) => {
+  // Tira o Spotify do grupo de Alexas e deixa só numa. O multiambiente da Alexa "segura" a música no
+  // grupo (e às vezes a puxa de volta segundos depois), então: pausa → passa por um degrau fora do
+  // grupo (streamer do Térreo) → vai para a Alexa → toca. Depois vigia por 40 s; se o grupo voltar,
+  // refaz uma vez. Enquanto isso a chave do cartão fica desligada (não pisca).
+  const [saindoGrupo, setSaindoGrupo] = useState(false);
+  const sairDoGrupo = (spId, membro, grupo) => {
     const espera = (ms) => new Promise((r) => setTimeout(r, ms));
     const fonte = () => entsRef.current[spId]?.attributes?.source;
     const tocava = entsRef.current[spId]?.state === "playing";
+    const passo = async () => {
+      enviar("media_player", "media_pause", spId); await espera(1500);
+      const degrau = (entsRef.current[spId]?.attributes?.source_list || []).find((x) => norm(x) === "som terreo");
+      if (degrau) { enviar("media_player", "select_source", spId, { source: degrau }); await espera(1500); }
+      enviar("media_player", "select_source", spId, { source: membro }); await espera(2500);
+      if (tocava && entsRef.current[spId]?.state !== "playing") enviar("media_player", "media_play", spId);
+    };
+    setSaindoGrupo(true);
     setAviso({ texto: "Voltando a tocar só no quarto…" });
     (async () => {
-      enviar("media_player", "media_pause", spId); await espera(1500);
-      enviar("media_player", "select_source", spId, { source: membro }); await espera(2500);
-      if (fonte() !== membro) {
-        const degrau = (entsRef.current[spId]?.attributes?.source_list || []).find((x) => norm(x) === "som terreo");
-        if (degrau) { enviar("media_player", "select_source", spId, { source: degrau }); await espera(1500); }
-        enviar("media_player", "select_source", spId, { source: membro }); await espera(2500);
+      await passo();
+      setAviso(null);
+      let refez = false;
+      for (let i = 0; i < 8; i++) {
+        await espera(5000);
+        if (fonte() !== grupo) continue;
+        if (refez) { setAviso({ erro: true, texto: "A Alexa voltou para o grupo sozinha. Escolha a Alexa do quarto no app do Spotify." }); break; }
+        refez = true; await passo();
       }
-      if (tocava && entsRef.current[spId]?.state !== "playing") enviar("media_player", "media_play", spId);
-      setAviso(fonte() === membro ? null : { erro: true, texto: "O Spotify continuou no grupo. Tente de novo ou escolha a Alexa no Spotify." });
+      setSaindoGrupo(false);
     })();
   };
   // As 6 zonas do amplificador AAT (nome = cômodo, como estão no HA), para "Sincronizar ambientes".
@@ -4059,7 +4071,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       const grupoConnect = g ? acharConnect(sp, g.nomes) : null;
       const fonte = sp?.attributes?.source;
       const tocandoSp = !!sp && ["playing", "paused"].includes(sp.state);
-      const noGrupo = !!(tocandoSp && grupoConnect && fonte === grupoConnect);
+      const noGrupo = !!(tocandoSp && grupoConnect && fonte === grupoConnect) && !saindoGrupo;
       const aqui = !!(tocandoSp && connect && (fonte === connect || noGrupo)) && !(sp.state === "paused" && alexaOff.includes(row.entity_id));
       return { dbId: row.id, id: row.entity_id, tipo: "alexa", nome: row.nome || "Alexa", rotulos: row.rotulos || {}, tamanho: "g",
         state: aqui ? sp.state : "idle", attributes: aqui ? sp.attributes : {}, disponivel: true,
