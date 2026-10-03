@@ -1108,6 +1108,19 @@ function EstoqueView({ produtos, estoque, movs, users, onAjustar, onAbrirProduto
 }
 
 /* ============================= EQUIPE ============================= */
+// Convite pelo WhatsApp: link do app + como entrar e instalar. Vai para o número da pessoa
+// (sem número, o WhatsApp abre para escolher o contato). Senha não vai: o app não a conhece.
+function linkConviteWhats(u) {
+  const primeiro = String(u.nome || "").split(" ")[0] || "tudo bem";
+  const link = new URL(import.meta.env.BASE_URL, window.location.href).href;
+  const msg = `Olá, ${primeiro}! Este é o app do Rancho Abdalla:
+
+${link}
+
+Abra no celular e entre com o seu e-mail e senha. Para deixar o app na tela do celular, toque em "Instalar app" quando aparecer.`;
+  const fone = String(u.telefone || "").replace(/\D/g, "");
+  return "https://wa.me/" + (fone ? (fone.length <= 11 ? "55" + fone : fone) : "") + "?text=" + encodeURIComponent(msg);
+}
 function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   const [novo, setNovo] = useState(false);
   const [visitante, setVisitante] = useState(false);
@@ -1149,6 +1162,10 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                 <div style={{ flex: 1, fontWeight: 600, fontSize: 15 }}>{u.nome}</div>
               )}
               <span style={{ color: C.cinzaClaro, fontSize: 12 }}>{(u.papel === "visitante" && u.expiraEm && Date.now() > u.expiraEm) ? "Visitante (expirado)" : papelLabel(u.papel)}</span>
+              {souAdmin && u.id !== euId && u.papel !== "visitante" && (
+                <a href={linkConviteWhats(u)} target="_blank" rel="noreferrer" title="Enviar convite pelo WhatsApp" aria-label={`Enviar convite para ${u.nome} pelo WhatsApp`}
+                  style={{ color: C.pasto, padding: 4, display: "flex" }}><MessageCircle size={17} /></a>
+              )}
               {souAdmin && u.id !== euId && <button onClick={() => remover(u)} title="Remover pessoa" style={{ color: C.vermelho, padding: 4 }}><Trash2 size={16} /></button>}
             </div>
             <div className="flex items-center gap-2 mt-1" style={{ paddingLeft: 40 }}>
