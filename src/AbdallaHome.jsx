@@ -1499,9 +1499,9 @@ const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 const MESA_TV = {
   fonte: "Entrada 1", plug: "switch.plug_mesa_de_som_behring",
   canais: [
-    { nome: "Canal 1", fader: "number.channel_1_fader", on: "switch.channel_1_on" },
-    { nome: "Canal 4", fader: "number.channel_4_fader", on: "switch.channel_4_on" },
-    { nome: "Main", fader: "number.main_fader", on: "switch.main_on" },
+    { nome: "TV", fader: "number.channel_1_fader", on: "switch.channel_1_on" },        // canal 1
+    { nome: "Microfone", fader: "number.channel_4_fader", on: "switch.channel_4_on" }, // canal 4
+    { nome: "Mesa Som", fader: "number.main_fader", on: "switch.main_on" },            // main
   ],
 };
 const MESA_IDS = [MESA_TV.plug, ...MESA_TV.canais.flatMap((c) => [c.fader, c.on])];
@@ -2560,7 +2560,7 @@ function BarraLuz({ valor, min, max, step, rotulo, Icone, etiqueta, trilha, fmt,
   const v = local ?? valor, pct = ((v - min) / (max - min)) * 100;
   return (
     <div className="flex items-center gap-2">
-      {etiqueta ? <span style={{ width: 58, flexShrink: 0, fontSize: 13, fontWeight: 700, color: C.cinza }}>{etiqueta}</span> : <Icone size={20} style={{ color: C.cinza, flexShrink: 0 }} />}
+      {etiqueta ? <span style={{ width: 74, flexShrink: 0, fontSize: 13, fontWeight: 700, color: C.cinza }}>{etiqueta}</span> : <Icone size={20} style={{ color: C.cinza, flexShrink: 0 }} />}
       <input ref={ref} type="range" min={min} max={max} step={step} value={v} aria-label={rotulo} className="ah-vol"
         onInput={(ev) => setLocal(Number(ev.target.value))} onChange={(ev) => setLocal(Number(ev.target.value))}
         style={{ flex: 1, minWidth: 0, "--cor": etiqueta ? LAGO : C.ambar, "--trilha": trilha(pct) }} />
@@ -2903,7 +2903,7 @@ function ajustarMesa(e, novaFonte, enviar) {
   const precisa = novaFonte === m.cfg.fonte || outrasNaTv;
   const ligado = m.ents[m.cfg.plug]?.state === "on";
   if (precisa && !ligado) enviar("switch", "turn_on", m.cfg.plug);
-  if (!precisa && ligado) enviar("switch", "turn_off", m.cfg.plug);
+  // Desligar fica por conta do ControleApp: 30 min depois que nenhuma zona estiver mais na TV.
 }
 // Canais 1 e 4 e o Main da mesa, dentro do cartão quando a fonte é TV. Enquanto a mesa liga
 // (uns 20–40 s depois do plug), mostra "Ligando a mesa…".
@@ -4142,13 +4142,33 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   entsRef.current = entsVis;
   // Mesa XR18: a integração do HA leva ~6 min para reconectar sozinha depois que o plug liga.
   // Com o plug ligado e a mesa ainda sem sinal, o app pede ao HA para recarregar a integração
-  // (aos 32 s, 50 s e 70 s, só enquanto ela não aparece) — assim a mesa surge em menos de 1 min.
+  // (aos 30, 40, 50 e 70 s, só enquanto ela não aparece) — assim a mesa surge em menos de 1 min.
   const plugMesa = entsVis[MESA_TV.plug]?.state;
   const semMesa = (v) => !v || ["unavailable", "unknown"].includes(v.state);
   const mesaFora = semMesa(entsVis["number.main_fader"]);
+  // Mesa ligada e nenhuma zona ligada na TV: desliga o plug 30 min depois (trocas rápidas de fonte
+  // não fazem a mesa reiniciar). O horário fica guardado no aparelho; vale enquanto o app estiver
+  // aberto ou ao abrir de novo. ponytail: com o app fechado ninguém desliga; se precisar garantir,
+  // uma automação no HA faz o mesmo.
+  const MESA_ESPERA_MS = 30 * 60000;
+  const naTv = (vs) => Object.entries(vs).some(([id, v]) => ehZonaAAT(id) && v?.state === "on" && v.attributes?.source === MESA_TV.fonte);
+  const algumaNaTv = naTv(entsVis);
+  useEffect(() => {
+    const ler = () => { try { return Number(localStorage.getItem("mesaDesligarEm")) || 0; } catch { return 0; } };
+    const gravar = (t) => { try { if (t) localStorage.setItem("mesaDesligarEm", String(t)); else localStorage.removeItem("mesaDesligarEm"); } catch { /* ok */ } };
+    if (plugMesa !== "on" || algumaNaTv) { gravar(0); return; }
+    if (!ler()) gravar(Date.now() + MESA_ESPERA_MS);
+    const conferir = () => {
+      const t = ler();
+      if (t && Date.now() >= t && entsRef.current[MESA_TV.plug]?.state === "on" && !naTv(entsRef.current)) { enviar("switch", "turn_off", MESA_TV.plug); gravar(0); }
+    };
+    conferir();
+    const iv = setInterval(conferir, 30000);
+    return () => clearInterval(iv);
+  }, [plugMesa, algumaNaTv]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (plugMesa !== "on" || !mesaFora) return;
-    const ts = [32000, 50000, 70000].map((ms) => setTimeout(() => {
+    const ts = [30000, 40000, 50000, 70000].map((ms) => setTimeout(() => {
       if (semMesa(entsRef.current["number.main_fader"])) enviar("homeassistant", "reload_config_entry", "number.main_fader");
     }, ms));
     return () => ts.forEach(clearTimeout);
