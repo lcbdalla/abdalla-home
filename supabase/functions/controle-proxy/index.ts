@@ -103,6 +103,10 @@ Deno.serve(async (req) => {
     const z = id.match(/^media_player\.aat_pmr7_zona_(\d+)$/);
     if (z) for (const k of ["graves", "agudos", "balanco"]) cadastrados.add(`number.aat_pmr7_zona_${z[1]}_${k}`);
   }
+  // Mesa de som da fonte TV do AAT (plug + canais 1, 4 e Main).
+  if ([...cadastrados].some((id) => /^media_player\.aat_pmr7_zona_\d+$/.test(id))) {
+    for (const id of ["switch.plug_mesa_de_som_behring", "number.channel_1_fader", "switch.channel_1_on", "number.channel_4_fader", "switch.channel_4_on", "number.main_fader", "switch.main_on"]) cadastrados.add(id);
+  }
 
   // 3a) Estados atuais — só dos aparelhos cadastrados.
   if (body?.acao === "estados") {

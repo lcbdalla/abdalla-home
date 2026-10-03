@@ -1494,8 +1494,19 @@ const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 // Só guardamos/ouvimos estes domínios: evita a enxurrada de eventos de câmeras,
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
 // As câmeras não entram em HA_SHOW (geram muitos eventos); só as do portão são acompanhadas.
+// Mesa de som Behringer X Air XR18 da fonte TV (Entrada 1 do AAT). Ela liga quando recebe energia:
+// o liga/desliga é o plug. Os faders vão de 0 a 1 (0,75 ≈ 0 dB); "on" = canal ativo (sem mudo).
+const MESA_TV = {
+  fonte: "Entrada 1", plug: "switch.plug_mesa_de_som_behring",
+  canais: [
+    { nome: "Canal 1", fader: "number.channel_1_fader", on: "switch.channel_1_on" },
+    { nome: "Canal 4", fader: "number.channel_4_fader", on: "switch.channel_4_on" },
+    { nome: "Main", fader: "number.main_fader", on: "switch.main_on" },
+  ],
+};
+const MESA_IDS = [MESA_TV.plug, ...MESA_TV.canais.flatMap((c) => [c.fader, c.on])];
 const ehTomAAT = (id) => /^number\.aat_pmr7_zona_\d+_(graves|agudos|balanco)$/.test(id);
-const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || MESA_IDS.includes(id) || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button", "remote"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
@@ -2885,6 +2896,56 @@ function PainelTomAAT({ e, enviar }) {
   );
 }
 
+function ajustarMesa(e, novaFonte, enviar) {
+  const m = e.mesa; if (!m) return;
+  const ids = e.zonasComodo || [e.id];
+  const outrasNaTv = (e.zonas || []).some((z) => !ids.includes(z.id) && z.state === "on" && z.attributes?.source === m.cfg.fonte);
+  const precisa = novaFonte === m.cfg.fonte || outrasNaTv;
+  const ligado = m.ents[m.cfg.plug]?.state === "on";
+  if (precisa && !ligado) enviar("switch", "turn_on", m.cfg.plug);
+  if (!precisa && ligado) enviar("switch", "turn_off", m.cfg.plug);
+}
+// Canais 1 e 4 e o Main da mesa, dentro do cartão quando a fonte é TV. Enquanto a mesa liga
+// (uns 20–40 s depois do plug), mostra "Ligando a mesa…".
+function PainelMesa({ e, enviar }) {
+  const { cfg, ents } = e.mesa;
+  const plug = ents[cfg.plug];
+  const disp = (id) => ents[id] && !["unavailable", "unknown"].includes(ents[id].state);
+  const pronta = plug?.state === "on" && cfg.canais.every((c) => disp(c.fader));
+  const cinza = alfa(C.cinzaClaro, 30);
+  return (
+    <div style={{ marginTop: 10, borderRadius: 14, padding: "8px 12px", background: alfa(LAGO, 8), border: `1px solid ${alfa(LAGO, 22)}` }}>
+      <div className="flex items-center gap-2" style={{ marginBottom: pronta ? 2 : 0 }}>
+        <span className="flex-1" style={{ fontSize: 13.5, fontWeight: 800, color: C.terra }}>Mesa de som</span>
+        {!pronta && (
+          <span className={plug?.state === "on" ? "ah-pisca" : ""} style={{ fontSize: 12.5, fontWeight: 700, color: C.cinza }}>
+            {!plug ? "Sem sinal do plug" : plug.state === "on" ? "Ligando a mesa…" : "Mesa desligada"}
+          </span>
+        )}
+        {!pronta && plug && plug.state !== "on" && <button onClick={() => enviar("switch", "turn_on", cfg.plug)} style={{ background: LAGO, color: "#fff", border: "none", borderRadius: 10, padding: "5px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Ligar</button>}
+      </div>
+      {pronta && cfg.canais.map((c) => {
+        const ativo = ents[c.on]?.state === "on";
+        const nivel = Math.round((Number(ents[c.fader]?.state) || 0) * 10);
+        return (
+          <div key={c.fader} className="flex items-center gap-2">
+            <button onClick={() => enviar("switch", ativo ? "turn_off" : "turn_on", c.on)} aria-pressed={!ativo} aria-label={ativo ? `Mutar ${c.nome}` : `Tirar ${c.nome} do mudo`}
+              style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                background: ativo ? alfa(LAGO, 16) : alfa(C.cinzaClaro, 18), color: ativo ? LAGO : C.cinzaClaro }}>
+              {ativo ? <Volume2 size={19} /> : <VolumeX size={19} />}
+            </button>
+            <div className="flex-1 min-w-0">
+              <BarraLuz valor={nivel} min={0} max={10} step={1} rotulo={c.nome} etiqueta={c.nome} fmt={(v) => `${v * 10}%`}
+                trilha={(pct) => `linear-gradient(to right, ${ativo ? LAGO : C.cinzaClaro} ${pct}%, ${cinza} ${pct}%)`}
+                onSoltar={(v) => enviar("number", "set_value", c.fader, { value: v / 10 })} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Escolher outras zonas do amplificador para tocar a mesma fonte desta zona.
 // Marcar = liga a zona e põe na mesma fonte; desmarcar uma que tocava junto = desliga.
 function SincronizarZonas({ e, zonas, enviar, onFechar }) {
@@ -2963,7 +3024,7 @@ function CtrlTv({ e, enviar }) {
         <div className="flex items-center gap-3" style={{ marginTop: (!r.volSet || r.play) ? 12 : 0 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: C.cinza, flexShrink: 0 }}>Fonte</span>
           <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
-            <select value={a.source || ""} onChange={(ev) => ev.target.value && (e.zonasComodo || [e.id]).forEach((id) => enviar("media_player", "select_source", id, { source: ev.target.value }))} aria-label="Fonte"
+            <select value={a.source || ""} onChange={(ev) => { const f = ev.target.value; if (!f) return; (e.zonasComodo || [e.id]).forEach((id) => enviar("media_player", "select_source", id, { source: f })); ajustarMesa(e, f, enviar); }} aria-label="Fonte"
               style={{ width: "100%", appearance: "none", WebkitAppearance: "none", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "11px 40px 11px 14px", fontSize: 15, fontWeight: 700, color: C.terra, cursor: "pointer", fontFamily: "inherit" }}>
               {!a.source && <option value="">Escolha a fonte</option>}
               {r.fontes.map((f) => <option key={f} value={f}>{nomeFonte(e, f)}</option>)}
@@ -2972,6 +3033,7 @@ function CtrlTv({ e, enviar }) {
           </div>
         </div>
       )}
+      {e.mesa && a.source === e.mesa.cfg.fonte && <PainelMesa e={e} enviar={enviar} />}
       {e.streamer && <PainelStreamer s={e.streamer} enviar={enviar} />}
       {/* Volume deste ambiente: embaixo, logo acima de "Sincronizar ambientes". */}
       {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}>{e.receiver && <EntradasReceiver e={e} enviar={enviar} />}{volStreamer}<BarraVolume e={e} enviar={enviar} compacto
@@ -4175,6 +4237,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : RECEIVERS_SOM[row.entity_id] ? streamerSpotify(RECEIVERS_SOM[row.entity_id]) : null,
       zonas: ehZonaAAT(row.entity_id) ? zonasAAT : null,
       tons: ehZonaAAT(row.entity_id) ? tonsAAT : null,
+      mesa: ehZonaAAT(row.entity_id) ? { cfg: MESA_TV, ents: Object.fromEntries(MESA_IDS.map((id) => [id, entsVis[id]])) } : null,
     };
   };
   // Receiver com HEOS/Bluetooth: a música que aparece e os botões vêm do Spotify da pessoa
