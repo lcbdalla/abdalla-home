@@ -1483,7 +1483,7 @@ const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 // Só guardamos/ouvimos estes domínios: evita a enxurrada de eventos de câmeras,
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
 // As câmeras não entram em HA_SHOW (geram muitos eventos); só as do portão são acompanhadas.
-const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || PORTAO_CAMERAS.some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
@@ -1581,6 +1581,14 @@ const PORTAO_ID = "cover.portao_garagem";
 // Câmeras do Frigate que mostram o portão, na ordem em que aparecem no popup (29 em cima, 28 embaixo).
 const PORTAO_CAMERAS = [{ id: "camera.cam29", nome: "Câmera 29" }, { id: "camera.cam28", nome: "Câmera 28" }];
 const PORTAO_MS = 6000; // tempo da animação de abrir/fechar
+// Popup da PORTA DE ENTRADA: fechadura Yale da Porta da Frente + câmeras G5 do UniFi Protect
+// (119 em cima, 109 embaixo). Só há o canal de alta resolução (2688×1512): a foto vem reduzida
+// pelo HA (largura) para não pesar no celular.
+const PORTA_ID = "lock.fechadura_porta_frente";
+const PORTA_CAMERAS = [
+  { id: "camera.g5_turret_ultra_high_resolution_channel_23", nome: "Câmera 119", largura: 960 },
+  { id: "camera.g5_turret_ultra_high_resolution_channel_3", nome: "Câmera 109", largura: 960 },
+];
 // Desenho de um portão de correr: a folha desliza para a direita ao abrir e volta ao fechar.
 // Mexe na hora em que o comando é enviado e depois acompanha o estado que o Home Assistant informa.
 function PortaoModal({ ent, enviar, onFechar, cameras = [], topo }) {
@@ -1632,6 +1640,46 @@ function PortaoModal({ ent, enviar, onFechar, cameras = [], topo }) {
       <div className="flex gap-2" style={{ marginTop: 10, flexShrink: 0 }}>
         <button onClick={() => acionar(true)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: C.pasto, color: "#fff", borderRadius: 16, padding: 12, fontWeight: 800, fontSize: topo != null ? 18 : 16, minHeight: topo != null ? "clamp(56px, 10dvh, 84px)" : undefined }}><DoorOpen size={topo != null ? 22 : 19} /> Abrir</button>
         <button onClick={() => acionar(false)} className="flex items-center justify-center gap-2" style={{ flex: 1, background: alfa(C.cinza, 20), color: C.terra, borderRadius: 16, padding: 12, fontWeight: 800, fontSize: topo != null ? 18 : 16, minHeight: topo != null ? "clamp(56px, 10dvh, 84px)" : undefined }}><DoorClosed size={topo != null ? 22 : 19} /> Fechar</button>
+      </div>
+    </Sheet>
+  );
+}
+
+// Mesma lógica do portão: câmeras no alto e, embaixo, a porta com a fechadura e os botões.
+// O toque já mostra "Destrancando…/Trancando…" até o Home Assistant informar outro estado.
+function PortaModal({ ent, enviar, onFechar, cameras = [], topo }) {
+  const st = ent?.state;
+  const [cmd, setCmd] = useState(null); // { alvo: "unlocked" | "locked", st0 }
+  useEffect(() => { if (cmd && st !== cmd.st0 && !["locking", "unlocking"].includes(st)) setCmd(null); }, [st, cmd]);
+  useEffect(() => { if (!cmd) return; const t = setTimeout(() => setCmd(null), 15000); return () => clearTimeout(t); }, [cmd]); // sem resposta: volta ao estado do HA
+  const ind = !ent || ["unavailable", "unknown"].includes(st);
+  const movendo = !!cmd || st === "locking" || st === "unlocking";
+  const aberta = cmd ? cmd.alvo === "unlocked" : st === "unlocked" || st === "unlocking";
+  const texto = cmd ? (cmd.alvo === "unlocked" ? "Destrancando…" : "Trancando…")
+    : st === "unlocking" ? "Destrancando…" : st === "locking" ? "Trancando…"
+      : st === "locked" ? "Trancada" : st === "unlocked" ? "Destrancada" : st === "jammed" ? "Travou no meio — tente de novo"
+        : !ent ? "Sem sinal da fechadura" : "Sem resposta da fechadura";
+  const acionar = (abrir) => { enviar("lock", abrir ? "unlock" : "lock", PORTA_ID); setCmd({ alvo: abrir ? "unlocked" : "locked", st0: st }); };
+  const cor = ind ? C.cinzaClaro : aberta ? C.ambar : C.pasto;
+  const Icone = aberta ? LockOpen : Lock;
+  const grande = topo != null;
+  return (
+    <Sheet titulo="Porta Entrada" onFechar={onFechar} topo={topo}>
+      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
+        {cameras.map((c) => <CameraAoVivo key={c.id} cam={c} topo={topo} />)}
+      </div>
+      <div className="flex flex-col items-center justify-center" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: "10px 12px", gap: 6,
+        ...(grande ? { flex: 1, minHeight: 0 } : {}) }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.cinza }}>Porta da Frente</div>
+        <div className={movendo ? "ah-pisca" : ""} style={{ width: grande ? "clamp(56px, 11dvh, 96px)" : 56, height: grande ? "clamp(56px, 11dvh, 96px)" : 56, borderRadius: 999,
+          background: alfa(cor, 16), color: cor, display: "flex", alignItems: "center", justifyContent: "center", transition: "background .25s, color .25s" }}>
+          <Icone size={grande ? 40 : 28} strokeWidth={2.2} />
+        </div>
+        <div className="text-center" style={{ fontSize: grande ? 16 : 14, fontWeight: 800, color: aberta && !ind ? C.ambarTexto : C.terra }}>{texto}</div>
+      </div>
+      <div className="flex gap-2" style={{ marginTop: 10, flexShrink: 0 }}>
+        <button onClick={() => acionar(true)} disabled={ind} className="flex items-center justify-center gap-2" style={{ flex: 1, background: ind ? C.bg : C.pasto, color: ind ? C.cinzaClaro : "#fff", borderRadius: 16, padding: 12, fontWeight: 800, fontSize: grande ? 18 : 16, minHeight: grande ? "clamp(56px, 10dvh, 84px)" : undefined }}><LockOpen size={grande ? 22 : 19} /> Destrancar</button>
+        <button onClick={() => acionar(false)} disabled={ind} className="flex items-center justify-center gap-2" style={{ flex: 1, background: ind ? C.bg : alfa(C.cinza, 20), color: ind ? C.cinzaClaro : C.terra, borderRadius: 16, padding: 12, fontWeight: 800, fontSize: grande ? 18 : 16, minHeight: grande ? "clamp(56px, 10dvh, 84px)" : undefined }}><Lock size={grande ? 22 : 19} /> Trancar</button>
       </div>
     </Sheet>
   );
@@ -3419,6 +3467,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [modo, setModo] = useState("usar"); // usar | gerenciar
   const [menuAberto, setMenuAberto] = useState(false);
   const [portaoAberto, setPortaoAberto] = useState(false);
+  const [portaAberta, setPortaAberta] = useState(false); // popup da Porta Entrada
   const cabRef = useRef(null), [topoPortao, setTopoPortao] = useState(null);
   const gruposRef = useRef({}); // id do cartão de grupo -> ids reais dos aparelhos dentro dele
   const [tema, setTema] = useState(() => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
@@ -3888,17 +3937,21 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
 
+  // Câmeras dos popups (portão, porta): foto ao vivo pelo camera_proxy do HA (só conexão direta).
+  const camerasDe = (lista) => lista.map((c) => {
+    const tk = entsVis[c.id]?.attributes?.access_token;
+    const aviso = usarProxy ? "Câmera disponível só para a família (conexão direta com a casa)." : !entsVis[c.id] ? "Câmera não encontrada no Home Assistant." : null;
+    return { ...c, aviso, url: !usarProxy && tk ? `${baseUrlRef.current}/api/camera_proxy/${c.id}?token=${tk}${c.largura ? `&width=${c.largura}` : ""}` : null };
+  });
+  const topoDoCabecalho = () => setTopoPortao(Math.max(0, Math.round(cabRef.current?.getBoundingClientRect().bottom || 0)) + 6);
   return (
     <div style={{ background: C.tela, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "hidden", width: "100%" }}>
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}@keyframes ah-pisca{50%{opacity:.2}}.ah-pisca{animation:ah-pisca .8s infinite}"}</style>
         <DialogHost />
         {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} topo={topoPortao}
-          cameras={PORTAO_CAMERAS.map((c) => {
-            const tk = entsVis[c.id]?.attributes?.access_token;
-            const aviso = usarProxy ? "Câmera disponível só para a família (conexão direta com a casa)." : !entsVis[c.id] ? "Câmera não encontrada no Home Assistant." : null;
-            return { ...c, aviso, url: !usarProxy && tk ? `${baseUrlRef.current}/api/camera_proxy/${c.id}?token=${tk}` : null };
-          })} />}
+          cameras={camerasDe(PORTAO_CAMERAS)} />}
+        {portaAberta && <PortaModal ent={entsVis[PORTA_ID]} enviar={enviar} onFechar={() => setPortaAberta(false)} topo={topoPortao} cameras={camerasDe(PORTA_CAMERAS)} />}
         <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
         <header ref={cabRef} style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
@@ -3913,7 +3966,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             {eu?.podeMenuControle && (
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
                 // Mesmos itens do ⋮ das tarefas (com "Tarefas" no lugar de "Controle da casa") + Configuração.
-                { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => { setTopoPortao(Math.max(0, Math.round(cabRef.current?.getBoundingClientRect().bottom || 0)) + 6); setPortaoAberto(true); } },
+                { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => { topoDoCabecalho(); setPortaoAberto(true); } },
+                { key: "porta", icon: Lock, cor: C.ambar, txt: "Porta Entrada", on: () => { topoDoCabecalho(); setPortaAberta(true); } },
                 ...(souGestor && modo === "usar" ? [{ key: "config", icon: Wrench, cor: C.pasto, txt: "Configuração", on: () => setModo("gerenciar") }] : []),
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
                 ...(onEquipe ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: onEquipe }] : []),
