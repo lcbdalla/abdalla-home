@@ -1108,16 +1108,14 @@ function EstoqueView({ produtos, estoque, movs, users, onAjustar, onAbrirProduto
 }
 
 /* ============================= EQUIPE ============================= */
-// Convite pelo WhatsApp: link do app + como entrar e instalar. Vai para o número da pessoa
+// Convite pelo WhatsApp: só o link (com ?instalar=1, o app já abre oferecendo instalar com 1 toque). Vai para o número da pessoa
 // (sem número, o WhatsApp abre para escolher o contato). Senha não vai: o app não a conhece.
 function linkConviteWhats(u) {
   const primeiro = String(u.nome || "").split(" ")[0] || "tudo bem";
   const link = new URL(import.meta.env.BASE_URL, window.location.href).href;
-  const msg = `Olá, ${primeiro}! Este é o app do Rancho Abdalla:
+  const msg = `Olá, ${primeiro}! Toque no link para instalar o app do Rancho Abdalla:
 
-${link}
-
-Abra no celular e entre com o seu e-mail e senha. Para deixar o app na tela do celular, toque em "Instalar app" quando aparecer.`;
+${link}?instalar=1`;
   const fone = String(u.telefone || "").replace(/\D/g, "");
   return "https://wa.me/" + (fone ? (fone.length <= 11 ? "55" + fone : fone) : "") + "?text=" + encodeURIComponent(msg);
 }
@@ -1422,6 +1420,8 @@ function InstalarPrompt() {
     _installSubs.add(atualizar);
     let dispensado = false;
     try { dispensado = localStorage.getItem("instalarDispensado") === "1"; } catch { /* ok */ }
+    // Veio pelo link do convite: oferece instalar mesmo se já tinha dispensado antes.
+    if (new URLSearchParams(window.location.search).has("instalar")) dispensado = false;
     const t = (!dispensado && !estaInstalado()) ? setTimeout(() => { if (!estaInstalado()) setVisivel(true); }, 1500) : null;
     return () => { _installSubs.delete(atualizar); clearTimeout(t); };
   }, []);
