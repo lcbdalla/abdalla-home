@@ -2720,17 +2720,11 @@ function abrirSpotify() {
   window.open("https://open.spotify.com/", "_blank");
 }
 
-// Entrada de música do receiver: Bluetooth (celular) ou Spotify (HEOS). Spotify: põe no HEOS e
-// leva a música para o receiver (ou abre o Spotify para escolher o aparelho, se o nome não é conhecido).
+// Entrada de música do receiver: Bluetooth (celular).
 function EntradasReceiver({ e, enviar }) {
   const fonte = e.attributes?.source;
-  const opcoes = [["Bluetooth", "Bluetooth"], ["Spotify", e.receiver.musica]];
-  const escolher = (f) => {
-    if (fonte !== f) enviar("media_player", "select_source", e.id, { source: f });
-    if (f !== e.receiver.musica) return;
-    if (e.receiver.connect && e.spotify) e.conectarSpotify?.(e.spotify, e.receiver.connect);
-    else abrirSpotify();
-  };
+  const opcoes = [["Bluetooth", "Bluetooth"]];
+  const escolher = (f) => { if (fonte !== f) enviar("media_player", "select_source", e.id, { source: f }); };
   return (
     <div className="flex gap-2" style={{ marginBottom: 10 }}>
       {opcoes.map(([rot, f]) => {
@@ -2804,7 +2798,7 @@ function PainelStreamer({ s: st, enviar }) {
       {!st.semSinal && (
         <div className="flex items-center justify-center gap-3" style={{ marginTop: 10 }}>
           {tem(16) && bt(() => enviar("media_player", "media_previous_track", st.id), SkipBack, "Faixa anterior")}
-          {!st.semPlay && tem(1 | 16384) && bt(() => (semMusica ? tocarSpotify() : enviar("media_player", "media_play_pause", st.id)), tocando ? Pause : Play, semMusica ? "Abrir o Spotify" : tocando ? "Pausar" : "Tocar", true)}
+          {tem(1 | 16384) && bt(() => (semMusica ? tocarSpotify() : enviar("media_player", "media_play_pause", st.id)), tocando ? Pause : Play, semMusica ? "Abrir o Spotify" : tocando ? "Pausar" : "Tocar", true)}
           {tem(32) && bt(() => enviar("media_player", "media_next_track", st.id), SkipForward, "Próxima faixa")}
         </div>
       )}
@@ -2877,7 +2871,7 @@ function CtrlTv({ e, enviar }) {
   return (
     // Segurar aqui dentro não "pega" o cartão para arrastar (só pelo título).
     <div onPointerDown={(ev) => ev.stopPropagation()}>
-      {(!r.volSet || r.play) && (
+      {(!r.volSet || r.play) && !e.receiver && (
         <div className="flex gap-2" style={{ marginBottom: 2 }}>
           {!r.volSet && <BotaoAcao label="Vol −" cor={C.cinza} onClick={() => enviar("media_player", "volume_down", e.id)} />}
           {!r.volSet && <BotaoAcao label="Vol +" cor={C.pasto} onClick={() => enviar("media_player", "volume_up", e.id)} />}
@@ -4063,7 +4057,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return { id: meuSpotify, tipo: "tv", nome: "Spotify", state: v?.state, attributes: v?.attributes || {},
       disponivel: !!v && !["unavailable", "unknown"].includes(v.state), semSinal: !v,
       spotify: meuSpotify, connect: cfg.connect, spotifyEnt: v, conectarSpotify, pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current,
-      qualquerFonte: true, semPlay: true };
+      qualquerFonte: true };
   }
   function vincularStreamer(zona) {
     const fonte = zona?.attributes?.source, sid = STREAMER_DA_FONTE[fonte];
