@@ -27,6 +27,12 @@ const json = (body: unknown, status = 200) =>
 const NOME = /^[a-z0-9_]+$/;
 const ENTIDADE = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 const GENERICOS = ["toggle", "turn_on", "turn_off"]; // homeassistant.* permitidos
+// Aparelhos que vêm junto com um cadastrado: o cartão "TV Sala" (Chromecast da TV) comanda a
+// Android TV, o controle remoto dela e o receiver Denon (volume da sala).
+const VINCULADOS: Record<string, string[]> = {
+  "media_player.tv_sala": ["media_player.smarttv_4k_ffm", "remote.smarttv_4k_ffm", "media_player.denon_avr_s770h"],
+  "media_player.smarttv_4k_ffm": ["remote.smarttv_4k_ffm", "media_player.denon_avr_s770h"],
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -65,9 +71,10 @@ Deno.serve(async (req) => {
     if (!rs.ok) return json({ error: `O Home Assistant não respondeu (${rs.status}).` }, 502);
     const todos = await rs.json();
     const conf = rc.ok ? await rc.json() : {};
-    // Só os sensores da estação Ecowitt (GW3000C): nome, valor e unidade.
+    // Só os sensores da estação Ecowitt (GW3000C): nome, valor e unidade. Pelo identificador
+    // (sensor.gw3000c_…), que não muda quando alguém renomeia o sensor no HA.
     const sensores = (Array.isArray(todos) ? todos : [])
-      .filter((x: any) => String(x.entity_id).startsWith("sensor.") && /^gw3000c/i.test(String(x.attributes?.friendly_name || x.entity_id.slice(7))))
+      .filter((x: any) => String(x.entity_id).startsWith("sensor.gw3000c_") || (String(x.entity_id).startsWith("sensor.") && /^gw3000c/i.test(String(x.attributes?.friendly_name || ""))))
       .map((x: any) => ({ id: x.entity_id, nome: x.attributes?.friendly_name || x.entity_id, state: x.state, unidade: x.attributes?.unit_of_measurement || "", tipo: x.attributes?.device_class || "", mudou: x.last_changed }));
     return json({ sensores, lat: conf.latitude ?? null, lon: conf.longitude ?? null });
   }
@@ -90,6 +97,7 @@ Deno.serve(async (req) => {
     lista = lista.filter((q: { ambiente_id: string }) => liberados.has(q.ambiente_id));
   }
   const cadastrados = new Set(lista.map((q: { entity_id: string }) => q.entity_id));
+  for (const id of [...cadastrados]) for (const v of VINCULADOS[id] || []) cadastrados.add(v);
 
   // 3a) Estados atuais — só dos aparelhos cadastrados.
   if (body?.acao === "estados") {

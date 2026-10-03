@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Thermometer, AirVent, CircleDot, Minus,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Undo2, Menu, ChevronUp, Thermometer, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -1484,7 +1484,7 @@ const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
 // As câmeras não entram em HA_SHOW (geram muitos eventos); só as do portão são acompanhadas.
 const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
-const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button"]);
+const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button", "remote"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
 // Grupo de luz (entidade light que só junta outras) — não mostramos para não duplicar.
@@ -1573,6 +1573,70 @@ function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
       style={{ flex: 1, background: disabled ? C.bg : sec ? alfa(C.cinza, 20) : cor, color: disabled ? C.cinzaClaro : sec ? C.terra : "#fff", borderRadius: 12, padding: "8px 6px", fontWeight: 700, fontSize: 13, border: "none", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
       {Icon && <Icon size={17} />}{label}
     </button>
+  );
+}
+
+/* ---- Controle remoto da TV ----
+   O cartão "TV Sala" (Chromecast da TV) comanda a Android TV de verdade: liga/desliga por ela e
+   os botões vão pelo remote.send_command (teclas Android). Volume e mudo vão para o receiver Denon,
+   por onde sai o som da sala. As mesmas ligações ficam liberadas no intermediário (controle-proxy). */
+const TV_SALA = { nome: "TV Sala", tv: "media_player.smarttv_4k_ffm", remote: "remote.smarttv_4k_ffm", som: "media_player.denon_avr_s770h" };
+const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA };
+const TVS_COM_CONTROLE = [TV_SALA];
+const tvLigada = (v) => !!v && !["off", "standby", "unavailable", "unknown"].includes(v.state);
+// Desenho de controle remoto (o lucide não tem): mesmo estilo de traço dos outros ícones.
+function IconeControleRemoto({ size = 24, strokeWidth = 2, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="7" y="2" width="10" height="20" rx="3" />
+      <circle cx="12" cy="7.5" r="2" />
+      <path d="M10 13h.01M14 13h.01M10 16.5h.01M14 16.5h.01" />
+    </svg>
+  );
+}
+function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
+  const mudo = entSom?.attributes?.is_volume_muted === true;
+  const ind = !ent || ["unavailable", "unknown"].includes(ent.state);
+  const toque = () => { try { navigator.vibrate?.(12); } catch { /* ok */ } };
+  const tecla = (k) => { toque(); enviar("remote", "send_command", cfg.remote, { command: k }); };
+  const som = (svc, data) => { toque(); enviar("media_player", svc, cfg.som, data); };
+  const grande = topo != null;
+  const seta = (k, Icone, rot) => (
+    <button onClick={() => tecla(k)} aria-label={rot} style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "transparent", color: C.terra, cursor: "pointer" }}>
+      <Icone size={grande ? 34 : 28} strokeWidth={2.4} />
+    </button>
+  );
+  const linha = { display: "flex", gap: 8, flexShrink: 0 };
+  return (
+    <Sheet titulo={`Controle · ${cfg.nome}`} onFechar={onFechar} topo={topo}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, ...(grande ? { flex: 1, minHeight: 0, justifyContent: "space-evenly" } : {}) }}>
+        <div style={linha}>
+          <BotaoAcao icon={Power} label="Desligar" cor={C.vermelho} disabled={ind} onClick={() => { toque(); enviar("media_player", "turn_off", cfg.tv); onFechar(); }} />
+          <BotaoAcao icon={Home} label="Início" cor={C.cinza} onClick={() => tecla("HOME")} />
+          <BotaoAcao icon={Undo2} label="Voltar" cor={C.cinza} onClick={() => tecla("BACK")} />
+          <BotaoAcao icon={Menu} label="Menu" cor={C.cinza} onClick={() => tecla("MENU")} />
+        </div>
+        {/* Direcional: setas em volta do OK. */}
+        <div style={{ alignSelf: "center", width: grande ? "min(78vw, 32dvh, 300px)" : 220, aspectRatio: "1 / 1", borderRadius: 999, background: C.card, border: `1px solid ${C.linha}`,
+          boxShadow: "0 6px 18px #0001", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gridTemplateRows: "1fr 1fr 1fr", flexShrink: 0 }}>
+          <div /> {seta("DPAD_UP", ChevronUp, "Para cima")} <div />
+          {seta("DPAD_LEFT", ChevronLeft, "Para a esquerda")}
+          <button onClick={() => tecla("DPAD_CENTER")} aria-label="OK" style={{ margin: "8%", borderRadius: 999, border: "none", background: C.pasto, color: "#fff", fontWeight: 800, fontSize: grande ? 20 : 17, cursor: "pointer" }}>OK</button>
+          {seta("DPAD_RIGHT", ChevronRight, "Para a direita")}
+          <div /> {seta("DPAD_DOWN", ChevronDown, "Para baixo")} <div />
+        </div>
+        <div style={linha}>
+          <BotaoAcao icon={Minus} label="Volume" cor={C.cinza} onClick={() => som("volume_down")} />
+          <BotaoAcao icon={mudo ? Volume2 : VolumeX} label={mudo ? "Tirar mudo" : "Mudo"} cor={C.ambar} onClick={() => som("volume_mute", { is_volume_muted: !mudo })} />
+          <BotaoAcao icon={Plus} label="Volume" cor={C.pasto} onClick={() => som("volume_up")} />
+        </div>
+        <div style={linha}>
+          <BotaoAcao icon={ChevronDown} label="Canal" cor={C.cinza} onClick={() => tecla("CHANNEL_DOWN")} />
+          <BotaoAcao icon={Play} label="Play / Pausa" cor={LAGO} onClick={() => tecla("MEDIA_PLAY_PAUSE")} />
+          <BotaoAcao icon={ChevronUp} label="Canal" cor={C.pasto} onClick={() => tecla("CHANNEL_UP")} />
+        </div>
+      </div>
+    </Sheet>
   );
 }
 
@@ -1738,10 +1802,14 @@ const CLIMA_PAPEIS = [
   ["chuvaTaxa", /rain rate/], ["chuvaHoje", /daily rain|rain daily|24h rain/], ["chuvaMes", /monthly rain/], ["chuvaAno", /yearly rain/],
   ["raios", /lightning (strikes|count)/], ["raioDist", /lightning dist/], ["raioHora", /last lightning|lightning (time|strike)$/],
 ];
+// Procura pelo identificador (sensor.gw3000c_outdoor_temperature → "gw3000c outdoor temperature"),
+// que não muda quando alguém renomeia o sensor no HA; o nome fica de reserva.
+const textoSensor = (x) => String(x.id || "").replace(/^sensor\./, "").replace(/_/g, " ");
 function lerClima(sensores) {
   const out = {}, usados = new Set();
   for (const [papel, re] of CLIMA_PAPEIS) {
-    const s = sensores.find((x) => !usados.has(x.id) && re.test(norm(x.nome)) && !["unknown", "unavailable", ""].includes(x.state));
+    const ok = (x) => !usados.has(x.id) && !["unknown", "unavailable", ""].includes(x.state);
+    const s = sensores.find((x) => ok(x) && re.test(textoSensor(x))) || sensores.find((x) => ok(x) && re.test(norm(x.nome)));
     if (s) { out[papel] = s; usados.add(s.id); }
   }
   return out;
@@ -2879,6 +2947,7 @@ function CtrlSensor({ e }) {
 function EquipControle({ e, enviar, cardClicavel }) {
   if (e.tipo === "persiana") return <CtrlPersiana e={e} enviar={enviar} />;
   if (e.tipo === "ar") return <CtrlAr e={e} enviar={enviar} />;
+  if (e.tipo === "tv" && e.controleTv) return estadoMidia(e).ligado ? <BotaoAcao icon={IconeControleRemoto} label="Controle remoto" cor={LAGO} onClick={e.abrirControle} /> : null;
   if (e.tipo === "tv") return <CtrlTv e={e} enviar={enviar} />;
   if (e.tipo === "irrigacao") return <CtrlIrrigacao e={e} enviar={enviar} />;
   if (e.tipo === "fechadura") return <CtrlFechadura e={e} enviar={enviar} />;
@@ -3090,7 +3159,7 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
           return (<>
             <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: m.ind ? C.cinzaClaro : m.ligado ? LAGO : C.cinza }}>{m.texto}</span>
             {m.r.liga && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
-              <PillToggle on={m.ligado} cor={LAGO} disabled={m.ind} onClick={() => acionarZonas(e, !m.ligado, enviar)} />
+              <PillToggle on={m.ligado} cor={LAGO} disabled={m.ind} onClick={() => { acionarZonas(e, !m.ligado, enviar); if (!m.ligado) e.abrirControle?.(); }} />
             </span>}
           </>);
         })()}
@@ -3468,6 +3537,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [menuAberto, setMenuAberto] = useState(false);
   const [portaoAberto, setPortaoAberto] = useState(false);
   const [portaAberta, setPortaAberta] = useState(false); // popup da Porta Entrada
+  const [tvAberta, setTvAberta] = useState(null); // TV com o controle remoto aberto
   const cabRef = useRef(null), [topoPortao, setTopoPortao] = useState(null);
   const gruposRef = useRef({}); // id do cartão de grupo -> ids reais dos aparelhos dentro dele
   const [tema, setTema] = useState(() => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
@@ -3898,10 +3968,12 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         marcarDesligada: (off) => marcarAlexa(row.entity_id, off),
         pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
     }
-    const live = entsVis[row.entity_id];
+    const tvc = TV_CONTROLE[row.entity_id];
+    const live = entsVis[tvc ? tvc.tv : row.entity_id];
     const state = live?.state;
     return {
-      dbId: row.id, id: row.entity_id, tipo: row.tipo,
+      dbId: row.id, id: tvc ? tvc.tv : row.entity_id, tipo: row.tipo,
+      ...(tvc ? { controleTv: tvc, abrirControle: () => { topoDoCabecalho(); setTvAberta(tvc); } } : {}),
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
       state, attributes: live?.attributes || {}, rotulos: row.rotulos || {}, tamanho: row.tamanho === "g" ? "g" : "p",
       disponivel: row.tipo === "botao" ? state != null && state !== "unavailable" : state != null && !["unavailable", "unknown", "none", ""].includes(state),
@@ -3951,6 +4023,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         <DialogHost />
         {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} topo={topoPortao}
           cameras={camerasDe(PORTAO_CAMERAS)} />}
+        {tvAberta && <TvControleModal cfg={tvAberta} ent={entsVis[tvAberta.tv]} entSom={entsVis[tvAberta.som]} enviar={enviar} onFechar={() => setTvAberta(null)} topo={topoPortao} />}
         {portaAberta && <PortaModal ent={entsVis[PORTA_ID]} enviar={enviar} onFechar={() => setPortaAberta(false)} topo={topoPortao} cameras={camerasDe(PORTA_CAMERAS)} />}
         <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
@@ -3961,6 +4034,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             <div className="flex-1 min-w-0"><div className="font-bold leading-tight truncate" style={{ fontSize: 16 }}>Controle da Casa</div><div style={{ color: "#ffffffcc", fontSize: 11.5 }} className="leading-tight truncate">{modo === "gerenciar" ? "Organizando ambientes" : "Rancho Abdalla"}</div></div>
             {/* Configurando: o "Pronto" fica à vista para voltar; o resto mora no menu ⋮. */}
             {modo === "gerenciar" && <button onClick={() => setModo("usar")} title="Terminar de configurar" style={{ background: "#ffffff33", borderRadius: 10, padding: "7px 11px", display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 700 }}><Check size={16} /> Pronto</button>}
+            {/* TV ligada: o controle remoto fica a um toque, ao lado do tempo. */}
+            {TVS_COM_CONTROLE.filter((t) => tvLigada(entsVis[t.tv])).map((t) => (
+              <button key={t.tv} onClick={() => { topoDoCabecalho(); setTvAberta(t); }} title={`Controle da ${t.nome}`} aria-label={`Controle remoto da ${t.nome}`}
+                style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex", color: "#fff" }}><IconeControleRemoto size={20} /></button>
+            ))}
             <BotaoTempo />
             {/* O menu ⋮ só aparece para quem tem a chave "Menu ⋮ do Controle" ligada na Equipe. */}
             {eu?.podeMenuControle && (
