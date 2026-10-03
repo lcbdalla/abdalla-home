@@ -10,6 +10,12 @@ try {
   if (t === 'dark') document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0e1a12')
 } catch { /* sem storage: fica no tema claro */ }
 
+// Toque em qualquer botão: vibração curtinha (Android; o iPhone não permite vibrar pelo navegador).
+document.addEventListener('click', (e) => {
+  const b = e.target instanceof Element && e.target.closest('button, [role="button"], a[href], input[type="checkbox"], label')
+  if (b && !b.disabled) { try { navigator.vibrate?.(10) } catch { /* sem vibração */ } }
+}, true)
+
 // Registra o service worker (necessário para "Instalar app"); só no site publicado.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js')

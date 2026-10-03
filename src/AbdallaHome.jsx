@@ -1594,20 +1594,21 @@ function IconeControleRemoto({ size = 24, strokeWidth = 2, ...props }) {
     </svg>
   );
 }
-// Apps abertos direto na TV (media_player.play_media, tipo "app": pacote Android ou endereço).
+// Apps abertos direto na TV (media_player.play_media, tipo "app"): o Android TV Remote abre o app
+// pelo link dele (o nome do pacote sozinho não abre).
 const TV_APPS = [
-  { nome: "Netflix", id: "com.netflix.ninja", marca: <span style={{ color: "#e50914", fontWeight: 900, fontSize: 22, fontFamily: "Arial Black, Arial, sans-serif" }}>N</span> },
+  { nome: "Netflix", id: "https://www.netflix.com/title", marca: <span style={{ color: "#e50914", fontWeight: 900, fontSize: 22, fontFamily: "Arial Black, Arial, sans-serif" }}>N</span> },
   { nome: "YouTube", id: "https://www.youtube.com", marca: <svg width="28" height="20" viewBox="0 0 28 20"><rect width="28" height="20" rx="5" fill="#ff0000" /><path d="M11 5.5v9l8-4.5z" fill="#fff" /></svg> },
-  { nome: "Disney+", id: "com.disney.disneyplus", marca: <span style={{ color: "#2b5bd7", fontWeight: 900, fontSize: 17 }}>D+</span> },
-  { nome: "Prime Video", id: "com.amazon.amazonvideo.livingroom", marca: <span style={{ background: "#1fa0e3", color: "#fff", fontWeight: 900, fontSize: 14, borderRadius: 5, padding: "1px 6px" }}>P</span> },
+  { nome: "Disney+", id: "https://www.disneyplus.com", marca: <span style={{ color: "#2b5bd7", fontWeight: 900, fontSize: 17 }}>D+</span> },
+  { nome: "Prime Video", id: "https://app.primevideo.com", marca: <span style={{ background: "#1fa0e3", color: "#fff", fontWeight: 900, fontSize: 14, borderRadius: 5, padding: "1px 6px" }}>P</span> },
 ];
 // Volume do receiver da sala: no Denon 80% = 0 dB (referência); acima disso fica alto demais.
 const TV_VOL_MAX = 0.8; // ajuste se quiser liberar mais
 function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
   const ind = !ent || ["unavailable", "unknown"].includes(ent.state);
   const toque = () => { try { navigator.vibrate?.(12); } catch { /* ok */ } };
-  const tecla = (k) => { toque(); enviar("remote", "send_command", cfg.remote, { command: k }); };
-  const app = (id) => { toque(); enviar("media_player", "play_media", cfg.tv, { media_content_type: "app", media_content_id: id }); };
+  const tecla = (k) => enviar("remote", "send_command", cfg.remote, { command: k });
+  const app = (id) => enviar("media_player", "play_media", cfg.tv, { media_content_type: "app", media_content_id: id });
   const grande = topo != null;
   const seta = (k, Icone, rot) => (
     <button onClick={() => tecla(k)} aria-label={rot} style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "transparent", color: C.terra, cursor: "pointer" }}>
@@ -1620,7 +1621,7 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
     <Sheet titulo={`Controle · ${cfg.nome}`} onFechar={onFechar} topo={topo}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, ...(grande ? { flex: 1, minHeight: 0, justifyContent: "space-evenly" } : {}) }}>
         <div style={linha}>
-          <BotaoAcao icon={Power} label="Desligar" cor={C.vermelho} disabled={ind} onClick={() => { toque(); enviar("media_player", "turn_off", cfg.tv); onFechar(); }} />
+          <BotaoAcao icon={Power} label="Desligar" cor={C.vermelho} disabled={ind} onClick={() => { enviar("media_player", "turn_off", cfg.tv); onFechar(); }} />
           <BotaoAcao icon={Undo2} label="Voltar" cor={C.cinza} onClick={() => tecla("BACK")} />
           <BotaoAcao icon={Home} label="Início" cor={C.cinza} onClick={() => tecla("HOME")} />
         </div>
@@ -4736,7 +4737,17 @@ function DialogHost() {
 }
 // topo (px): o popup começa ali (ex.: logo abaixo do cabeçalho) e ocupa até o fim da tela;
 // o conteúdo vira uma coluna que pode esticar (flex: 1) para preencher a altura.
+// Enquanto houver popup aberto, a tela de trás não rola (contador: popups um sobre o outro).
+let _travasRolagem = 0;
+function useTravarRolagem() {
+  useEffect(() => {
+    const el = document.documentElement;
+    if (_travasRolagem++ === 0) { el.style.overflow = "hidden"; document.body.style.overflow = "hidden"; }
+    return () => { if (--_travasRolagem === 0) { el.style.overflow = ""; document.body.style.overflow = ""; } };
+  }, []);
+}
 function Sheet({ titulo, onFechar, children, topo }) {
+  useTravarRolagem();
   const cheio = topo != null;
   return (
     <div style={{ position: "fixed", inset: 0, background: "#0006", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onFechar}>
