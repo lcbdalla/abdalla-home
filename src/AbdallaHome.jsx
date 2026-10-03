@@ -2104,9 +2104,9 @@ const ehZonaAAT = (id) => String(id || "").startsWith("media_player.aat_pmr7_zon
 const nomeFonte = (e, f) => (ehZonaAAT(e?.id) && FONTE_NOME_AAT[f]) || f;
 // Entradas do amplificador que vêm de um streamer AAT: com a zona nessa fonte, o controle do
 // streamer aparece dentro do cartão da zona.
-const STREAMER_DA_FONTE = { "Entrada 2": "media_player.som_terreo", "Entrada 4": "media_player.aat_audiocast_ac_1_aeab" };
+const STREAMER_DA_FONTE = { "Entrada 2": "media_player.som_terreo", "Entrada 4": "media_player.aat_audiocast_ac_1_aeab", "Entrada 5": "media_player.som_terreo_1" };
 // Nome de cada streamer na lista de dispositivos do Spotify (Spotify Connect).
-const STREAMER_CONNECT = { "media_player.som_terreo": "SOM TERREO", "media_player.aat_audiocast_ac_1_aeab": "SOM SUBSOLO" };
+const STREAMER_CONNECT = { "media_player.som_terreo": "SOM TERREO", "media_player.aat_audiocast_ac_1_aeab": "SOM SUBSOLO", "media_player.som_terreo_1": "SOM TERREO 1" }; // WiiM Mini na Entrada 5
 // Cada pessoa usa o próprio Spotify: no HA cada conta vira media_player.spotify_<nome da conta>
 // ("Spotify Leo Abdalla"). Acha a da pessoa logada pelo nome do perfil no app.
 function spotifyDaPessoa(ents, nome) {
