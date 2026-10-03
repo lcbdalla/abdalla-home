@@ -2162,7 +2162,30 @@ function juntarZonasDoComodo(itens) {
 }
 // Liga/desliga todas as zonas do cômodo; ao ligar, deixa todas na fonte da principal.
 // Se o cômodo tem fonte padrão (ex.: Térreo → Som Térreo), ela é escolhida a cada vez que liga.
+// Receiver que também é o streamer (Denon da Sala de TV, HEOS embutido). O cartão "Som" liga o
+// receiver já na entrada de música e conecta o Spotify; desligar volta para a TV e depois desliga.
+// connect: nome do Denon no Spotify (quando souber, o app já conecta a música nele).
+const RECEIVERS_SOM = {
+  "media_player.denon_avr_s770h": { musica: "HEOS Music", tv: "TV Audio", connect: null, esperaMs: 4000, tvId: "media_player.smarttv_4k_ffm" },
+};
+function acionarReceiver(e, ligar, enviar) {
+  const r = e.receiver;
+  if (!ligar) {
+    enviar("media_player", "select_source", e.id, { source: r.tv });
+    // Com a TV ligada o receiver fica ligado (é por ele que sai o som da TV); senão desliga.
+    if (!e.tvNaSala) setTimeout(() => enviar("media_player", "turn_off", e.id), 1500);
+    return;
+  }
+  const jaLigado = e.state === "on";
+  if (!jaLigado) enviar("media_player", "turn_on", e.id);
+  // Logo depois de ligar o receiver ainda não aceita trocar de entrada: espera um pouco.
+  setTimeout(() => {
+    enviar("media_player", "select_source", e.id, { source: r.musica });
+    if (r.connect && e.spotify) e.conectarSpotify?.(e.spotify, r.connect);
+  }, jaLigado ? 0 : r.esperaMs);
+}
 function acionarZonas(e, ligar, enviar) {
+  if (e.receiver) return acionarReceiver(e, ligar, enviar);
   const ids = e.zonasComodo || [e.id];
   if (!ligar) { ids.forEach((id) => enviar("media_player", "turn_off", id)); return; }
   ids.forEach((id) => enviar("media_player", "turn_on", id));
@@ -2322,6 +2345,7 @@ const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas
 const estaLigado = (e) => {
   if (!e.disponivel) return false;
   if (e.tipo === "ar") return e.state !== "off";
+  if (e.receiver) return estadoMidia(e).ligado;
   if (e.tipo === "tv") return midiaRecursos(e).liga ? !["off", "idle", "standby"].includes(e.state) : e.state === "playing";
   if (e.tipo === "alexa") return ["playing", "paused"].includes(e.state);
   return e.state === "on";
@@ -2592,6 +2616,10 @@ function CtrlAr({ e, enviar }) {
 // Estado de um aparelho de mídia, usado no topo do cartão (texto + chave) e nos controles.
 function estadoMidia(e) {
   const r = midiaRecursos(e), ind = !e.disponivel;
+  if (e.receiver) {
+    const ligado = !ind && e.state === "on" && e.attributes?.source === e.receiver.musica;
+    return { r, ind, ligado, texto: ind ? "Indisponível" : ligado ? "Ligado" : e.state === "on" ? "Na TV" : "Desligado" };
+  }
   // Sem liga/desliga (streamer): considerado sempre "ativo" para mostrar os controles.
   const ligado = r.liga ? (!["off", "idle", "standby"].includes(e.state) && !ind) : !ind;
   const texto = ind ? "Indisponível" : r.liga ? (ligado ? "Ligado" : "Desligado") : haEstado(e.state, e.attributes).texto;
@@ -2832,7 +2860,7 @@ function CtrlTv({ e, enviar }) {
           {r.play && <BotaoAcao label="Play/Pausa" cor={LAGO} onClick={() => enviar("media_player", "media_play_pause", e.id)} />}
         </div>
       )}
-      {r.fonte && (
+      {r.fonte && !e.receiver && (
         // Fonte em lista: mostra a escolhida; tocando, abre as opções do celular.
         <div className="flex items-center gap-3" style={{ marginTop: (!r.volSet || r.play) ? 12 : 0 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: C.cinza, flexShrink: 0 }}>Fonte</span>
@@ -2848,7 +2876,8 @@ function CtrlTv({ e, enviar }) {
       )}
       {e.streamer && <PainelStreamer s={e.streamer} enviar={enviar} />}
       {/* Volume deste ambiente: embaixo, logo acima de "Sincronizar ambientes". */}
-      {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}>{volStreamer}<BarraVolume e={e} enviar={enviar} compacto /></div>}
+      {r.volSet && !((e.zonas || []).length > 1 && a.source) && <div style={{ marginTop: 12 }}>{volStreamer}<BarraVolume e={e} enviar={enviar} compacto
+        onSoltar={e.receiver ? (v) => enviar("media_player", "volume_set", e.id, { volume_level: Math.min(TV_VOL_MAX, v) }) : undefined} /></div>}
       {(e.zonas || []).length > 1 && a.source && (
         <div style={{ marginTop: 12 }}>
           <div style={{ borderTop: `1px solid ${C.linha}`, paddingTop: 10 }}>
@@ -3802,7 +3831,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     if (!ok) return;
     for (let i = 0; i < alvo.length; i++) {
       if (alvo[i].tipo === "alexa") ligarAlexa(alvo[i], false, enviar);
-      else if (alvo[i].zonasComodo) acionarZonas(alvo[i], false, enviar);
+      else if (alvo[i].zonasComodo || alvo[i].receiver) acionarZonas(alvo[i], false, enviar);
       else { const [dom, serv] = servicoDesligar(alvo[i]); enviar(dom, serv, alvo[i].id); }
       if (i < alvo.length - 1) await new Promise((r) => setTimeout(r, 600));
     }
@@ -3993,6 +4022,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return {
       dbId: row.id, id: tvc ? tvc.tv : row.entity_id, tipo: row.tipo,
       ...(tvc ? { controleTv: tvc, abrirControle: () => { topoDoCabecalho(); setTvAberta(tvc); } } : {}),
+      ...(RECEIVERS_SOM[row.entity_id] ? { receiver: RECEIVERS_SOM[row.entity_id], spotify: meuSpotify, conectarSpotify, tvNaSala: tvLigada(entsVis[RECEIVERS_SOM[row.entity_id].tvId]) } : {}),
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
       state, attributes: live?.attributes || {}, rotulos: row.rotulos || {}, tamanho: row.tamanho === "g" ? "g" : "p",
       disponivel: row.tipo === "botao" ? state != null && state !== "unavailable" : state != null && !["unavailable", "unknown", "none", ""].includes(state),
