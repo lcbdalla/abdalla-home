@@ -2247,7 +2247,7 @@ const musicaDe = (itens, enviar) => {
   const som = itens.find((x) => somLigado(x) && x.streamer && !x.streamer.semSinal);
   if (som) return acoesMusica(som.streamer, enviar);
   // Alexa tocando (ou pausada) o Spotify da pessoa: os botões comandam o Spotify.
-  const alexa = itens.find((x) => x.tipo === "alexa" && x.spotify && ["playing", "paused"].includes(x.state));
+  const alexa = itens.find((x) => x.tipo === "alexa" && x.spotify && !x.soArmado && ["playing", "paused"].includes(x.state));
   if (!alexa) return null;
   const sp = (serv) => () => enviar("media_player", serv, alexa.spotify);
   return { tocando: alexa.state === "playing", tocar: sp("media_play_pause"), anterior: sp("media_previous_track"), proxima: sp("media_next_track") };
@@ -2259,24 +2259,33 @@ const musicaDe = (itens, enviar) => {
 const ALEXAS = { "alexa.quarto_leo_e_pri": ["Quarto Leo e Pri Echo"] }; // nome(s) da Alexa no Spotify
 // Grupo de música da Alexa com outra Alexa (ex.: quarto + banheiro). O Spotify toca num aparelho
 // por vez; o grupo aparece para ele como mais um. A chave do cartão alterna entre a Alexa e o grupo.
-const ALEXA_GRUPO = { "alexa.quarto_leo_e_pri": { rotulo: "Tocar também no banheiro", nomes: ["Som quarto e banheiro Leo e Pri", "Quarto e Banheiro Leo e Pri"] } };
+// Chaves do cartão: "este" é a Alexa do cartão; "outro" é a segunda Alexa do grupo.
+const ALEXA_GRUPO = { "alexa.quarto_leo_e_pri": { este: "Quarto", nomes: ["Som quarto e banheiro Leo e Pri", "Quarto e Banheiro Leo e Pri"],
+  outro: { rotulo: "Banheiro", nomes: ["Banheiro Leo e Pri Echo"] } } };
 function acharConnect(sp, nomes) {
   const lista = sp?.attributes?.source_list || [];
   const alvo = (nomes || []).map((n) => norm(n));
   return lista.find((x) => alvo.includes(norm(x))) || lista.find((x) => alvo.some((n) => norm(x).startsWith(n))) || null;
 }
-function juntarAlexa(e, juntar, enviar) {
-  // Sair do grupo: o multiambiente da Alexa ignora a transferência direta do grupo para um membro.
-  if (!juntar && e.sairDoGrupo && e.spotify && e.connect) { e.sairDoGrupo(e.spotify, e.connect, e.grupoConnect); return; }
-  const destino = juntar ? e.grupoConnect : e.connect;
-  if (e.spotify && destino) enviar("media_player", "select_source", e.spotify, { source: destino });
+function escolherAlexas(e, quarto, banheiro, enviar) {
+  if (!e.spotify) { abrirSpotify(); return; }
+  if (!quarto && !banheiro) { enviar("media_player", "media_pause", e.spotify); return; }
+  const destino = quarto && banheiro ? e.grupoConnect : quarto ? e.connect : e.outroConnect;
+  if (!destino) return;
+  // Sair do grupo para uma Alexa só: o multiambiente da Alexa ignora a transferência direta.
+  if (e.fonteSp === e.grupoConnect && e.tocandoSp && destino !== e.grupoConnect) { e.sairDoGrupo(e.spotify, destino, e.grupoConnect); return; }
+  e.conectarSpotify(e.spotify, destino, (v) => { if (v.state !== "playing") enviar("media_player", "media_play", e.spotify); });
 }
+// Chave do cartão: ligar só "arma" o cartão (música pausada, escolha Quarto/Banheiro para tocar);
+// com uma Alexa só (sem grupo), ligar já toca nela. Desligar pausa.
 function ligarAlexa(e, ligar, enviar) {
   if (!e.spotify) { abrirSpotify(); return; }
   e.marcarDesligada?.(!ligar);
-  if (!ligar) { enviar("media_player", "media_pause", e.spotify); return; }
+  e.armar?.(ligar);
+  if (!ligar) { if (e.tocandoSp && e.aquiFonte) enviar("media_player", "media_pause", e.spotify); return; }
+  if (e.outroConnect && e.grupoConnect) return;
   if (!e.connect) return;
-  e.conectarSpotify(e.spotify, e.noGrupo ? e.grupoConnect : e.connect, (v) => { if (v.state !== "playing") enviar("media_player", "media_play", e.spotify); });
+  e.conectarSpotify(e.spotify, e.connect, (v) => { if (v.state !== "playing") enviar("media_player", "media_play", e.spotify); });
 }
 
 /* ---- Grupo de persianas numeradas (ex.: Varanda: Persiana 1 … Persiana 11) ----
@@ -2950,7 +2959,7 @@ function CtrlAlexa({ e, enviar }) {
   const [verPlaylists, setVerPlaylists] = useState(false);
   if (!e.spotify || !e.connect) return null;
   const a = e.attributes || {};
-  const ativo = ["playing", "paused"].includes(e.state);
+  const ativo = ["playing", "paused"].includes(e.state) && !e.soArmado;
   const pic = a.entity_picture, capa = pic ? (pic.startsWith("http") ? pic : (e.baseUrl || "") + pic) : null;
   const m = { tocando: e.state === "playing" };
   const sp = (serv) => () => enviar("media_player", serv, e.spotify);
@@ -2977,11 +2986,14 @@ function CtrlAlexa({ e, enviar }) {
       {ativo && typeof a.volume_level === "number" && (
         <div style={{ marginTop: 10 }}><BarraVolume e={{ id: e.spotify, attributes: a }} enviar={enviar} compacto semMudo /></div>
       )}
-      {ativo && e.grupoConnect && (
-        <div className="flex items-center gap-2" style={{ marginTop: 10, background: e.noGrupo ? alfa(LAGO, 10) : "transparent", border: `1px solid ${e.noGrupo ? alfa(LAGO, 40) : C.linha}`, borderRadius: 12, padding: "8px 10px" }}>
-          <Link2 size={16} style={{ color: e.noGrupo ? LAGO : C.cinza, flexShrink: 0 }} />
-          <span className="flex-1" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra }}>{e.grupoRotulo || "Tocar no grupo"}</span>
-          <PillToggle pequeno on={e.noGrupo} cor={LAGO} onClick={() => juntarAlexa(e, !e.noGrupo, enviar)} />
+      {(ativo || e.soArmado) && e.grupoConnect && e.outroConnect && (
+        <div className="flex gap-2" style={{ marginTop: ativo ? 10 : 0 }}>
+          {[[e.esteRotulo, e.noEste, () => escolherAlexas(e, !e.noEste, e.noOutro, enviar)], [e.outroRotulo, e.noOutro, () => escolherAlexas(e, e.noEste, !e.noOutro, enviar)]].map(([rot, on, fn]) => (
+            <div key={rot} className="flex items-center gap-2 flex-1" style={{ background: on ? alfa(LAGO, 10) : "transparent", border: `1px solid ${on ? alfa(LAGO, 40) : C.linha}`, borderRadius: 12, padding: "8px 10px" }}>
+              <span className="flex-1 truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra }}>{rot}</span>
+              <PillToggle pequeno on={on} cor={LAGO} onClick={fn} />
+            </div>
+          ))}
         </div>
       )}
       <div className="flex items-center gap-4" style={{ marginTop: ativo ? 8 : 0 }}>
@@ -2994,7 +3006,7 @@ function CtrlAlexa({ e, enviar }) {
           Abrir o Spotify <ChevronRight size={14} />
         </button>
       </div>
-      {verPlaylists && <PlaylistsSpotify st={{ spotify: e.spotify, connect: e.noGrupo ? e.grupoConnect : e.connect, nome: e.nome, pedirHA: e.pedirHA, conectarSpotify: e.conectarSpotify }} enviar={enviar} onFechar={() => setVerPlaylists(false)} />}
+      {verPlaylists && <PlaylistsSpotify st={{ spotify: e.spotify, connect: e.aquiFonte ? e.fonteSp : e.connect, nome: e.nome, pedirHA: e.pedirHA, conectarSpotify: e.conectarSpotify }} enviar={enviar} onFechar={() => setVerPlaylists(false)} />}
     </div>
   );
 }
@@ -3226,7 +3238,7 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
         <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" }}>{e.nome}</div>
         {e.tipo === "alexa" && (() => {
           const tocando = e.state === "playing", ligada = ["playing", "paused"].includes(e.state);
-          const txt = !e.spotify ? "Sem Spotify ligado" : !e.connect ? "Alexa não encontrada" : tocando ? "Tocando" : ligada ? "Pausado" : "Desligado";
+          const txt = !e.spotify ? "Sem Spotify ligado" : !e.connect ? "Alexa não encontrada" : tocando ? "Tocando" : e.soArmado ? "Escolha onde tocar" : ligada ? "Pausado" : "Desligado";
           return (<>
             <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: ligada ? LAGO : C.cinza }}>{txt}</span>
             {e.spotify && e.connect && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
@@ -3996,6 +4008,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     try { localStorage.setItem("alexaDesligada", JSON.stringify(n)); } catch { /* ok */ }
     return n;
   });
+  const [alexaArmada, setAlexaArmada] = useState([]); // cartões ligados esperando escolher Quarto/Banheiro
   const spState = meuSpotify ? entsVis[meuSpotify]?.state : null;
   useEffect(() => { if (spState === "playing" && alexaOff.length) { setAlexaOff([]); try { localStorage.setItem("alexaDesligada", "[]"); } catch { /* ok */ } } }, [spState]); // eslint-disable-line react-hooks/exhaustive-deps
   // Com o Spotify parado, o HA só aceita "escolher o aparelho"; tocar/play_media só depois que o
@@ -4021,20 +4034,19 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // grupo (e às vezes a puxa de volta segundos depois), então: pausa → passa por um degrau fora do
   // grupo (streamer do Térreo) → vai para a Alexa → toca. Depois vigia por 40 s; se o grupo voltar,
   // refaz uma vez. Enquanto isso a chave do cartão fica desligada (não pisca).
-  const [saindoGrupo, setSaindoGrupo] = useState(false);
+  const [saindoGrupo, setSaindoGrupo] = useState(null); // destino escolhido, enquanto sai do grupo
   const sairDoGrupo = (spId, membro, grupo) => {
     const espera = (ms) => new Promise((r) => setTimeout(r, ms));
     const fonte = () => entsRef.current[spId]?.attributes?.source;
-    const tocava = entsRef.current[spId]?.state === "playing";
     const passo = async () => {
       enviar("media_player", "media_pause", spId); await espera(1500);
       const degrau = (entsRef.current[spId]?.attributes?.source_list || []).find((x) => norm(x) === "som terreo");
       if (degrau) { enviar("media_player", "select_source", spId, { source: degrau }); await espera(1500); }
       enviar("media_player", "select_source", spId, { source: membro }); await espera(2500);
-      if (tocava && entsRef.current[spId]?.state !== "playing") enviar("media_player", "media_play", spId);
+      if (entsRef.current[spId]?.state !== "playing") enviar("media_player", "media_play", spId); // escolheu onde tocar: toca
     };
-    setSaindoGrupo(true);
-    setAviso({ texto: "Voltando a tocar só no quarto…" });
+    setSaindoGrupo(membro);
+    setAviso({ texto: "Mudando onde a música toca…" });
     (async () => {
       await passo();
       setAviso(null);
@@ -4042,10 +4054,10 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       for (let i = 0; i < 8; i++) {
         await espera(5000);
         if (fonte() !== grupo) continue;
-        if (refez) { setAviso({ erro: true, texto: "A Alexa voltou para o grupo sozinha. Escolha a Alexa do quarto no app do Spotify." }); break; }
+        if (refez) { setAviso({ erro: true, texto: "A Alexa voltou para o grupo sozinha. Escolha a Alexa no app do Spotify." }); break; }
         refez = true; await passo();
       }
-      setSaindoGrupo(false);
+      setSaindoGrupo(null);
     })();
   };
   // As 6 zonas do amplificador AAT (nome = cômodo, como estão no HA), para "Sincronizar ambientes".
@@ -4069,13 +4081,20 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       const connect = acharConnect(sp, ALEXAS[row.entity_id] || [row.nome]);
       const g = ALEXA_GRUPO[row.entity_id];
       const grupoConnect = g ? acharConnect(sp, g.nomes) : null;
-      const fonte = sp?.attributes?.source;
+      const outroConnect = g?.outro ? acharConnect(sp, g.outro.nomes) : null;
+      // Saindo do grupo, vale o destino escolhido (o Spotify demora a informar).
+      const fonte = saindoGrupo || sp?.attributes?.source;
       const tocandoSp = !!sp && ["playing", "paused"].includes(sp.state);
-      const noGrupo = !!(tocandoSp && grupoConnect && fonte === grupoConnect) && !saindoGrupo;
-      const aqui = !!(tocandoSp && connect && (fonte === connect || noGrupo)) && !(sp.state === "paused" && alexaOff.includes(row.entity_id));
+      const aquiFonte = !!fonte && [connect, outroConnect, grupoConnect].filter(Boolean).includes(fonte);
+      const aqui = tocandoSp && aquiFonte && !(sp.state === "paused" && alexaOff.includes(row.entity_id));
+      const armado = alexaArmada.includes(row.entity_id) && !alexaOff.includes(row.entity_id);
+      const tocandoAqui = aqui && (sp.state === "playing" || !!saindoGrupo);
       return { dbId: row.id, id: row.entity_id, tipo: "alexa", nome: row.nome || "Alexa", rotulos: row.rotulos || {}, tamanho: "g",
-        state: aqui ? sp.state : "idle", attributes: aqui ? sp.attributes : {}, disponivel: true,
-        spotify: meuSpotify, connect, grupoConnect, grupoRotulo: g?.rotulo, noGrupo, conectarSpotify, sairDoGrupo,
+        state: aqui ? sp.state : armado ? "paused" : "idle", attributes: aqui ? sp.attributes : {}, disponivel: true, soArmado: !aqui && armado,
+        spotify: meuSpotify, connect, grupoConnect, outroConnect, fonteSp: sp?.attributes?.source, tocandoSp, aquiFonte, conectarSpotify, sairDoGrupo,
+        esteRotulo: g?.este || "Aqui", outroRotulo: g?.outro?.rotulo,
+        noEste: tocandoAqui && (fonte === connect || fonte === grupoConnect), noOutro: tocandoAqui && (fonte === outroConnect || fonte === grupoConnect),
+        armar: (on) => setAlexaArmada((l) => (on ? [...new Set([...l, row.entity_id])] : l.filter((x) => x !== row.entity_id))),
         marcarDesligada: (off) => marcarAlexa(row.entity_id, off),
         pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
     }
