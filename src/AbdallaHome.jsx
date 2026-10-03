@@ -2200,7 +2200,8 @@ const comFontePadrao = (itens, pavNome) => {
 };
 
 // Som ligado (ou Alexa tocando) sobe para o 1º lugar do cômodo; desligado volta à posição salva (sort é estável).
-const somLigado = (x) => (ehZonaAAT(x.id) && x.state === "on") || (x.tipo === "alexa" && ["playing", "paused"].includes(x.state));
+const somLigado = (x) => (ehZonaAAT(x.id) && x.state === "on") || (x.tipo === "alexa" && ["playing", "paused"].includes(x.state))
+  || (!!x.receiver && estadoMidia(x).ligado);
 const somPrimeiro = (itens) => itens.slice().sort((x, y) => somLigado(y) - somLigado(x));
 
 // Controles de música de um streamer: se o Spotify da pessoa está tocando nele, comanda o
@@ -2617,7 +2618,7 @@ function CtrlAr({ e, enviar }) {
 function estadoMidia(e) {
   const r = midiaRecursos(e), ind = !e.disponivel;
   if (e.receiver) {
-    const ligado = !ind && e.state === "on" && e.attributes?.source === e.receiver.musica;
+    const ligado = !ind && e.state === "on" && e.attributes?.source !== e.receiver.tv;
     return { r, ind, ligado, texto: ind ? "Indisponível" : ligado ? "Ligado" : e.state === "on" ? "Na TV" : "Desligado" };
   }
   // Sem liga/desliga (streamer): considerado sempre "ativo" para mostrar os controles.
@@ -2872,6 +2873,17 @@ function CtrlTv({ e, enviar }) {
             </select>
             <ChevronDown size={18} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: C.cinza, pointerEvents: "none" }} />
           </div>
+        </div>
+      )}
+      {e.receiver && (
+        <div className="flex gap-2">
+          {[["Spotify", e.receiver.musica], ["Bluetooth", "Bluetooth"]].map(([rot, fonte]) => {
+            const sel = a.source === fonte;
+            return (
+              <button key={fonte} onClick={() => !sel && enviar("media_player", "select_source", e.id, { source: fonte })} aria-pressed={sel}
+                style={{ flex: 1, borderRadius: 12, padding: "9px 6px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", border: `1px solid ${sel ? LAGO : C.linha}`, background: sel ? LAGO : C.card, color: sel ? "#fff" : C.terra }}>{rot}</button>
+            );
+          })}
         </div>
       )}
       {e.streamer && <PainelStreamer s={e.streamer} enviar={enviar} />}
@@ -4026,10 +4038,19 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
       state, attributes: live?.attributes || {}, rotulos: row.rotulos || {}, tamanho: row.tamanho === "g" ? "g" : "p",
       disponivel: row.tipo === "botao" ? state != null && state !== "unavailable" : state != null && !["unavailable", "unknown", "none", ""].includes(state),
-      streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : null,
+      streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : RECEIVERS_SOM[row.entity_id] ? streamerSpotify(RECEIVERS_SOM[row.entity_id]) : null,
       zonas: ehZonaAAT(row.entity_id) ? zonasAAT : null,
     };
   };
+  // Receiver com HEOS/Bluetooth: a música que aparece e os botões vêm do Spotify da pessoa
+  // (o Spotify comanda o aparelho em que estiver tocando, inclusive o celular no Bluetooth).
+  function streamerSpotify(cfg) {
+    if (!meuSpotify) return null;
+    const v = entsVis[meuSpotify];
+    return { id: meuSpotify, tipo: "tv", nome: "Spotify", state: v?.state, attributes: v?.attributes || {},
+      disponivel: !!v && !["unavailable", "unknown"].includes(v.state), semSinal: !v,
+      spotify: meuSpotify, connect: cfg.connect, spotifyEnt: v, conectarSpotify, pedirHA: usarProxy ? null : pedirHA, baseUrl: baseUrlRef.current };
+  }
   function vincularStreamer(zona) {
     const fonte = zona?.attributes?.source, sid = STREAMER_DA_FONTE[fonte];
     if (!sid) return null;
