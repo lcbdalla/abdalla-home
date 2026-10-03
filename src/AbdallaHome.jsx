@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Undo2, Menu, ChevronUp, Thermometer, AirVent, CircleDot, Minus,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -1594,12 +1594,20 @@ function IconeControleRemoto({ size = 24, strokeWidth = 2, ...props }) {
     </svg>
   );
 }
+// Apps abertos direto na TV (media_player.play_media, tipo "app": pacote Android ou endereço).
+const TV_APPS = [
+  { nome: "Netflix", id: "com.netflix.ninja", marca: <span style={{ color: "#e50914", fontWeight: 900, fontSize: 22, fontFamily: "Arial Black, Arial, sans-serif" }}>N</span> },
+  { nome: "YouTube", id: "https://www.youtube.com", marca: <svg width="28" height="20" viewBox="0 0 28 20"><rect width="28" height="20" rx="5" fill="#ff0000" /><path d="M11 5.5v9l8-4.5z" fill="#fff" /></svg> },
+  { nome: "Disney+", id: "com.disney.disneyplus", marca: <span style={{ color: "#2b5bd7", fontWeight: 900, fontSize: 17 }}>D+</span> },
+  { nome: "Prime Video", id: "com.amazon.amazonvideo.livingroom", marca: <span style={{ background: "#1fa0e3", color: "#fff", fontWeight: 900, fontSize: 14, borderRadius: 5, padding: "1px 6px" }}>P</span> },
+];
+// Volume do receiver da sala: no Denon 80% = 0 dB (referência); acima disso fica alto demais.
+const TV_VOL_MAX = 0.8; // ajuste se quiser liberar mais
 function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
-  const mudo = entSom?.attributes?.is_volume_muted === true;
   const ind = !ent || ["unavailable", "unknown"].includes(ent.state);
   const toque = () => { try { navigator.vibrate?.(12); } catch { /* ok */ } };
   const tecla = (k) => { toque(); enviar("remote", "send_command", cfg.remote, { command: k }); };
-  const som = (svc, data) => { toque(); enviar("media_player", svc, cfg.som, data); };
+  const app = (id) => { toque(); enviar("media_player", "play_media", cfg.tv, { media_content_type: "app", media_content_id: id }); };
   const grande = topo != null;
   const seta = (k, Icone, rot) => (
     <button onClick={() => tecla(k)} aria-label={rot} style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "transparent", color: C.terra, cursor: "pointer" }}>
@@ -1607,17 +1615,17 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
     </button>
   );
   const linha = { display: "flex", gap: 8, flexShrink: 0 };
+  const som = entSom ? { ...entSom, id: cfg.som, disponivel: !["unavailable", "unknown"].includes(entSom.state) } : null;
   return (
     <Sheet titulo={`Controle · ${cfg.nome}`} onFechar={onFechar} topo={topo}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, ...(grande ? { flex: 1, minHeight: 0, justifyContent: "space-evenly" } : {}) }}>
         <div style={linha}>
           <BotaoAcao icon={Power} label="Desligar" cor={C.vermelho} disabled={ind} onClick={() => { toque(); enviar("media_player", "turn_off", cfg.tv); onFechar(); }} />
-          <BotaoAcao icon={Home} label="Início" cor={C.cinza} onClick={() => tecla("HOME")} />
           <BotaoAcao icon={Undo2} label="Voltar" cor={C.cinza} onClick={() => tecla("BACK")} />
-          <BotaoAcao icon={Menu} label="Menu" cor={C.cinza} onClick={() => tecla("MENU")} />
+          <BotaoAcao icon={Home} label="Início" cor={C.cinza} onClick={() => tecla("HOME")} />
         </div>
         {/* Direcional: setas em volta do OK. */}
-        <div style={{ alignSelf: "center", width: grande ? "min(78vw, 32dvh, 300px)" : 220, aspectRatio: "1 / 1", borderRadius: 999, background: C.card, border: `1px solid ${C.linha}`,
+        <div style={{ alignSelf: "center", width: grande ? "min(70vw, 28dvh, 280px)" : 210, aspectRatio: "1 / 1", borderRadius: 999, background: C.card, border: `1px solid ${C.linha}`,
           boxShadow: "0 6px 18px #0001", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gridTemplateRows: "1fr 1fr 1fr", flexShrink: 0 }}>
           <div /> {seta("DPAD_UP", ChevronUp, "Para cima")} <div />
           {seta("DPAD_LEFT", ChevronLeft, "Para a esquerda")}
@@ -1625,15 +1633,25 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
           {seta("DPAD_RIGHT", ChevronRight, "Para a direita")}
           <div /> {seta("DPAD_DOWN", ChevronDown, "Para baixo")} <div />
         </div>
+        {/* Volume do receiver: arrasta e solta; o alto-falante liga/desliga o mudo. */}
+        {som && (
+          <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: "4px 12px", flexShrink: 0 }}>
+            <BarraVolume e={som} enviar={enviar} onSoltar={(v) => { toque(); enviar("media_player", "volume_set", cfg.som, { volume_level: Math.min(TV_VOL_MAX, v) }); }} />
+          </div>
+        )}
         <div style={linha}>
-          <BotaoAcao icon={Minus} label="Volume" cor={C.cinza} onClick={() => som("volume_down")} />
-          <BotaoAcao icon={mudo ? Volume2 : VolumeX} label={mudo ? "Tirar mudo" : "Mudo"} cor={C.ambar} onClick={() => som("volume_mute", { is_volume_muted: !mudo })} />
-          <BotaoAcao icon={Plus} label="Volume" cor={C.pasto} onClick={() => som("volume_up")} />
+          <BotaoAcao icon={Rewind} label="Retroceder" cor={C.cinza} onClick={() => tecla("MEDIA_REWIND")} />
+          <BotaoAcao icon={Play} label="Play / Pausa" cor={LAGO} onClick={() => tecla("MEDIA_PLAY_PAUSE")} />
+          <BotaoAcao icon={FastForward} label="Avançar" cor={C.cinza} onClick={() => tecla("MEDIA_FAST_FORWARD")} />
         </div>
         <div style={linha}>
-          <BotaoAcao icon={ChevronDown} label="Canal" cor={C.cinza} onClick={() => tecla("CHANNEL_DOWN")} />
-          <BotaoAcao icon={Play} label="Play / Pausa" cor={LAGO} onClick={() => tecla("MEDIA_PLAY_PAUSE")} />
-          <BotaoAcao icon={ChevronUp} label="Canal" cor={C.pasto} onClick={() => tecla("CHANNEL_UP")} />
+          {TV_APPS.map((a) => (
+            <button key={a.nome} onClick={() => app(a.id)} disabled={ind} aria-label={`Abrir ${a.nome}`}
+              style={{ flex: 1, minWidth: 0, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "8px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", opacity: ind ? 0.5 : 1 }}>
+              <span style={{ height: 24, display: "flex", alignItems: "center" }}>{a.marca}</span>
+              <span className="truncate" style={{ fontSize: 12, fontWeight: 700, color: C.terra, maxWidth: "100%" }}>{a.nome}</span>
+            </button>
+          ))}
         </div>
       </div>
     </Sheet>
