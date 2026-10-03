@@ -2460,10 +2460,22 @@ function IconeCascata({ size = 24, strokeWidth = 2, ...props }) {
     </svg>
   );
 }
+// Chafariz: também não existe no lucide. Bacia embaixo, coluna, taça em cima e o jato de água.
+function IconeChafariz({ size = 24, strokeWidth = 2, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 10V3" />
+      <path d="M12 3C9.5 3 7.5 4.8 7 8M12 3c2.5 0 4.5 1.8 5 5" />
+      <path d="M6 10h12c0 2-2.7 3.5-6 3.5S6 12 6 10z" />
+      <path d="M12 13.5V17M7.5 14.5v1.5M16.5 14.5v1.5" />
+      <path d="M3 17h18c0 2.5-2 4-4.5 4h-9C5 21 3 19.5 3 17z" />
+    </svg>
+  );
+}
 // Ícone pela finalidade, a partir do nome (vale em qualquer cômodo).
 const ICONE_POR_NOME = [
   [/borda/, WavesLadder, "lago"], [/cascata/, IconeCascata, "lago"], [/filtro/, Funnel, "lago"],
-  [/hidro/, Bubbles, "lago"], [/aquec/, Flame, "ambar"], [/coifa/, AirVent, "lago"], [/abajur/, LampDesk, "ambar", true],
+  [/hidro/, Bubbles, "lago"], [/aquec/, Flame, "ambar"], [/coifa/, AirVent, "lago"], [/chafariz/, IconeChafariz, "lago"], [/abajur/, LampDesk, "ambar", true],
 ];
 
 function visualEquip(e) {
