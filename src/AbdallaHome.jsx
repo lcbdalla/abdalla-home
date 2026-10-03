@@ -1122,6 +1122,13 @@ ${link}?instalar=1`;
 function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   const [novo, setNovo] = useState(false);
   const [visitante, setVisitante] = useState(false);
+  const [senhaPara, setSenhaPara] = useState(null); // pessoa recebendo senha nova
+  // E-mail de cada pessoa: fica no Auth; a função emails_equipe (supabase/sql/equipe-email-senha.sql) só responde ao admin.
+  const [emails, setEmails] = useState({});
+  useEffect(() => {
+    if (!souAdmin) return;
+    supabase.rpc("emails_equipe").then(({ data }) => { if (Array.isArray(data)) setEmails(Object.fromEntries(data.map((x) => [x.id, x.email]))); });
+  }, [souAdmin, users.length]);
   const editar = async (id, campo, valor) => {
     const { error } = await supabase.from("perfis").update({ [campo]: valor }).eq("id", id);
     if (error) { showToast("Erro ao salvar: " + error.message); return; }
@@ -1155,17 +1162,26 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
             <div className="flex items-center gap-2">
               <button onClick={() => souAdmin && alternarPapel(u)} title="Trocar função" disabled={!souAdmin} style={{ background: u.papel === "admin" ? C.ambarClaro : C.pastoClaro, borderRadius: 9, padding: 7 }}>{u.papel === "admin" ? <Star size={17} style={{ color: C.ambar }} /> : <User size={17} style={{ color: C.pasto }} />}</button>
               {souAdmin ? (
-                <input key={"n" + u.id + u.nome} defaultValue={u.nome} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== u.nome) editar(u.id, "nome", v); }} placeholder="Nome da pessoa" style={{ flex: 1, border: "none", background: "transparent", fontWeight: 600, fontSize: 15, outline: "none" }} />
+                <input key={"n" + u.id + u.nome} defaultValue={u.nome} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== u.nome) editar(u.id, "nome", v); }} placeholder="Nome da pessoa" style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", fontWeight: 600, fontSize: 15, outline: "none" }} />
               ) : (
-                <div style={{ flex: 1, fontWeight: 600, fontSize: 15 }}>{u.nome}</div>
+                <div className="truncate" style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 15 }}>{u.nome}</div>
               )}
-              <span style={{ color: C.cinzaClaro, fontSize: 12 }}>{(u.papel === "visitante" && u.expiraEm && Date.now() > u.expiraEm) ? "Visitante (expirado)" : papelLabel(u.papel)}</span>
+              <span style={{ color: C.cinzaClaro, fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}>{(u.papel === "visitante" && u.expiraEm && Date.now() > u.expiraEm) ? "Visitante (expirado)" : papelLabel(u.papel)}</span>
               {souAdmin && u.id !== euId && u.papel !== "visitante" && (
                 <a href={linkConviteWhats(u)} target="_blank" rel="noreferrer" title="Enviar convite pelo WhatsApp" aria-label={`Enviar convite para ${u.nome} pelo WhatsApp`}
-                  style={{ color: C.pasto, padding: 4, display: "flex" }}><MessageCircle size={17} /></a>
+                  style={{ color: C.pasto, padding: 4, display: "flex", flexShrink: 0 }}><MessageCircle size={17} /></a>
               )}
-              {souAdmin && u.id !== euId && <button onClick={() => remover(u)} title="Remover pessoa" style={{ color: C.vermelho, padding: 4 }}><Trash2 size={16} /></button>}
+              {souAdmin && u.id !== euId && <button onClick={() => remover(u)} title="Remover pessoa" style={{ color: C.vermelho, padding: 4, flexShrink: 0 }}><Trash2 size={16} /></button>}
             </div>
+            {souAdmin && u.papel !== "visitante" && (
+              <div className="flex items-center gap-2 mt-1" style={{ paddingLeft: 40 }}>
+                <Mail size={13} style={{ color: C.cinzaClaro, flexShrink: 0 }} />
+                <div className="truncate" style={{ flex: 1, minWidth: 0, fontSize: 13, color: C.cinza }}>{emails[u.id] || "—"}</div>
+                <button onClick={() => setSenhaPara(u)} className="flex items-center gap-1" style={{ flexShrink: 0, background: C.pastoClaro, color: C.pastoEsc, borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 700 }}>
+                  <KeyRound size={13} /> Nova senha
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-2 mt-1" style={{ paddingLeft: 40 }}>
               <Smartphone size={13} style={{ color: C.cinzaClaro }} />
               {souAdmin ? (
@@ -1212,7 +1228,61 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
       })}
       {novo && <NovaPessoaSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setNovo(false)} />}
       {visitante && <VisitanteSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setVisitante(false)} />}
+      {senhaPara && <NovaSenhaSheet u={senhaPara} email={emails[senhaPara.id]} showToast={showToast} onFechar={() => setSenhaPara(null)} />}
     </div>
+  );
+}
+
+// Senha nova para alguém da equipe (admin): já vem uma sugestão fácil; depois de salvar, mostra
+// os dados e envia pelo WhatsApp, como no "Pessoa adicionada".
+function NovaSenhaSheet({ u, email, showToast, onFechar }) {
+  const [senha, setSenha] = useState(gerarSenha);
+  const [salvando, setSalvando] = useState(false), [erro, setErro] = useState(""), [feito, setFeito] = useState(false);
+  const primeiro = String(u.nome || "").split(" ")[0];
+  const salvar = async () => {
+    const v = senha.trim();
+    if (v.length < 6) { setErro("A senha precisa ter pelo menos 6 caracteres."); return; }
+    setSalvando(true); setErro("");
+    const { error } = await supabase.rpc("definir_senha", { p_user: u.id, p_senha: v });
+    setSalvando(false);
+    if (error) { setErro(/definir_senha/.test(error.message) ? "Falta rodar o SQL equipe-email-senha.sql no Supabase." : error.message); return; }
+    setSenha(v); setFeito(true);
+  };
+  if (feito) {
+    const link = new URL(import.meta.env.BASE_URL, window.location.href).href;
+    const msg = `Olá, ${primeiro}! Sua nova senha do app do Rancho Abdalla:\n\n${link}\n\n${email ? `E-mail: ${email}\n` : ""}Senha: ${senha}`;
+    const fone = String(u.telefone || "").replace(/\D/g, "");
+    const whats = "https://wa.me/" + (fone ? (fone.length <= 11 ? "55" + fone : fone) : "") + "?text=" + encodeURIComponent(msg);
+    const copiar = async () => { try { await navigator.clipboard.writeText(msg); showToast("Dados copiados"); } catch { showToast("Não foi possível copiar"); } };
+    return (
+      <Sheet titulo="Senha alterada" onFechar={onFechar}>
+        <div className="text-center py-2">
+          <CheckCircle2 size={44} style={{ color: C.pasto, display: "inline" }} />
+          <div className="font-bold text-lg mt-2">Nova senha de {primeiro}</div>
+        </div>
+        <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, fontSize: 14 }} className="px-3 py-1 my-3">
+          {email && <div className="flex justify-between gap-3 py-2"><span style={{ color: C.cinza }}>E-mail</span><span className="font-bold" style={{ wordBreak: "break-all", textAlign: "right" }}>{email}</span></div>}
+          <div className="flex justify-between gap-3 py-2" style={{ borderTop: email ? `1px solid ${C.bg}` : "none" }}><span style={{ color: C.cinza }}>Senha</span><span className="font-bold">{senha}</span></div>
+        </div>
+        <a href={whats} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16, textDecoration: "none", boxSizing: "border-box" }}><MessageCircle size={19} /> Enviar pelo WhatsApp</a>
+        <button onClick={copiar} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.card, color: C.terra, border: `1px solid ${C.linha}`, borderRadius: 12, padding: 13, fontWeight: 600 }}><Copy size={17} /> Copiar dados</button>
+        <button onClick={onFechar} style={{ width: "100%", color: C.cinza, padding: 12, fontWeight: 600 }}>Concluir</button>
+      </Sheet>
+    );
+  }
+  return (
+    <Sheet titulo={`Nova senha · ${u.nome}`} onFechar={onFechar}>
+      <Campo label="Nova senha">
+        <div className="flex gap-2">
+          <input value={senha} onChange={(e) => setSenha(e.target.value)} style={{ ...inpSt, flex: 1, minWidth: 0 }} />
+          <button onClick={() => setSenha(gerarSenha())} title="Sugerir outra" aria-label="Sugerir outra senha" style={{ flexShrink: 0, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "0 12px", color: C.terra }}><RefreshCw size={17} /></button>
+        </div>
+      </Campo>
+      {erro && <div style={{ color: C.vermelho, fontSize: 13.5, marginBottom: 8 }}>{erro}</div>}
+      <button onClick={salvar} disabled={salvando} className="flex items-center justify-center gap-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16, opacity: salvando ? 0.6 : 1 }}>
+        <KeyRound size={18} /> {salvando ? "Salvando…" : "Salvar nova senha"}
+      </button>
+    </Sheet>
   );
 }
 
