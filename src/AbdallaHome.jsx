@@ -2098,7 +2098,8 @@ function MenuPontinhos({ aberto, setAberto, itens }) {
 }
 
 /* ---- Nomes das entradas do amplificador AAT (o comando continua usando "Entrada N") ---- */
-const FONTE_NOME_AAT = { "Entrada 1": "TV", "Entrada 2": "Som Térreo", "Entrada 4": "Som Subsolo" };
+// Só estas entradas aparecem na lista "Fonte" das zonas, nesta ordem e com estes nomes.
+const FONTE_NOME_AAT = { "Entrada 1": "TV", "Entrada 2": "Som Térreo", "Entrada 4": "Som Subsolo", "Entrada 5": "Som Térreo 1" };
 const ehZonaAAT = (id) => String(id || "").startsWith("media_player.aat_pmr7_zona_");
 const nomeFonte = (e, f) => (ehZonaAAT(e?.id) && FONTE_NOME_AAT[f]) || f;
 // Entradas do amplificador que vêm de um streamer AAT: com a zona nessa fonte, o controle do
@@ -2378,7 +2379,10 @@ const estaLigado = (e) => {
 const midiaRecursos = (e) => {
   const f = Number(e?.attributes?.supported_features) || 0;
   const tem = (bits) => f === 0 || (f & bits) !== 0;
-  const fontes = Array.isArray(e?.attributes?.source_list) ? e.attributes.source_list : [];
+  const lista = Array.isArray(e?.attributes?.source_list) ? e.attributes.source_list : [];
+  // Zonas do AAT: só as entradas usadas (a que estiver tocando também aparece, para a lista não mentir).
+  const fontes = ehZonaAAT(e?.id) ? Object.keys(FONTE_NOME_AAT).filter((f) => lista.includes(f) || f === e.attributes?.source)
+    .concat(e.attributes?.source && !FONTE_NOME_AAT[e.attributes.source] ? [e.attributes.source] : []) : lista;
   return { liga: tem(128 | 256), play: tem(1 | 16384), volSet: tem(4), fonte: (f & 2048) !== 0 && fontes.length > 0, fontes };
 };
 const servicoDesligar = (e) => (e.tipo === "ar" ? ["climate", "turn_off"]
