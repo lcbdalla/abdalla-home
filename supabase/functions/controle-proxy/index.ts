@@ -130,7 +130,10 @@ Deno.serve(async (req) => {
     if (!ENTIDADE.test(entity) || !NOME.test(domain) || !NOME.test(service)) return json({ error: "Comando inválido." }, 400);
     if (!cadastrados.has(entity)) return json({ error: "Este aparelho não está liberado no controle." }, 403);
     const doProprioTipo = domain === entity.split(".")[0];
-    const generico = domain === "homeassistant" && GENERICOS.includes(service);
+    // Única exceção de "recarregar integração": a da mesa XR18 (pela entidade dela), que demora a
+    // reconectar sozinha depois que o plug liga.
+    const recarregarMesa = domain === "homeassistant" && service === "reload_config_entry" && entity === "number.main_fader";
+    const generico = (domain === "homeassistant" && GENERICOS.includes(service)) || recarregarMesa;
     if (!doProprioTipo && !generico) return json({ error: "Comando não permitido para este aparelho." }, 403);
 
     const dados = (body.data && typeof body.data === "object" && !Array.isArray(body.data)) ? { ...body.data } : {};

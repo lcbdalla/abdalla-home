@@ -2919,7 +2919,7 @@ function PainelMesa({ e, enviar }) {
         <span className="flex-1" style={{ fontSize: 13.5, fontWeight: 800, color: C.terra }}>Mesa de som</span>
         {!pronta && (
           <span className={plug?.state === "on" ? "ah-pisca" : ""} style={{ fontSize: 12.5, fontWeight: 700, color: C.cinza }}>
-            {!plug ? "Sem sinal do plug" : plug.state === "on" ? "Ligando a mesa…" : "Mesa desligada"}
+            {!plug ? "Sem sinal do plug" : plug.state === "on" ? "Ligando a mesa (até 1 min)…" : "Mesa desligada"}
           </span>
         )}
         {!pronta && plug && plug.state !== "on" && <button onClick={() => enviar("switch", "turn_on", cfg.plug)} style={{ background: LAGO, color: "#fff", border: "none", borderRadius: 10, padding: "5px 10px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Ligar</button>}
@@ -4140,6 +4140,19 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Spotify conecta nele. Então: escolhe o aparelho, espera o estado mostrar a conexão e segue.
   const entsRef = useRef(entsVis);
   entsRef.current = entsVis;
+  // Mesa XR18: a integração do HA leva ~6 min para reconectar sozinha depois que o plug liga.
+  // Com o plug ligado e a mesa ainda sem sinal, o app pede ao HA para recarregar a integração
+  // (aos 32 s, 50 s e 70 s, só enquanto ela não aparece) — assim a mesa surge em menos de 1 min.
+  const plugMesa = entsVis[MESA_TV.plug]?.state;
+  const semMesa = (v) => !v || ["unavailable", "unknown"].includes(v.state);
+  const mesaFora = semMesa(entsVis["number.main_fader"]);
+  useEffect(() => {
+    if (plugMesa !== "on" || !mesaFora) return;
+    const ts = [32000, 50000, 70000].map((ms) => setTimeout(() => {
+      if (semMesa(entsRef.current["number.main_fader"])) enviar("homeassistant", "reload_config_entry", "number.main_fader");
+    }, ms));
+    return () => ts.forEach(clearTimeout);
+  }, [plugMesa, mesaFora]); // eslint-disable-line react-hooks/exhaustive-deps
   const conectarSpotify = (spId, connect, depois) => {
     if (!spId || !connect) return;
     enviar("media_player", "select_source", spId, { source: connect });
