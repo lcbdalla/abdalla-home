@@ -2018,7 +2018,8 @@ function juntarZonasDoComodo(itens) {
   const algumaLigada = ord.some((z) => z.state === "on");
   // O principal é a primeira zona ligada (ou a de menor número); dele vêm volume e fonte.
   const base = ord.find((z) => z.state === "on") || ord[0];
-  const unico = { ...base, nome: "Som", state: algumaLigada ? "on" : base.state, zonasComodo: ord.map((z) => z.id) };
+  // dbId fixo (o da 1ª zona) e a lista das zonas de dentro, para o arrasto mover todas juntas.
+  const unico = { ...base, dbId: ord[0].dbId, tamanho: ord[0].tamanho, nome: "Som", state: algumaLigada ? "on" : base.state, zonasComodo: ord.map((z) => z.id), dbIdsZonas: ord.map((z) => z.dbId) };
   const pos = itens.findIndex((x) => ehZonaAAT(x.id));
   const fora = itens.filter((x) => !ehZonaAAT(x.id));
   fora.splice(pos, 0, unico);
@@ -3763,12 +3764,15 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     onNomeEquip: (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id)),
     onDelEquip: (id) => salvar(supabase.from("controle_equipamentos").delete().eq("id", id)),
     onReordenar: async (idsTela0) => {
-      const idsTela = idsTela0.flatMap((id) => gruposRef.current[id] || [id]);
+      const expandir = (lista) => lista.flatMap((id) => gruposRef.current[id] || [id]);
+      const idsTela = expandir(idsTela0);
       // O som ligado aparece em 1º só enquanto toca: ao salvar, ele volta para a posição que tinha.
-      const somOn = idsTela.find((id) => { const q = equipamentos.find((x) => x.id === id); return q && ehZonaAAT(q.entity_id) && entsVis[q.entity_id]?.state === "on"; });
-      const ids = somOn && idsTela[0] === somOn ? (() => {
-        const resto = idsTela.slice(1), antes = equipamentos.filter((x) => resto.includes(x.id) || x.id === somOn).sort((x, y) => x.ordem - y.ordem).map((x) => x.id);
-        const pos = Math.min(antes.indexOf(somOn), resto.length); resto.splice(pos, 0, somOn); return resto;
+      const prim = expandir(idsTela0.slice(0, 1));
+      const somOn = prim.some((id) => { const q = equipamentos.find((x) => x.id === id); return q && ehZonaAAT(q.entity_id) && entsVis[q.entity_id]?.state === "on"; });
+      const ids = somOn ? (() => {
+        const resto = expandir(idsTela0.slice(1));
+        const antes = equipamentos.filter((x) => resto.includes(x.id) || prim.includes(x.id)).sort((x, y) => x.ordem - y.ordem).map((x) => x.id);
+        const pos = Math.min(antes.findIndex((id) => prim.includes(id)), resto.length); resto.splice(pos, 0, ...prim); return resto;
       })() : idsTela;
       try { await Promise.all(ids.map((id, i) => supabase.from("controle_equipamentos").update({ ordem: i }).eq("id", id))); }
       catch { setAviso({ erro: true, texto: "Não consegui salvar a nova ordem." }); }
@@ -3868,6 +3872,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Cartões de grupo (persianas): recebem a previsão e anotam os aparelhos de dentro, para o
   // arrasto mover o grupo inteiro.
   const comGrupos = (itens) => itens.map((x) => {
+    if (x.dbIdsZonas) { gruposRef.current[x.dbId] = x.dbIdsZonas; return x; }
     if (x.tipo === "grupoLuzes" || x.tipo === "grupoBotoes") { gruposRef.current[x.dbId] = x.membros.map((m) => m.dbId); return x; }
     if (x.tipo !== "grupoPersianas") return x;
     gruposRef.current[x.dbId] = [...(x.mestre ? [x.mestre.dbId] : []), ...x.membros.map((m) => m.dbId)];
