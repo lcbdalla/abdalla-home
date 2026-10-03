@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -513,6 +513,14 @@ export default function App() {
     return () => { vivo = false; clearInterval(iv); document.removeEventListener("visibilitychange", aoVoltar); };
   }, []);
 
+  // Família (quem tem o Controle e não é colaborador): o app abre direto no Controle da Casa.
+  const abriuControle = useRef(false);
+  useEffect(() => {
+    if (abriuControle.current || !eu) return;
+    abriuControle.current = true;
+    if (!window.location.hash && eu.papel !== "colaborador" && (eu.podeControle || eu.podeGerirControle)) window.location.hash = "controle";
+  }, [eu]);
+
   const atualizarAgora = async () => {
     try { if ("caches" in window) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } } catch { /* ok */ }
     try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); } catch { /* ok */ }
@@ -704,19 +712,20 @@ export default function App() {
     <div style={{ background: C.tela, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
       <div className="mx-auto" style={{ maxWidth: 460, position: "relative", minHeight: "100vh", paddingBottom: 88 }}>
 
-        <header style={{ background: C.cabecalho, color: "#fff", padding: "14px 16px 14px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22 }}>
+        {/* Cabeçalho fixo no alto (não rola com a tela). */}
+        <header style={{ background: C.cabecalho, color: "#fff", padding: "14px 16px 14px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22, position: "sticky", top: 0, zIndex: 45 }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div style={{ background: "#ffffff22", borderRadius: 12, padding: 7 }}><MapPin size={20} /></div>
               <div><div className="font-bold text-lg leading-tight">Abdalla Home</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">Rancho Abdalla</div></div>
             </div>
             <div className="flex items-center gap-2">
+              {(eu?.podeControle || eu?.podeGerirControle) && <BotaoTrocarTela para="Controle da Casa" onClick={() => { window.location.hash = "controle"; }} />}
               <BotaoTempo />
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
                 ...(souAdmin ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: () => setAba("equipe") }] : []),
                 { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: alternarTema },
-                ...(eu?.podeControle ? [{ key: "controle", icon: Home, cor: C.lago, txt: "Controle da casa", on: () => { window.location.hash = "controle"; } }] : []),
                 ...(souAdmin ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: () => setInfoAberto(true) }] : []),
                 { key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) sair(); } },
               ]} />
@@ -1949,6 +1958,13 @@ function ArteTempo({ Icon, size = 72 }) {
 }
 
 // Botão do cabeçalho: ícone do céu + temperatura da estação.
+// Seta dupla no cabeçalho: alterna entre o app de Tarefas e o Controle da Casa.
+function BotaoTrocarTela({ para, onClick }) {
+  return (
+    <button onClick={onClick} title={`Ir para ${para}`} aria-label={`Ir para ${para}`}
+      style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex", color: "#fff" }}><ArrowLeftRight size={19} /></button>
+  );
+}
 function BotaoTempo() {
   const cl = useClima();
   const [aberto, setAberto] = useState(false);
@@ -4095,7 +4111,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   });
   const topoDoCabecalho = () => setTopoPortao(Math.max(0, Math.round(cabRef.current?.getBoundingClientRect().bottom || 0)) + 6);
   return (
-    <div style={{ background: C.tela, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "hidden", width: "100%" }}>
+    // overflowX "clip" (e não "hidden"): "hidden" impediria o cabeçalho de ficar fixo no alto.
+    <div style={{ background: C.tela, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "clip", width: "100%" }}>
       <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}@keyframes ah-pisca{50%{opacity:.2}}.ah-pisca{animation:ah-pisca .8s infinite}"}</style>
         <DialogHost />
@@ -4105,9 +4122,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         {portaAberta && <PortaModal ent={entsVis[PORTA_ID]} enviar={enviar} onFechar={() => setPortaAberta(false)} topo={topoPortao} cameras={camerasDe(PORTA_CAMERAS)} />}
         <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
-        <header ref={cabRef} style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18 }}>
+        <header ref={cabRef} style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18, position: "sticky", top: 0, zIndex: 45 }}>
           <div className="flex items-center gap-2">
-            {onVoltar && <button onClick={onVoltar} title="Voltar ao app de tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex" }}><ChevronLeft size={18} /></button>}
             <div style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex" }}><Home size={18} /></div>
             <div className="flex-1 min-w-0"><div className="font-bold leading-tight truncate" style={{ fontSize: 16 }}>Controle da Casa</div><div style={{ color: "#ffffffcc", fontSize: 11.5 }} className="leading-tight truncate">{modo === "gerenciar" ? "Organizando ambientes" : "Rancho Abdalla"}</div></div>
             {/* Configurando: o "Pronto" fica à vista para voltar; o resto mora no menu ⋮. */}
@@ -4117,6 +4133,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               <button key={t.tv} onClick={() => { topoDoCabecalho(); setTvAberta(t); }} title={`Controle da ${t.nome}`} aria-label={`Controle remoto da ${t.nome}`}
                 style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex", color: "#fff" }}><IconeControleRemoto size={20} /></button>
             ))}
+            {onVoltar && <BotaoTrocarTela para="Tarefas" onClick={onVoltar} />}
             <BotaoTempo />
             {/* O menu ⋮ só aparece para quem tem a chave "Menu ⋮ do Controle" ligada na Equipe. */}
             {eu?.podeMenuControle && (
@@ -4128,7 +4145,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
                 ...(onEquipe ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: onEquipe }] : []),
                 { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: () => { const n = tema === "dark" ? "light" : "dark"; aplicarTema(n); setTema(n); } },
-                ...(onVoltar ? [{ key: "tarefas", icon: ListTodo, cor: C.lago, txt: "Tarefas", on: onVoltar }] : []),
                 ...(onSobre ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: onSobre }] : []),
                 ...(onSair ? [{ key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) onSair(); } }] : []),
               ]} />
