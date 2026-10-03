@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -716,11 +716,13 @@ export default function App() {
         <header style={{ background: C.cabecalho, color: "#fff", padding: "14px 16px 14px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22, position: "sticky", top: 0, zIndex: 45 }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div style={{ background: "#ffffff22", borderRadius: 12, padding: 7 }}><MapPin size={20} /></div>
+              {/* Ícone de localização: leva ao Controle da Casa (quem tem acesso). */}
+              {(eu?.podeControle || eu?.podeGerirControle)
+                ? <button onClick={() => { window.location.hash = "controle"; }} title="Ir para o Controle da Casa" aria-label="Ir para o Controle da Casa" style={{ background: "#ffffff22", borderRadius: 12, padding: 7, display: "flex", color: "#fff" }}><MapPin size={20} /></button>
+                : <div style={{ background: "#ffffff22", borderRadius: 12, padding: 7 }}><MapPin size={20} /></div>}
               <div><div className="font-bold text-lg leading-tight">Abdalla Home</div><div style={{ color: "#ffffffcc" }} className="text-xs leading-tight">Rancho Abdalla</div></div>
             </div>
             <div className="flex items-center gap-2">
-              {(eu?.podeControle || eu?.podeGerirControle) && <BotaoTrocarTela para="Controle da Casa" onClick={() => { window.location.hash = "controle"; }} />}
               <BotaoTempo />
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
@@ -1958,13 +1960,6 @@ function ArteTempo({ Icon, size = 72 }) {
 }
 
 // Botão do cabeçalho: ícone do céu + temperatura da estação.
-// Seta dupla no cabeçalho: alterna entre o app de Tarefas e o Controle da Casa.
-function BotaoTrocarTela({ para, onClick }) {
-  return (
-    <button onClick={onClick} title={`Ir para ${para}`} aria-label={`Ir para ${para}`}
-      style={{ background: "#ffffff22", borderRadius: 10, padding: 7, display: "flex", color: "#fff" }}><ArrowLeftRight size={19} /></button>
-  );
-}
 function BotaoTempo() {
   const cl = useClima();
   const [aberto, setAberto] = useState(false);
@@ -4124,7 +4119,10 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
         <header ref={cabRef} style={{ background: C.cabecalho, color: "#fff", padding: "10px 12px", borderBottomLeftRadius: 18, borderBottomRightRadius: 18, position: "sticky", top: 0, zIndex: 45 }}>
           <div className="flex items-center gap-2">
-            <div style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex" }}><Home size={18} /></div>
+            {/* Casinha: volta ao app de Tarefas (quem tem). */}
+            {onVoltar
+              ? <button onClick={onVoltar} title="Ir para as Tarefas" aria-label="Ir para as Tarefas" style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex", color: "#fff" }}><Home size={18} /></button>
+              : <div style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex" }}><Home size={18} /></div>}
             <div className="flex-1 min-w-0"><div className="font-bold leading-tight truncate" style={{ fontSize: 16 }}>Controle da Casa</div><div style={{ color: "#ffffffcc", fontSize: 11.5 }} className="leading-tight truncate">{modo === "gerenciar" ? "Organizando ambientes" : "Rancho Abdalla"}</div></div>
             {/* Configurando: o "Pronto" fica à vista para voltar; o resto mora no menu ⋮. */}
             {modo === "gerenciar" && <button onClick={() => setModo("usar")} title="Terminar de configurar" style={{ background: "#ffffff33", borderRadius: 10, padding: "7px 11px", display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 700 }}><Check size={16} /> Pronto</button>}
@@ -4133,7 +4131,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               <button key={t.tv} onClick={() => { topoDoCabecalho(); setTvAberta(t); }} title={`Controle da ${t.nome}`} aria-label={`Controle remoto da ${t.nome}`}
                 style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex", color: "#fff" }}><IconeControleRemoto size={20} /></button>
             ))}
-            {onVoltar && <BotaoTrocarTela para="Tarefas" onClick={onVoltar} />}
             <BotaoTempo />
             {/* O menu ⋮ só aparece para quem tem a chave "Menu ⋮ do Controle" ligada na Equipe. */}
             {eu?.podeMenuControle && (
