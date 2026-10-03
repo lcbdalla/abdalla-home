@@ -1494,7 +1494,8 @@ const rotulo = (e, chave, padrao) => (e?.rotulos && e.rotulos[chave]) || padrao;
 // Só guardamos/ouvimos estes domínios: evita a enxurrada de eventos de câmeras,
 // sensores e switches de rede (isso causava lentidão / "lag" na tela).
 // As câmeras não entram em HA_SHOW (geram muitos eventos); só as do portão são acompanhadas.
-const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+const ehTomAAT = (id) => /^number\.aat_pmr7_zona_\d+_(graves|agudos|balanco)$/.test(id);
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button", "remote"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
@@ -2136,6 +2137,7 @@ function previsto(service, v, data = {}) {
       return Object.keys(at).length ? { state: "on", attributes: at } : { state: "on" };
     }
     case "turn_off": return { state: "off" };
+    case "set_value": return data.value != null ? { state: String(data.value) } : null; // number (agudo/grave/balanço)
     case "volume_mute": return { attributes: { is_volume_muted: !!data.is_volume_muted } };
     case "select_source": return { attributes: { source: data.source } };
     case "volume_up": return vol(0.05);
@@ -2535,7 +2537,7 @@ function CtrlInterruptor({ e, enviar, cardClicavel }) {
 const luzAjustavel = (e) => e.tipo === "interruptor" && String(e.id).startsWith("light.")
   && (e.attributes?.supported_color_modes || []).some((m) => m !== "onoff");
 // Barra que só manda o valor ao soltar (não inunda o Zigbee a cada passo).
-function BarraLuz({ valor, min, max, step, rotulo, Icone, trilha, fmt, onSoltar }) {
+function BarraLuz({ valor, min, max, step, rotulo, Icone, etiqueta, trilha, fmt, onSoltar }) {
   const ref = useRef(null), [local, setLocal] = useState(null);
   const soltarRef = useRef(onSoltar); soltarRef.current = onSoltar;
   useEffect(() => {
@@ -2547,10 +2549,10 @@ function BarraLuz({ valor, min, max, step, rotulo, Icone, trilha, fmt, onSoltar 
   const v = local ?? valor, pct = ((v - min) / (max - min)) * 100;
   return (
     <div className="flex items-center gap-2">
-      <Icone size={20} style={{ color: C.cinza, flexShrink: 0 }} />
+      {etiqueta ? <span style={{ width: 58, flexShrink: 0, fontSize: 13, fontWeight: 700, color: C.cinza }}>{etiqueta}</span> : <Icone size={20} style={{ color: C.cinza, flexShrink: 0 }} />}
       <input ref={ref} type="range" min={min} max={max} step={step} value={v} aria-label={rotulo} className="ah-vol"
         onInput={(ev) => setLocal(Number(ev.target.value))} onChange={(ev) => setLocal(Number(ev.target.value))}
-        style={{ flex: 1, minWidth: 0, "--cor": C.ambar, "--trilha": trilha(pct) }} />
+        style={{ flex: 1, minWidth: 0, "--cor": etiqueta ? LAGO : C.ambar, "--trilha": trilha(pct) }} />
       <span style={{ width: 52, textAlign: "right", fontSize: 14, fontWeight: 800, color: C.terra, fontVariantNumeric: "tabular-nums" }}>{fmt(v)}</span>
     </div>
   );
@@ -2840,6 +2842,45 @@ function PainelStreamer({ s: st, enviar }) {
           {tem(32) && bt(() => enviar("media_player", "media_next_track", st.id), SkipForward, "Próxima faixa")}
         </div>
       )}
+    </div>
+  );
+}
+
+// Ajustes de som de cada zona do AAT (abre tocando no ícone do cartão): Agudo e Grave de −7 a +7
+// (no aparelho 0–14, 7 = neutro) e Balanço de esquerda a direita (0–20, 10 = centro).
+// Entram as zonas do cartão e as que estão tocando junto (sincronizadas).
+const TONS_AAT = [
+  ["agudos", "Agudo", 14, (v) => (v === 7 ? "0" : v > 7 ? `+${v - 7}` : `−${7 - v}`)],
+  ["graves", "Grave", 14, (v) => (v === 7 ? "0" : v > 7 ? `+${v - 7}` : `−${7 - v}`)],
+  ["balanco", "Balanço", 20, (v) => (v === 10 ? "Centro" : v < 10 ? `E ${10 - v}` : `D ${v - 10}`)],
+];
+function PainelTomAAT({ e, enviar }) {
+  const ids = e.zonasComodo || [e.id];
+  const juntas = (e.zonas || []).filter((z) => !ids.includes(z.id) && z.state === "on" && e.attributes?.source && z.attributes?.source === e.attributes.source).map((z) => z.id);
+  const nomeDe = (id) => (e.zonas || []).find((z) => z.id === id)?.nome || id;
+  const cinza = alfa(C.cinzaClaro, 30);
+  return (
+    <div onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {[...ids, ...juntas].map((zid) => {
+        const n = String(zid).split("_").pop();
+        return (
+          <div key={zid} style={{ background: alfa(LAGO, 8), border: `1px solid ${alfa(LAGO, 22)}`, borderRadius: 14, padding: "8px 12px" }}>
+            <div className="truncate" style={{ fontSize: 13.5, fontWeight: 800, color: C.terra, marginBottom: 2 }}>{nomeDe(zid)}</div>
+            {TONS_AAT.map(([chave, rot, max, fmt]) => {
+              const id = `number.aat_pmr7_zona_${n}_${chave}`, ent = e.tons?.[id];
+              if (!ent) return null;
+              const meio = max / 2;
+              return (
+                <BarraLuz key={chave} valor={Number(ent.state) || 0} min={0} max={max} step={1} rotulo={`${rot} · ${nomeDe(zid)}`} etiqueta={rot} fmt={fmt}
+                  // trilha cheia do centro até o valor (neutro = sem cor)
+                  trilha={(pct) => { const c = (meio / max) * 100, a = Math.min(c, pct), b = Math.max(c, pct);
+                    return `linear-gradient(to right, ${cinza} ${a}%, ${LAGO} ${a}%, ${LAGO} ${b}%, ${cinza} ${b}%)`; }}
+                  onSoltar={(v) => enviar("number", "set_value", id, { value: v })} />
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -3231,6 +3272,7 @@ function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
 }
 
 function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
+  const [tomAberto, setTomAberto] = useState(false); // ajustes de som (zonas do AAT)
   if (e.tipo === "grupoBotoes") return <CartaoGrupoBotoes e={e} enviar={enviar} />;
   if (e.tipo === "grupoLuzes") return <CartaoGrupoLuzes e={e} enviar={enviar} aberto={expandido} onAlternar={onExpandir} editando={editando} />;
   if (e.tipo === "grupoPersianas") return <CartaoGrupoPersianas e={e} enviar={enviar} aberto={expandido} onAlternar={onExpandir} editando={editando} />;
@@ -3250,7 +3292,10 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
         borderRadius: 16, height: "100%", padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10,
         cursor: cardClick ? "pointer" : "default", transition: "background .25s, border-color .25s" }}>
       <div className="flex items-center" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ gap: 8, cursor: compactavel && !editando ? "pointer" : "default" }}>
-        <IconeEquip v={v} disponivel={e.disponivel} />
+        {ehZonaAAT(e.id) && e.tons && !editando
+          ? <button onClick={(ev) => { ev.stopPropagation(); setTomAberto((x) => !x); }} onPointerDown={(ev) => ev.stopPropagation()} aria-label={tomAberto ? "Fechar ajustes de som" : "Ajustes de som (agudo, grave e balanço)"} aria-expanded={tomAberto}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", flexShrink: 0, borderRadius: 12, outline: tomAberto ? `2px solid ${LAGO}` : "none", outlineOffset: 2 }}><IconeEquip v={v} disponivel={e.disponivel} /></button>
+          : <IconeEquip v={v} disponivel={e.disponivel} />}
         <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" }}>{e.nome}</div>
         {e.tipo === "alexa" && (() => {
           const tocando = e.state === "playing", ligada = ["playing", "paused"].includes(e.state);
@@ -3280,6 +3325,8 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
         )}
         {compactavel && !grande && !editando && <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: expandido ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />}
       </div>
+      {/* Ajustes de som logo abaixo do título (abre/fecha pelo ícone). */}
+      {tomAberto && ehZonaAAT(e.id) && <PainelTomAAT e={e} enviar={enviar} />}
       {compacto
         ? (e.tipo === "ar" ? <CtrlArCompacto e={e} enviar={enviar} /> : <CtrlPersianaCompacto e={e} enviar={enviar} />)
         : <EquipControle e={e} enviar={enviar} cardClicavel={e.tipo === "interruptor" && !!cardClick} />}
@@ -4078,6 +4125,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   };
   // As 6 zonas do amplificador AAT (nome = cômodo, como estão no HA), para "Sincronizar ambientes".
   const nZona = (id) => Number(String(id).split("_").pop()) || 0;
+  const tonsAAT = Object.fromEntries(Object.entries(entsVis).filter(([id]) => ehTomAAT(id)));
   const zonasAAT = Object.keys(entsVis).filter(ehZonaAAT).sort((x, y) => nZona(x) - nZona(y)).map((id) => {
     const v = entsVis[id], st = v?.state;
     return { id, tipo: "tv", nome: v?.attributes?.friendly_name || id, state: st, attributes: v?.attributes || {}, disponivel: st != null && !["unavailable", "unknown"].includes(st) };
@@ -4126,6 +4174,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       disponivel: row.tipo === "botao" ? state != null && state !== "unavailable" : state != null && !["unavailable", "unknown", "none", ""].includes(state),
       streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : RECEIVERS_SOM[row.entity_id] ? streamerSpotify(RECEIVERS_SOM[row.entity_id]) : null,
       zonas: ehZonaAAT(row.entity_id) ? zonasAAT : null,
+      tons: ehZonaAAT(row.entity_id) ? tonsAAT : null,
     };
   };
   // Receiver com HEOS/Bluetooth: a música que aparece e os botões vêm do Spotify da pessoa

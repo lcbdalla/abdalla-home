@@ -98,6 +98,11 @@ Deno.serve(async (req) => {
   }
   const cadastrados = new Set(lista.map((q: { entity_id: string }) => q.entity_id));
   for (const id of [...cadastrados]) for (const v of VINCULADOS[id] || []) cadastrados.add(v);
+  // Zonas do AAT: agudo, grave e balanço da zona (number.aat_pmr7_zona_N_…).
+  for (const id of [...cadastrados]) {
+    const z = id.match(/^media_player\.aat_pmr7_zona_(\d+)$/);
+    if (z) for (const k of ["graves", "agudos", "balanco"]) cadastrados.add(`number.aat_pmr7_zona_${z[1]}_${k}`);
+  }
 
   // 3a) Estados atuais — só dos aparelhos cadastrados.
   if (body?.acao === "estados") {
