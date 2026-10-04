@@ -1592,8 +1592,15 @@ const MESA_TV = {
   ],
 };
 const MESA_IDS = [MESA_TV.plug, ...MESA_TV.canais.flatMap((c) => [c.fader, c.on])];
+// Bateria da fechadura Yale da Porta da Frente: em 35% ou menos o app avisa (popup, 1x por dia em
+// cada aparelho) e cria uma tarefa para a Ana Carolina comprar as pilhas (só se não houver uma aberta).
+// Acima de 60% (pilhas trocadas) o aviso "zera" para a próxima vez.
+const BATERIA_PORTA = {
+  sensor: "sensor.fechadura_porta_frente_battery", limite: 35, recupera: 60, responsavel: "ana carolina",
+  titulo: "Comprar 4 pilhas AA (fechadura da porta da frente)",
+};
 const ehTomAAT = (id) => /^number\.aat_pmr7_zona_\d+_(graves|agudos|balanco)$/.test(id);
-const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || MESA_IDS.includes(id) || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button", "remote"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
@@ -3876,6 +3883,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [areas, setAreas] = useState(null); // entity_id -> nome da área no Home Assistant
   const [tentativa, setTentativa] = useState(0);
   const [aviso, setAviso] = useState(null);
+  const [avisoBateria, setAvisoBateria] = useState(null); // % da bateria da porta, quando baixa
   const [pavimentos, setPavimentos] = useState([]);
   const [ambientes, setAmbientes] = useState([]);
   const [equipamentos, setEquipamentos] = useState([]);
@@ -4286,6 +4294,30 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Spotify conecta nele. Então: escolhe o aparelho, espera o estado mostrar a conexão e segue.
   const entsRef = useRef(entsVis);
   entsRef.current = entsVis;
+  const bat = entsVis[BATERIA_PORTA.sensor]?.state;
+  const nivelPorta = bat != null && bat !== "" && !isNaN(Number(bat)) ? Number(bat) : null; // "unknown"/"unavailable" = sem leitura
+  const tarefaPilhas = useRef(false);
+  useEffect(() => {
+    if (nivelPorta == null) return;
+    const chave = "bateriaPortaAvisoDia";
+    if (nivelPorta > BATERIA_PORTA.recupera) { try { localStorage.removeItem(chave); } catch { /* ok */ } return; }
+    if (nivelPorta > BATERIA_PORTA.limite) return;
+    let dia = null; try { dia = localStorage.getItem(chave); } catch { /* ok */ }
+    if (dia !== hojeISO()) { setAvisoBateria(nivelPorta); try { localStorage.setItem(chave, hojeISO()); } catch { /* ok */ } }
+    if (tarefaPilhas.current) return;
+    tarefaPilhas.current = true;
+    (async () => {
+      const { data: abertas } = await supabase.from("tarefas").select("id").eq("titulo", BATERIA_PORTA.titulo).neq("status", "concluida").limit(1);
+      if (!abertas || abertas.length) return; // já existe (ou não deu para conferir)
+      const { data: pessoas } = await supabase.from("perfis").select("id, nome").eq("ativo", true);
+      const resp = (pessoas || []).find((x) => norm(x.nome).startsWith(BATERIA_PORTA.responsavel));
+      await supabase.from("tarefas").insert({
+        titulo: BATERIA_PORTA.titulo, descricao: `A bateria da fechadura da Porta da Frente está em ${nivelPorta}%. Comprar 4 pilhas AA e trocar.`,
+        responsavel_id: resp?.id || null, criado_por_id: eu?.id || null, tipo: "unica", data: hojeISO(), status: "pendente",
+        intervalo_semanas: 1, dias: [], imagens: [], eh_compra: false, dar_entrada: true,
+      });
+    })();
+  }, [nivelPorta]); // eslint-disable-line react-hooks/exhaustive-deps
   // Mesa XR18: o app NÃO mexe mais nela sozinho (reconectar a integração e desligar depois de
   // 30 min foram tirados: estavam derrubando a conexão da mesa). Só liga o plug ao escolher a TV.
   const conectarSpotify = (spId, connect, depois) => {
@@ -4442,6 +4474,16 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} topo={topoPortao}
           cameras={camerasDe(PORTAO_CAMERAS)} />}
         {tvAberta && <TvControleModal cfg={tvAberta} ent={entsVis[tvAberta.tv]} entSom={entsVis[tvAberta.som]} enviar={enviar} onFechar={() => setTvAberta(null)} topo={topoPortao} />}
+        {avisoBateria != null && (
+          <Sheet titulo="Trocar a bateria da fechadura" onFechar={() => setAvisoBateria(null)}>
+            <div className="text-center" style={{ padding: "4px 0 10px" }}>
+              <div style={{ width: 64, height: 64, borderRadius: 999, background: alfa(C.ambar, 16), color: C.ambar, display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Lock size={30} /></div>
+              <div className="font-bold" style={{ fontSize: 18, marginTop: 10 }}>Porta da Frente: {avisoBateria}% de bateria</div>
+              <div style={{ color: C.cinza, fontSize: 14.5, marginTop: 6 }}>Troque as 4 pilhas AA da fechadura. A Ana Carolina já tem uma tarefa para comprar as pilhas.</div>
+            </div>
+            <button onClick={() => setAvisoBateria(null)} style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>Entendi</button>
+          </Sheet>
+        )}
         {portaAberta && <PortaModal ent={entsVis[PORTA_ID]} enviar={enviar} onFechar={() => setPortaAberta(false)} topo={topoPortao} cameras={camerasDe(PORTA_CAMERAS)} />}
         <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}

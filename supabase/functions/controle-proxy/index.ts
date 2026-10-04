@@ -32,6 +32,7 @@ const GENERICOS = ["toggle", "turn_on", "turn_off"]; // homeassistant.* permitid
 const VINCULADOS: Record<string, string[]> = {
   "media_player.tv_sala": ["media_player.smarttv_4k_ffm", "remote.smarttv_4k_ffm", "media_player.denon_avr_s770h"],
   "media_player.smarttv_4k_ffm": ["remote.smarttv_4k_ffm", "media_player.denon_avr_s770h"],
+  "lock.fechadura_porta_frente": ["sensor.fechadura_porta_frente_battery"],
 };
 
 Deno.serve(async (req) => {
