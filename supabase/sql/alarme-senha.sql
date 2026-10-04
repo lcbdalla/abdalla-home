@@ -32,3 +32,6 @@ returns setof text language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.alarmes_com_senha() from public, anon;
 grant execute on function public.alarmes_com_senha() to authenticated;
+
+-- Faz o app enxergar as funções novas na hora.
+notify pgrst, 'reload schema';
