@@ -3755,6 +3755,24 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
     return () => el.removeEventListener("touchmove", barrar);
   }, [arrastando]);
 
+  // Arrastando perto da borda de baixo (ou logo abaixo do cabeçalho), a tela rola sozinha — assim
+  // dá para levar um cartão até o fim de um cômodo comprido.
+  const ultimoPonto = useRef(null), reordenarRef = useRef(null);
+  useEffect(() => {
+    if (arrastando == null) return;
+    const passo = () => {
+      const p = ultimoPonto.current;
+      if (p) {
+        const borda = 90, alto = window.innerHeight;
+        const topoLivre = document.querySelector("header")?.getBoundingClientRect().bottom || 0;
+        const v = p.y > alto - borda ? Math.min(18, (p.y - (alto - borda)) / 4) : p.y < topoLivre + borda ? -Math.min(18, (topoLivre + borda - p.y) / 4) : 0;
+        if (v) { window.scrollBy(0, v); reordenarRef.current?.(p.x, p.y); }
+      }
+    };
+    const iv = setInterval(passo, 16);
+    return () => clearInterval(iv);
+  }, [arrastando]);
+
   const byId = Object.fromEntries(itens.map((e) => [e.dbId, e]));
   const ordenados = ordem.map((id) => byId[id]).filter(Boolean);
   const largoDe = (e) => e.tamanho === "g" || (CTRL_LARGO.includes(e.tipo) && (!CTRL_COMPACTAVEL.includes(e.tipo) || expandidos.has(e.dbId)))
@@ -3782,10 +3800,11 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
       if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > TOL) { clearTimeout(pressTimer.current); press.current = null; }
       return;
     }
-    arrastou.current = true; setPos({ x: e.clientX, y: e.clientY }); reordenar(e.clientX, e.clientY);
+    arrastou.current = true; ultimoPonto.current = { x: e.clientX, y: e.clientY }; setPos({ x: e.clientX, y: e.clientY }); reordenar(e.clientX, e.clientY);
   }
+  reordenarRef.current = reordenar;
   function aoSoltar() {
-    clearTimeout(pressTimer.current); press.current = null;
+    clearTimeout(pressTimer.current); press.current = null; ultimoPonto.current = null;
     if (arrastando != null) {
       const ids = ordem.slice();
       setArrastando(null); setPos(null); pega.current = null;
@@ -3801,6 +3820,9 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
       const r = el.getBoundingClientRect();
       if (y > r.bottom || (y > r.top && x > r.left + r.width / 2)) alvo++;
     }
+    // Dedo no fim da grade (ou abaixo dela): vai para o último lugar.
+    const g = gradeRef.current?.getBoundingClientRect();
+    if (g && y > g.bottom - 24) alvo = outros.length;
     const nova = outros.slice(); nova.splice(alvo, 0, arrastando);
     if (nova.join() !== ordem.join()) setOrdem(nova);
   }
