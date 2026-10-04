@@ -2470,7 +2470,8 @@ function agruparPersianas(itens, comodoId) {
   const todas = itens.find(ehPersianaTodas);
   // A 0 tem preferência (o Leonardo usa a 0 para abrir/fechar todas); a "Todas" do HA só sem a 0.
   const numeradas = itens.filter((x) => x.tipo === "persiana" && !ehPersianaTodas(x) && RE_PERSIANA_N.test(String(x.nome || "").trim()));
-  const mestre = itens.find(ehPersianaZero) || todas || null;
+  const zero = itens.find(ehPersianaZero);
+  const mestre = [zero, todas].find((x) => x && x.disponivel) || null;
   const membros = numeradas.filter((x) => x !== mestre && !ehPersianaZero(x));
   if (membros.length < (mestre ? 2 : 3)) return itens;
   const n = (x) => Number(String(x.nome).trim().match(RE_PERSIANA_N)[1]);
@@ -3538,7 +3539,7 @@ function DividirSheet({ e, temSpotify, onDividir, onMeuSpotify, onFechar }) {
   );
   return (
     <Sheet titulo={tv ? "Dividir a TV?" : "Dividir o som?"} onFechar={onFechar}>
-      <div className="text-center" style={{ color: C.cinza, fontSize: 14.5, marginBottom: 14 }}>{quem} está usando {tv ? "a TV" : "o som"} de {e.nome}.</div>
+      <div className="text-center" style={{ color: C.cinza, fontSize: 14.5, marginBottom: 14 }}>{e.usoDe ? `${quem} está usando ${tv ? "a TV" : "o som"} de ${e.nome}.` : `${tv ? "A TV" : "O som"} de ${e.nome} foi ligad${tv ? "a" : "o"} fora do app (controle remoto ou voz).`}</div>
       {bt(tv ? "Sim, dividir a TV" : "Só dividir o som", onDividir, true)}
       {!tv && temSpotify && bt("Mudar para o meu Spotify", onMeuSpotify)}
       <button onClick={onFechar} style={{ width: "100%", color: C.cinza, padding: 12, fontWeight: 600 }}>Cancelar</button>
@@ -3583,7 +3584,7 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
         {e.tipo === "alexa" && (() => {
           const tocando = e.state === "playing", ligada = ["playing", "paused"].includes(e.state);
           // Sem o Spotify da pessoa no HA: a chave abre o Spotify do celular dela para escolher a Alexa.
-          const txt = e.alheio ? `Com ${e.usoDe || "outra pessoa"}` : !e.spotify ? "Pelo seu Spotify" : !e.connect ? "Alexa não encontrada" : tocando ? "Tocando" : e.soArmado ? "Escolha onde tocar" : ligada ? "Pausado" : "Desligado";
+          const txt = e.alheio ? (e.usoDe ? `Com ${e.usoDe}` : "Ligado fora do app") : !e.spotify ? "Pelo seu Spotify" : !e.connect ? "Alexa não encontrada" : tocando ? "Tocando" : e.soArmado ? "Escolha onde tocar" : ligada ? "Pausado" : "Desligado";
           return (<>
             <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: ligada ? LAGO : C.cinza }}>{txt}</span>
             {!e.spotify && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
@@ -3597,7 +3598,7 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
         {e.tipo === "tv" && (() => {
           const m = estadoMidia(e);
           return (<>
-            <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: m.ind ? C.cinzaClaro : m.ligado ? LAGO : C.cinza }}>{e.alheio ? `Com ${e.usoDe || "outra pessoa"}` : m.texto}</span>
+            <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: m.ind ? C.cinzaClaro : m.ligado ? LAGO : C.cinza }}>{e.alheio ? (e.usoDe ? `Com ${e.usoDe}` : "Ligado fora do app") : m.texto}</span>
             {m.r.liga && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
               <PillToggle on={m.ligado && !e.alheio} cor={LAGO} disabled={m.ind} onClick={() => alternarUso(e, !m.ligado, () => { acionarZonas(e, !m.ligado, enviar); if (!m.ligado) e.abrirControle?.(); })} />
             </span>}
@@ -4107,6 +4108,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [ambientes, setAmbientes] = useState([]);
   const [equipamentos, setEquipamentos] = useState([]);
   const [sessoes, setSessoes] = useState({}); // id do cartão de som/TV -> { dono, dono_nome, participantes }
+  const [usoAtivo, setUsoAtivo] = useState(false); // a tabela controle_uso existe (SQL rodado)
   const [dividir, setDividir] = useState(null); // cartão em que a pessoa tocou para dividir
   const [modo, setModo] = useState("usar"); // usar | gerenciar
   const [menuAberto, setMenuAberto] = useState(false);
@@ -4232,7 +4234,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     ]);
     // Quem está usando cada som/TV (tabela controle_uso; sem ela, tudo segue como antes).
     const u = await supabase.from("controle_uso").select("*");
-    if (!u.error) setSessoes(Object.fromEntries((u.data || []).map((r) => [r.chave, r])));
+    if (!u.error) { setSessoes(Object.fromEntries((u.data || []).map((r) => [r.chave, r]))); setUsoAtivo(true); }
     if (!p.error) setPavimentos(p.data || []);
     if (!a.error) setAmbientes(a.data || []);
     if (!e.error) setEquipamentos(e.data || []);
@@ -4787,11 +4789,17 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const meId = eu?.id;
   const primeiroNome = String(eu?.nome || "").split(" ")[0];
   const gravarUso = (chave, dados) => supabase.from("controle_uso").upsert({ chave, ...dados }).then(() => carregarConfig());
-  const registrarUso = (chave) => meId && gravarUso(chave, { dono: meId, dono_nome: primeiroNome, participantes: [meId], desde: new Date().toISOString() });
+  const registrarUso = (chave) => {
+    if (!meId) return;
+    const linha = { dono: meId, dono_nome: primeiroNome, participantes: [meId], desde: new Date().toISOString() };
+    setSessoes((s0) => ({ ...s0, [chave]: { chave, ...linha } })); // já mostra como meu (sem piscar)
+    gravarUso(chave, linha);
+  };
   const encerrarUso = (chave) => sessoes[chave] && supabase.from("controle_uso").delete().eq("chave", chave).then(() => carregarConfig());
   const sairUso = (chave) => { const ses = sessoes[chave]; if (ses) gravarUso(chave, { ...ses, participantes: (ses.participantes || []).filter((x) => x !== meId) }); };
   const entrarUso = (chave, virarDono) => {
-    const ses = sessoes[chave]; if (!ses || !meId) return;
+    const ses = sessoes[chave]; if (!meId) return;
+    if (!ses) { registrarUso(chave); return; } // ligado por fora do app: quem aceitar passa a ser o dono
     const part = [...new Set([...(ses.participantes || []), meId])];
     gravarUso(chave, virarDono ? { ...ses, dono: meId, dono_nome: primeiroNome, participantes: part } : { ...ses, participantes: part });
   };
@@ -4800,7 +4808,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     if (!["tv", "alexa"].includes(x.tipo) || (x.tipo === "tv" && !midiaRecursos(x).liga)) return x;
     const ses = sessoes[x.dbId];
     const dentro = !!ses && (ses.participantes || []).includes(meId);
-    return { ...x, alheio: !!ses && midiaLigada(x) && !dentro, usoDe: ses?.dono_nome, ehParticipante: dentro && ses.dono !== meId,
+    // Sem dono no app (ligado pelo controle remoto, voz…): conta como ligado, mas fica recolhido.
+    return { ...x, alheio: usoAtivo && midiaLigada(x) && !dentro, usoDe: ses?.dono_nome || null, ehParticipante: dentro && ses.dono !== meId,
       uso: { registrar: () => registrarUso(x.dbId), encerrar: () => encerrarUso(x.dbId), sair: () => sairUso(x.dbId), dividir: () => setDividir(x) } };
   });
   const semPav = { id: "__sem__", nome: "Outros", ordem: 99999 };
@@ -4897,7 +4906,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             {/* Configurando: o "Pronto" fica à vista para voltar; o resto mora no menu ⋮. */}
             {modo === "gerenciar" && <button onClick={() => setModo("usar")} title="Terminar de configurar" style={{ background: "#ffffff33", borderRadius: 10, padding: "7px 11px", display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 700 }}><Check size={16} /> Pronto</button>}
             {/* TV ligada: o controle remoto fica a um toque, ao lado do tempo. */}
-            {TVS_COM_CONTROLE.filter((t) => tvLigada(entsVis[t.tv]) && !(() => { const q = equipamentos.find((x) => TV_CONTROLE[x.entity_id] === t); const ses = q && sessoes[q.id]; return !!ses && !(ses.participantes || []).includes(meId); })()).map((t) => (
+            {TVS_COM_CONTROLE.filter((t) => tvLigada(entsVis[t.tv]) && !(() => { const q = equipamentos.find((x) => TV_CONTROLE[x.entity_id] === t); const ses = q && sessoes[q.id]; return usoAtivo && !!q && !(ses?.participantes || []).includes(meId); })()).map((t) => (
               <button key={t.tv} onClick={() => { topoDoCabecalho(); setTvAberta(t); }} title={`Controle da ${t.nome}`} aria-label={`Controle remoto da ${t.nome}`}
                 style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex", color: "#fff" }}><IconeControleRemoto size={20} /></button>
             ))}
