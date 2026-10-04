@@ -4672,7 +4672,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       const cfgA = ALEXA_CARTOES[row.entity_id];
       const alexas = (cfgA?.alexas || [["Aqui", ALEXAS[row.entity_id] || [row.nome]]]).map(([rotulo, nomes]) => ({ rotulo, connect: acharConnect(sp, nomes) }));
       const grupos = (cfgA?.grupos || []).map(([nomes, membros]) => ({ connect: acharConnect(sp, nomes), membros })).filter((x) => x.connect);
-      const connect = alexas[0].connect;
+      // Cada conta do Spotify enxerga Alexas diferentes: vale a 1ª que aparecer (ou um grupo).
+      const connect = alexas.find((x) => x.connect)?.connect || grupos[0]?.connect || null;
       // Saindo do grupo, vale o destino escolhido (o Spotify demora a informar).
       const fonte = saindoGrupo || sp?.attributes?.source;
       const tocandoSp = !!sp && ["playing", "paused"].includes(sp.state);
