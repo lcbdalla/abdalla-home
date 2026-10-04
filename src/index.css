@@ -14,7 +14,9 @@
      fundo com um véu verde no alto, pavimento em degradê areia → verde e sombras coloridas. */
   --c-cabecalho: linear-gradient(160deg, #1f5c39 0%, #2f7d4f 62%, #4f9f6c 100%);
   --c-tela: radial-gradient(1000px 600px at 10% -10%, #cde5d4 0%, rgba(205, 229, 212, 0) 70%), #f6f3ea;
-  --c-nivel: linear-gradient(160deg, #fcfaf2 0%, #d9eee0 46%, #aad6ba 100%); --c-nivelBorda: rgba(47, 125, 79, 0.36);
+  /* Caixa do pavimento: o mesmo verde do cabeçalho, com o título em branco. */
+  --c-nivel: linear-gradient(160deg, #1f5c39 0%, #2f7d4f 62%, #4f9f6c 100%); --c-nivelBorda: rgba(31, 92, 57, 0.6);
+  --c-nivelTexto: #ffffff; --c-nivelSub: rgba(255, 255, 255, 0.82); --c-nivelAceso: #ffd27a;
   --c-nivelSombra: 0 16px 36px -24px rgba(31, 92, 57, 0.55);
   --c-comodoSombra: 0 10px 24px -20px rgba(31, 92, 57, 0.5);
   --c-aceso: #f2ae2e; /* dourado do cômodo com algo ligado (mais "luz" que o âmbar) */
@@ -35,6 +37,7 @@
   --c-cabecalho: linear-gradient(160deg, #0e1a12 0%, #0c4424 58%, #00843d 100%);
   /* Caixa do pavimento: degradê verde bem escuro sobre o fundo preto. */
   --c-nivel: linear-gradient(160deg, #0a160e 0%, #0d2817 55%, #123b21 100%); --c-nivelBorda: #245a37;
+  --c-nivelTexto: #e9efea; --c-nivelSub: #a8b3ab; --c-nivelAceso: #e8b061;
   --c-tela: #050706; --c-nivelSombra: none; --c-comodoSombra: none; --c-aceso: #e6a444;
   --c-comodo: #000000; /* caixa do cômodo: preto absoluto */
   --c-cartaoOff: #111713; /* cartão desligado: um pouco mais claro que o preto do cômodo */

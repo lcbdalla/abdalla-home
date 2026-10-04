@@ -2559,51 +2559,55 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
   // Botão ⏻ "Desligar tudo": fica no lugar do ícone do pavimento / do pontinho do cômodo.
   // Aceso (âmbar, com brilho) = tem algo ligado; apagado (cinza) = nada ligado, não faz nada.
   const tam = grande ? 34 : 30;
+  // No pavimento (grande) o fundo é verde: textos com as cores do nível (branco no modo claro).
+  const corNome = grande ? "var(--c-nivelTexto)" : C.terra, corSub = grande ? "var(--c-nivelSub)" : C.cinza;
+  const corAceso = grande ? "var(--c-nivelAceso)" : C.ambarTexto, corApagado = grande ? "var(--c-nivelSub)" : C.cinzaClaro;
   return (
     <div className="flex items-center" style={{ gap: grande ? 9 : 10 }}>
       {total > 0 ? (
         <button onClick={() => aceso && onDesligarTudo(itens)} disabled={!aceso} aria-label={aceso ? `Desligar tudo em ${nome}` : `Nada ligado em ${nome}`}
           style={{ width: tam, height: tam, borderRadius: grande ? 11 : 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none",
-            cursor: aceso ? "pointer" : "default", background: aceso ? alfa(C.ambar, 22) : alfa(C.cinzaClaro, 16), color: aceso ? C.ambar : C.cinzaClaro,
+            cursor: aceso ? "pointer" : "default", background: aceso ? alfa(C.ambar, 22) : alfa(C.cinzaClaro, 16), color: aceso ? (grande ? corAceso : C.ambar) : corApagado,
             boxShadow: aceso ? `0 0 0 1px ${alfa(C.ambar, 35)}, 0 6px 18px -6px ${alfa(C.ambar, 75)}` : "none", transition: "background .25s, color .25s, box-shadow .25s" }}>
           <Power size={grande ? 18 : 15} strokeWidth={2.5} />
         </button>
       ) : grande ? (
-        <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: C.cinzaClaro }}><Layers size={17} /></span>
+        <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: corApagado }}><Layers size={17} /></span>
       ) : null}
       <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex flex-col justify-center text-left" style={toque}>
-        <span className="truncate" style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: C.terra, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2 }}>{nome}</span>
+        <span className="truncate" style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: corNome, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2 }}>{nome}</span>
         {sub && (
-          <span className="truncate" style={{ fontSize: 12, color: C.cinza, marginTop: 2 }}>
-            {aceso ? <b style={{ color: C.ambarTexto, fontWeight: 700 }}>{on} {on === 1 ? "ligado" : "ligados"}</b> : sub}
+          <span className="truncate" style={{ fontSize: 12, color: corSub, marginTop: 2 }}>
+            {aceso ? <b style={{ color: corAceso, fontWeight: 700 }}>{on} {on === 1 ? "ligado" : "ligados"}</b> : sub}
           </span>
         )}
       </button>
       {musica && (
         // Trocar a música sem abrir o cômodo.
         <div className="flex items-center" style={{ gap: 3, flexShrink: 0 }}>
-          {musica.anterior && <BotaoMini Ic={SkipBack} rot="Música anterior" onClick={musica.anterior} />}
+          {musica.anterior && <BotaoMini Ic={SkipBack} rot="Música anterior" onClick={musica.anterior} sobreNivel={grande} />}
           <BotaoMini Ic={musica.tocando ? Pause : Play} rot={musica.tocando ? "Pausar" : "Tocar"} onClick={musica.tocar} cheio />
-          {musica.proxima && <BotaoMini Ic={SkipForward} rot="Próxima música" onClick={musica.proxima} />}
+          {musica.proxima && <BotaoMini Ic={SkipForward} rot="Próxima música" onClick={musica.proxima} sobreNivel={grande} />}
         </div>
       )}
       <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 54, gap: 4 }}>
         {total > 0 && (
           <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-            <b style={{ color: aceso ? C.ambarTexto : C.cinza, fontWeight: 800 }}>{on}</b><span style={{ color: C.cinzaClaro, fontWeight: 600 }}>/{total}</span>
+            <b style={{ color: aceso ? corAceso : corSub, fontWeight: 800 }}>{on}</b><span style={{ color: corApagado, fontWeight: 600 }}>/{total}</span>
           </span>
         )}
-        <ChevronDown size={18} style={{ color: C.cinza, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+        <ChevronDown size={18} style={{ color: corSub, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
       </button>
     </div>
   );
 }
 
-function BotaoMini({ Ic, rot, onClick, cheio }) {
+function BotaoMini({ Ic, rot, onClick, cheio, sobreNivel }) {
   return (
     <button onClick={onClick} aria-label={rot} title={rot}
       style={{ width: 30, height: 30, borderRadius: 999, border: "none", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-        background: cheio ? LAGO : alfa(LAGO, 14), color: cheio ? "#fff" : LAGO }}>
+        // sobreNivel: no título do pavimento (fundo verde), os botões de voltar/próxima ficam visíveis.
+        background: cheio ? LAGO : sobreNivel ? "color-mix(in srgb, var(--c-nivelTexto) 18%, transparent)" : alfa(LAGO, 14), color: cheio ? "#fff" : sobreNivel ? "var(--c-nivelTexto)" : LAGO }}>
       <Ic size={cheio ? 15 : 14} strokeWidth={2.4} />
     </button>
   );
