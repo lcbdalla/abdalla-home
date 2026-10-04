@@ -177,7 +177,7 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, spotifyEntity: r.spotify_entity || null, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, spotifyEntity: r.spotify_entity || null, podeGerirEquipe: r.pode_gerir_equipe !== false, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -756,7 +756,8 @@ export default function App() {
           {aba === "compras" && <ComprasView {...{ tasks, produtos, podeMexer, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onReabrir: reabrir, onAbrir: (t) => setModal({ tipo: "detalhe", task: t }) }} />}
           {aba === "estoque" && <EstoqueView {...{ produtos, estoque, movs, users, onAjustar: ajustarEstoque, onAbrirProdutos: () => setProdutosAberto(true), onMovimento: (mv) => setModal({ tipo: "movimento", mov: mv }), onSaidaRapida: saidaRapida }} />}
           {aba === "painel" && souAdmin && <PainelView {...{ tasks, users }} />}
-          {aba === "equipe" && (souAdmin || eu?.podeGerarVisitante) && <EquipeView {...{ users, souAdmin, euId, showToast, onRecarregar: reloadPerfis }} />}
+          {/* Admin com "Pode mexer na equipe" desligado vê a Equipe como quem só gera visitante. */}
+          {aba === "equipe" && (souAdmin || eu?.podeGerarVisitante) && <EquipeView {...{ users, souAdmin: souAdmin && eu?.podeGerirEquipe !== false, euId, showToast, onRecarregar: reloadPerfis }} />}
         </main>
 
         {(aba === "tarefas" || aba === "compras" || aba === "agenda") && (
@@ -1215,6 +1216,13 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                 <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode controlar a casa</div>
                 <Toggle on={u.podeControle === true} onToggle={() => editar(u.id, "pode_controle", !(u.podeControle === true))} />
               </div>
+              {u.papel === "admin" && u.id !== euId && (
+                <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
+                  <Users size={13} style={{ color: C.cinzaClaro }} />
+                  <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode mexer na equipe (desligado: só gera visitante)</div>
+                  <Toggle on={u.podeGerirEquipe !== false} onToggle={() => editar(u.id, "pode_gerir_equipe", u.podeGerirEquipe === false)} />
+                </div>
+              )}
               {u.papel !== "admin" && u.papel !== "visitante" && (
                 <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
                   <Clock size={13} style={{ color: C.cinzaClaro }} />
