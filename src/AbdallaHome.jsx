@@ -4850,11 +4850,17 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   });
   const ambientePorEq = Object.fromEntries(equipamentosVis.map((q) => [q.id, q.ambiente_id]));
   const midiasNaTela = listaPavBase.flatMap((p) => p.comodos.flatMap((c) => c.itens)).filter((x) => x.uso);
-  const usoParaLimpar = status === "ok" ? Object.keys(sessoes).filter((k) => { const x = midiasNaTela.find((y) => y.dbId === k); return x && !midiaLigada(x); }) : [];
+  // Só limpa quando o aparelho desligou de verdade: TV/som do HA (estado igual para todos). Alexa
+  // depende do Spotify de quem olha — só o dono limpa, e "esperando escolher onde tocar" não conta.
+  const usoParaLimpar = status === "ok" ? Object.keys(sessoes).filter((k) => {
+    const x = midiasNaTela.find((y) => y.dbId === k); if (!x) return false;
+    if (x.tipo === "alexa") return sessoes[k]?.dono === meId && !x.soArmado && !midiaLigada(x);
+    return !midiaLigada(x);
+  }) : [];
   const chaveLimpar = usoParaLimpar.join();
   useEffect(() => {
     if (!chaveLimpar) return;
-    const t = setTimeout(() => { chaveLimpar.split(",").forEach((k) => supabase.from("controle_uso").delete().eq("chave", k)); carregarConfig(); }, 8000); // espera: o aparelho pode estar ligando
+    const t = setTimeout(() => { chaveLimpar.split(",").forEach((k) => supabase.from("controle_uso").delete().eq("chave", k)); carregarConfig(); }, 20000); // espera: o aparelho pode estar ligando
     return () => clearTimeout(t);
   }, [chaveLimpar]); // eslint-disable-line react-hooks/exhaustive-deps
   // O que está escondido neste painel (para mostrar de novo).
