@@ -2399,6 +2399,10 @@ const musicaDe = (itens, enviar) => {
    O HA não comanda a Alexa; o Spotify da pessoa, sim (Spotify Connect). O cartão "Alexa" toca e
    pausa a música do Spotify nela; a Alexa em si nunca é desligada. */
 const ALEXAS = {}; // Alexa sozinha (sem chaves): id do cartão -> nome(s) dela no Spotify
+// Spotify ligado às Echos na Alexa (conta ranchoabdalla). Quem tem um Spotify que não enxerga as
+// Echos do cartão usa este para as chaves funcionarem. ponytail: é uma conta só — tocar por ela
+// num cômodo para a música dela em outro; uma conta "da casa" própria resolveria.
+const SPOTIFY_CASA = "media_player.spotify_leo_abdalla";
 // Cartões com várias Alexas: uma chave por Alexa ([rótulo, nomes no Spotify]) e os grupos de música
 // criados no app Alexa ([nomes do grupo no Spotify, quais Alexas]). O Spotify toca num aparelho por
 // vez; cada grupo aparece para ele como mais um. Combinação sem grupo: o app pede para criar um.
@@ -3281,6 +3285,7 @@ function CtrlAlexa({ e, enviar }) {
       {ativo && typeof a.volume_level === "number" && (
         <div style={{ marginTop: 10 }}><BarraVolume e={{ id: e.spotify, attributes: a }} enviar={enviar} compacto semMudo /></div>
       )}
+      {(ativo || e.soArmado) && e.pelaCasa && <div style={{ fontSize: 12, color: C.cinzaClaro, marginTop: 6 }}>Tocando pelo Spotify da casa</div>}
       {(ativo || e.soArmado) && e.multi && (
         <div style={{ marginTop: ativo ? 10 : 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {e.chaves.map((c, i) => {
@@ -4668,7 +4673,12 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   });
   const mkEquip = (row) => {
     if (row.tipo === "alexa") {
-      const sp = meuSpotify ? entsVis[meuSpotify] : null;
+      // Qual Spotify comanda este cartão: o da pessoa, se enxerga as Echos dele; senão o da casa.
+      const cfgA0 = ALEXA_CARTOES[row.entity_id];
+      const nomesCartao = [...(cfgA0?.alexas || []).flatMap(([, n]) => n), ...(cfgA0?.grupos || []).flatMap(([n]) => n), ...(ALEXAS[row.entity_id] || [row.nome])];
+      const enxerga = (id) => { const lista = (entsVis[id]?.attributes?.source_list || []).map(norm); return nomesCartao.filter((n) => lista.includes(norm(n))).length; };
+      const spId = meuSpotify && (!entsVis[SPOTIFY_CASA] || enxerga(meuSpotify) >= enxerga(SPOTIFY_CASA)) ? meuSpotify : (entsVis[SPOTIFY_CASA] ? SPOTIFY_CASA : meuSpotify);
+      const sp = spId ? entsVis[spId] : null;
       const cfgA = ALEXA_CARTOES[row.entity_id];
       const alexas = (cfgA?.alexas || [["Aqui", ALEXAS[row.entity_id] || [row.nome]]]).map(([rotulo, nomes]) => ({ rotulo, connect: acharConnect(sp, nomes) }));
       const grupos = (cfgA?.grupos || []).map(([nomes, membros]) => ({ connect: acharConnect(sp, nomes), membros })).filter((x) => x.connect);
@@ -4685,7 +4695,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       const tocandoAqui = aqui && (sp.state === "playing" || !!saindoGrupo);
       return { dbId: row.id, id: row.entity_id, tipo: "alexa", nome: row.nome || "Alexa", rotulos: row.rotulos || {}, tamanho: "g",
         state: aqui ? sp.state : armado ? "paused" : "idle", attributes: aqui ? sp.attributes : {}, disponivel: true, soArmado: !aqui && armado,
-        spotify: meuSpotify, connect, alexas, grupos, multi: alexas.length > 1, fonteSp: sp?.attributes?.source, tocandoSp, aquiFonte, conectarSpotify, sairDoGrupo,
+        spotify: spId, pelaCasa: !!spId && spId !== meuSpotify, connect, alexas, grupos, multi: alexas.length > 1, fonteSp: sp?.attributes?.source, tocandoSp, aquiFonte, conectarSpotify, sairDoGrupo,
         chaves: alexas.map((x, i) => ({ rotulo: x.rotulo, disponivel: !!x.connect, on: tocandoAqui && ativos.includes(i) })),
         avisar: (texto) => setAviso({ erro: true, texto }),
         armar: (on) => setAlexaArmada((l) => (on ? [...new Set([...l, row.entity_id])] : l.filter((x) => x !== row.entity_id))),
