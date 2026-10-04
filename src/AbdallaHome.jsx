@@ -2377,12 +2377,14 @@ const musicaDe = (itens, enviar) => {
 /* ---- Alexa pelo Spotify ----
    O HA não comanda a Alexa; o Spotify da pessoa, sim (Spotify Connect). O cartão "Alexa" toca e
    pausa a música do Spotify nela; a Alexa em si nunca é desligada. */
-const ALEXAS = { "alexa.quarto_leo_e_pri": ["Quarto Leo e Pri Echo"] }; // nome(s) da Alexa no Spotify
+const ALEXAS = { "alexa.quarto_leo_e_pri": ["Quarto Leo e Pri Echo"], "alexa.quarto_lele_e_lala": ["Quarto Lele e Lala Echo"] }; // nome(s) da Alexa no Spotify
 // Grupo de música da Alexa com outra Alexa (ex.: quarto + banheiro). O Spotify toca num aparelho
 // por vez; o grupo aparece para ele como mais um. A chave do cartão alterna entre a Alexa e o grupo.
 // Chaves do cartão: "este" é a Alexa do cartão; "outro" é a segunda Alexa do grupo.
 const ALEXA_GRUPO = { "alexa.quarto_leo_e_pri": { este: "Quarto", nomes: ["Som quarto e banheiro Leo e Pri", "Quarto e Banheiro Leo e Pri"],
-  outro: { rotulo: "Banheiro", nomes: ["Banheiro Leo e Pri Echo"] } } };
+  outro: { rotulo: "Banheiro", nomes: ["Banheiro Leo e Pri Echo"] } },
+  "alexa.quarto_lele_e_lala": { este: "Quarto", nomes: ["Som quarto e banheiro Lele e Lala"],
+  outro: { rotulo: "Banheiro", nomes: ["Banheiro Lele e Lala Echo"] } } };
 function acharConnect(sp, nomes) {
   const lista = sp?.attributes?.source_list || [];
   const alvo = (nomes || []).map((n) => norm(n));
