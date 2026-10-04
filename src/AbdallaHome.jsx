@@ -2472,7 +2472,9 @@ function agruparLuzes(itens, comodoId) {
     if (membros.length < (g.min || 3)) return;
     const pos = lista.indexOf(membros[0]);
     const grupo = { dbId: `grupo-luzes-${gi}-${comodoId}`, id: `grupo.luzes_${gi}_${comodoId}`, tipo: "grupoLuzes", nome: g.nome, icone: g.icone, rotulos: {},
-      tamanho: "p", membros, disponivel: membros.some((m) => m.disponivel), state: membros.some(estaLigado) ? "on" : "off" };
+      // Tamanho escolhido pelo gestor fica gravado nas luzes do grupo; dentro do grupo elas são pequenas.
+      tamanho: membros[0].tamanho === "g" ? "g" : "p", membros: membros.map((m) => ({ ...m, tamanho: "p" })),
+      disponivel: membros.some((m) => m.disponivel), state: membros.some(estaLigado) ? "on" : "off" };
     const resto = lista.filter((x) => !membros.includes(x));
     resto.splice(Math.min(pos, resto.length), 0, grupo);
     lista = resto;
@@ -4521,7 +4523,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       catch { setAviso({ erro: true, texto: "Não consegui salvar a nova ordem." }); }
       await carregarConfig();
     },
-    onTamanho: (id, tam) => salvar(supabase.from("controle_equipamentos").update({ tamanho: tam === "g" ? "g" : "p" }).eq("id", id)),
+    // Cartão de grupo (id inventado): grava o tamanho nos aparelhos de dentro.
+    onTamanho: (id, tam) => salvar(supabase.from("controle_equipamentos").update({ tamanho: tam === "g" ? "g" : "p" }).in("id", gruposRef.current[id] || [id])),
     onRotulo: (id, chave, valor) => {
       const q = equipamentos.find((x) => x.id === id);
       const rot = { ...(q?.rotulos || {}) };
