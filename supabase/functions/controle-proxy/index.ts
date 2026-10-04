@@ -124,6 +124,20 @@ Deno.serve(async (req) => {
     for (const id of ["switch.plug_mesa_de_som_behring", "number.channel_1_fader", "switch.channel_1_on", "number.channel_4_fader", "switch.channel_4_on", "number.main_fader", "switch.main_on"]) cadastrados.add(id);
   }
 
+  // 3) Alarme com a senha guardada no servidor (tabela alarme_senha): arma/desarma sem a senha
+  //    passar pelo celular. Só para quem tem o menu ⋮ do Controle (ou é admin).
+  if (body?.acao === "alarme") {
+    const painel = String(body.painel || "");
+    if (!podeAlarme || !/^alarm_control_panel\.(intelbras_amt_8000_all_groups|amt_4010_central)$/.test(painel)) return json({ error: "Sem permissão para o alarme." }, 403);
+    const { data: sen } = await admin.from("alarme_senha").select("senha").eq("painel", painel).maybeSingle();
+    if (!sen?.senha) return json({ semSenha: true });
+    const r = await fetch(`${base}/api/services/alarm_control_panel/${body.armar ? "alarm_arm_away" : "alarm_disarm"}`, {
+      method: "POST", headers: cabecalho, body: JSON.stringify({ entity_id: painel, code: sen.senha }),
+    });
+    if (!r.ok) return json({ error: `A central recusou o comando (${r.status}).` }, 502);
+    return json({ ok: true });
+  }
+
   // 3a) Estados atuais — só dos aparelhos cadastrados.
   if (body?.acao === "estados") {
     const r = await fetch(base + "/api/states", { headers: cabecalho });

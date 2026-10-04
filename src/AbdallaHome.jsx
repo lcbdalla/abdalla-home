@@ -1832,14 +1832,36 @@ function lerAlarme(cfg, ents) {
   const disparadas = zonas.filter((z) => mem.includes(z.num));
   return { painel, estado: painel?.state, zonas, disparadas, memoria: mem, sirene: ents[cfg.sirene]?.state === "on" };
 }
-function AlarmeModal({ ents, enviar, onFechar }) {
-  const comando = async (cfg, armar) => {
+// Com a senha salva no servidor (tabela alarme_senha), armar/desarmar vai pelo intermediário, que
+// põe a senha — o celular nunca a vê. Sem senha salva, o app pede a senha como antes.
+function AlarmeModal({ ents, enviar, souAdmin, onFechar }) {
+  const [comSenha, setComSenha] = useState(() => new Set());
+  const [aviso, setAviso] = useState("");
+  const lerSalvas = () => supabase.rpc("alarmes_com_senha").then(({ data }) => { if (Array.isArray(data)) setComSenha(new Set(data.map((x) => (typeof x === "string" ? x : x.alarmes_com_senha)))); });
+  useEffect(() => { lerSalvas(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const pedirSenha = async (cfg, armar) => {
     const code = await Dialog.prompt({ titulo: armar ? `Armar · ${cfg.nome}` : `Desarmar · ${cfg.nome}`, mensagem: "Digite a senha da central do alarme.", valor: "", inputType: "password", okLabel: armar ? "Armar" : "Desarmar" });
-    if (!code) return;
-    enviar("alarm_control_panel", armar ? "alarm_arm_away" : "alarm_disarm", cfg.painel, { code: String(code).trim() });
+    if (code) enviar("alarm_control_panel", armar ? "alarm_arm_away" : "alarm_disarm", cfg.painel, { code: String(code).trim() });
+  };
+  const comando = async (cfg, armar) => {
+    if (!comSenha.has(cfg.painel)) { pedirSenha(cfg, armar); return; }
+    if (!(await Dialog.confirm({ titulo: armar ? "Armar o alarme" : "Desarmar o alarme", mensagem: `${armar ? "Armar" : "Desarmar"} o alarme da ${cfg.nome}?`, okLabel: armar ? "Armar" : "Desarmar", perigo: !armar }))) return;
+    setAviso("Enviando…");
+    const { data, error } = await supabase.functions.invoke(PROXY_FN, { body: { acao: "alarme", painel: cfg.painel, armar } });
+    if (!error && data?.ok) { setAviso(""); return; }
+    setAviso("");
+    pedirSenha(cfg, armar); // não deu pelo servidor (função antiga ou senha errada): pede a senha
+  };
+  const salvarSenha = async (cfg) => {
+    const v = await Dialog.prompt({ titulo: `Senha · ${cfg.nome}`, mensagem: "Senha da central (fica guardada só no servidor; deixe em branco para apagar).", valor: "", inputType: "password", okLabel: "Salvar" });
+    if (v === null) return;
+    const { error } = await supabase.rpc("definir_senha_alarme", { p_painel: cfg.painel, p_senha: v });
+    setAviso(error ? (/definir_senha_alarme/.test(error.message) ? "Falta rodar o SQL alarme-senha.sql no Supabase." : error.message) : "");
+    lerSalvas();
   };
   return (
     <Sheet titulo="Alarme" onFechar={onFechar}>
+      {aviso && <div style={{ color: aviso === "Enviando…" ? C.cinza : C.vermelho, fontSize: 13.5, marginBottom: 8 }}>{aviso}</div>}
       {ALARMES.map((cfg) => {
         const al = lerAlarme(cfg, ents);
         const [txt, cor] = ESTADO_ALARME[al.estado] || [al.painel ? haEstado(al.estado).texto : "Sem sinal da central", C.cinza];
@@ -1862,6 +1884,11 @@ function AlarmeModal({ ents, enviar, onFechar }) {
               <BotaoAcao icon={Lock} label="Armar" cor={C.ambar} disabled={!al.painel || armado} onClick={() => comando(cfg, true)} />
               <BotaoAcao icon={LockOpen} label="Desarmar" cor={C.pasto} disabled={!al.painel || !armado} onClick={() => comando(cfg, false)} />
             </div>
+            {souAdmin && (
+              <button onClick={() => salvarSenha(cfg)} className="flex items-center gap-1" style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: comSenha.has(cfg.painel) ? C.pasto : C.cinza }}>
+                <KeyRound size={13} /> {comSenha.has(cfg.painel) ? "Senha salva (trocar)" : "Salvar a senha da central"}
+              </button>
+            )}
             <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 700, color: C.cinza }}>
               {abertas.length ? `Abertas agora (${abertas.length}): ${abertas.map((z) => z.nome).join(", ")}` : "Todas as zonas fechadas"}
             </div>
@@ -4971,7 +4998,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         <DialogHost />
         {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} topo={topoPortao}
           cameras={camerasDe(PORTAO_CAMERAS)} />}
-        {alarmeAberto && <AlarmeModal ents={entsVis} enviar={enviar} onFechar={() => setAlarmeAberto(false)} />}
+        {alarmeAberto && <AlarmeModal ents={entsVis} enviar={enviar} souAdmin={eu?.papel === "admin"} onFechar={() => setAlarmeAberto(false)} />}
         {/* Alarme disparado: faixa vermelha no alto, com o lugar que disparou; toca para abrir. */}
         {ALARMES.map((cfg) => { const al = lerAlarme(cfg, entsVis); if (al.estado !== "triggered") return null; return (
           <button key={cfg.painel} onClick={() => setAlarmeAberto(true)} className="ah-pisca"
