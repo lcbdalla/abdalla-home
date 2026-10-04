@@ -459,6 +459,8 @@ export default function App() {
   }, [eu?.expiraEm]);
 
   // ---------- Lembretes locais (15 min antes) ----------
+  // Cada lembrete avisa uma vez por dia: dispensar no X não faz ele voltar.
+  const avisadosRef = useRef(new Set());
   useEffect(() => {
     if (!carregado || !euId) return;
     const check = () => {
@@ -469,7 +471,9 @@ export default function App() {
         const [h, m] = t.horaInicio.split(":").map(Number);
         const inicio = new Date(); inicio.setHours(h, m, 0, 0);
         const diff = (inicio - agora) / 60000;
-        if (diff <= 15 && diff >= -1 && !avisos.some((a) => a.id === t.id)) {
+        const chave = t.id + ":" + iso;
+        if (diff <= 15 && diff >= -1 && !avisadosRef.current.has(chave)) {
+          avisadosRef.current.add(chave);
           setAvisos((p) => [...p, { id: t.id, titulo: t.titulo, hora: t.horaInicio }]);
           if (typeof Notification !== "undefined" && Notification.permission === "granted") {
             const titulo = "Abdalla Home — tarefa em breve", corpo = `${t.titulo} às ${t.horaInicio}`;
@@ -482,7 +486,7 @@ export default function App() {
       });
     };
     check(); const iv = setInterval(check, 30000); return () => clearInterval(iv);
-  }, [carregado, tasks, euId, avisos]);
+  }, [carregado, tasks, euId]);
 
   // Se deixar de ser admin (ex.: rebaixado em tempo real), sai das abas restritas.
   useEffect(() => {
@@ -2405,8 +2409,8 @@ function previsto(service, v, data = {}) {
     case "set_fan_mode": return { attributes: { fan_mode: data.fan_mode } };
     case "open_cover": return { state: "opening" };
     case "close_cover": return { state: "closing" };
-    case "lock": return { state: "locked" };
-    case "unlock": return { state: "unlocked" };
+    // Fechadura (lock/unlock) fica de fora de propósito: só mostra trancada/destrancada quando a
+    // fechadura confirmar (o cartão e o popup mostram "Trancando…/Destrancando…" enquanto isso).
     default: return null;
   }
 }
@@ -3460,12 +3464,27 @@ function CtrlIrrigacao({ e, enviar }) {
     </div>
   );
 }
+// Fechadura: destrancar pede confirmação; depois do toque mostra "Destrancando…" até o HA confirmar
+// (ou 15 s sem resposta), como o popup da Porta Entrada. Nunca supõe que destrancou.
 function CtrlFechadura({ e, enviar }) {
-  const ind = !e.disponivel; const trancado = e.state === "locked";
+  const st = e.state, ind = !e.disponivel, trancado = st === "locked";
+  const [cmd, setCmd] = useState(null); // { alvo: "locked" | "unlocked", st0 }
+  useEffect(() => { if (cmd && st !== cmd.st0 && !["locking", "unlocking"].includes(st)) setCmd(null); }, [st, cmd]);
+  useEffect(() => { if (!cmd) return; const t = setTimeout(() => setCmd(null), 15000); return () => clearTimeout(t); }, [cmd]);
+  const movendo = !!cmd || st === "locking" || st === "unlocking";
+  const texto = ind ? "Indisponível" : cmd ? (cmd.alvo === "unlocked" ? "Destrancando…" : "Trancando…")
+    : st === "unlocking" ? "Destrancando…" : st === "locking" ? "Trancando…"
+      : trancado ? "Trancado" : st === "unlocked" ? "Destrancado" : st === "jammed" ? "Travou — tente de novo" : haEstado(st).texto;
+  const acionar = async () => {
+    const destrancar = trancado;
+    if (destrancar && !(await Dialog.confirm({ titulo: "Destrancar", mensagem: `Destrancar ${e.nome}?`, okLabel: "Destrancar", perigo: true }))) return;
+    enviar("lock", destrancar ? "unlock" : "lock", e.id);
+    setCmd({ alvo: destrancar ? "unlocked" : "locked", st0: st });
+  };
   return (
     <div className="flex items-center gap-3">
-      <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : (trancado ? C.pasto : C.ambar), fontWeight: 700 }}>{ind ? "Indisponível" : (trancado ? "Trancado" : "Destrancado")}</div>
-      <BotaoAcao icon={Lock} label={trancado ? "Destrancar" : "Trancar"} cor={trancado ? C.ambar : C.pasto} disabled={ind} onClick={() => enviar("lock", trancado ? "unlock" : "lock", e.id)} />
+      <div className={movendo ? "flex-1 text-sm ah-pisca" : "flex-1 text-sm"} style={{ color: ind ? C.cinzaClaro : (trancado ? C.pasto : C.ambar), fontWeight: 700 }}>{texto}</div>
+      <BotaoAcao icon={trancado ? LockOpen : Lock} label={trancado ? "Destrancar" : "Trancar"} cor={trancado ? C.ambar : C.pasto} disabled={ind || movendo} onClick={acionar} />
     </div>
   );
 }
@@ -3530,6 +3549,7 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
   const alternarMembro = (id) => setExp((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const v = visualPorTipo(e);
   const abertas = e.membros.filter((m) => visualPorTipo(m).ativo).length;
+  const vezRef = useRef(0); // um toque novo interrompe o "uma por vez" que ainda está mandando
   // acao: "abrir" | "parar" | "fechar". Com a Persiana 0, um comando só move todas juntas e o app
   // já mostra as de 1 a 11 abrindo/fechando. Sem ela, manda uma por vez.
   const acionar = async (acao) => {
@@ -3539,10 +3559,13 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
       if (acao !== "parar") e.preverEstados?.(e.membros.map((m) => [m.id, svc(m) === "open_cover" ? "opening" : "closing", svc(m) === "open_cover" ? "open" : "closed"]));
       return;
     }
+    const vez = ++vezRef.current;
     const lista = e.membros.filter((m) => m.disponivel);
+    const pausa = acao === "parar" ? 150 : 400; // parar precisa chegar rápido em todas
     for (let i = 0; i < lista.length; i++) {
+      if (vez !== vezRef.current) return; // tocou em outro botão: este para de mandar
       enviar("cover", svc(lista[i]), lista[i].id);
-      if (i < lista.length - 1) await new Promise((r) => setTimeout(r, 400));
+      if (i < lista.length - 1) await new Promise((r) => setTimeout(r, pausa));
     }
   };
   return (
@@ -3557,7 +3580,7 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
       {/* Botões sempre à vista (cartão aberto ou fechado). */}
       <div className="flex gap-2" onPointerDown={(ev) => ev.stopPropagation()}>
         <BotaoAcao icon={ArrowUpFromLine} label={e.mestre ? "Abrir" : "Abrir todas"} cor={C.pasto} disabled={!e.disponivel} onClick={() => acionar("abrir")} />
-        {e.mestre && <BotaoAcao icon={X} label="Parar" cor={C.ambar} disabled={!e.mestre.disponivel} onClick={() => acionar("parar")} />}
+        <BotaoAcao icon={X} label={e.mestre ? "Parar" : "Parar todas"} cor={C.ambar} disabled={e.mestre ? !e.mestre.disponivel : !e.disponivel} onClick={() => acionar("parar")} />
         <BotaoAcao icon={ArrowDownToLine} label={e.mestre ? "Fechar" : "Fechar todas"} cor={C.cinza} disabled={!e.disponivel} onClick={() => acionar("fechar")} />
       </div>
       {aberto && (
@@ -4239,6 +4262,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [areas, setAreas] = useState(null); // entity_id -> nome da área no Home Assistant
   const [tentativa, setTentativa] = useState(0);
   const [aviso, setAviso] = useState(null);
+  // Erro some sozinho depois de 6 s (os avisos comuns já somem em 2 s).
+  useEffect(() => { if (!aviso?.erro) return; const t = setTimeout(() => setAviso((a) => (a === aviso ? null : a)), 6000); return () => clearTimeout(t); }, [aviso]);
   const [avisoBateria, setAvisoBateria] = useState(null); // % da bateria da porta, quando baixa
   const [pavimentos, setPavimentos] = useState([]);
   const [ambientes, setAmbientes] = useState([]);
@@ -4268,6 +4293,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const usoRef = useRef(Date.now());
   const wsRef = useRef(null);
   const pedidosRef = useRef({}); // id -> resolve (pedidos que esperam resposta do HA)
+  const comandosRef = useRef({}); // id do comando -> entity_id (para desfazer a previsão se o HA recusar)
   const baseUrlRef = useRef(""); // endereço do HA (para as capas: /api/media_player_proxy/...)
   const idRef = useRef(1);
   // Família (administrador com controle) fala direto com o Home Assistant: rápido e ao vivo.
@@ -4460,9 +4486,14 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         if (m.type === "result") {
           if (pedidosRef.current[m.id]) { const resp = pedidosRef.current[m.id]; delete pedidosRef.current[m.id]; resp(m); return; }
           const tipo = pend[m.id]; delete pend[m.id];
+          const alvoCmd = comandosRef.current[m.id]; delete comandosRef.current[m.id];
           if (m.success === false) {
             if (tipo === "states") { setErro("Falha ao ler estados: " + (m.error?.message || "")); setStatus("erro"); }
-            else if (ativo && !["areas", "devices", "entities"].includes(tipo)) setAviso({ erro: true, texto: "Não consegui executar: " + (m.error?.message || "erro do Home Assistant") });
+            else if (ativo && !["areas", "devices", "entities"].includes(tipo)) {
+              // Comando recusado: o cartão volta na hora ao estado real (sem a previsão do toque).
+              if (alvoCmd) setOtim((o) => { const n = { ...o }; delete n[alvoCmd]; return n; });
+              setAviso({ erro: true, texto: "Não consegui executar: " + (m.error?.message || "erro do Home Assistant") });
+            }
             return;
           }
           if (tipo === "states") {
@@ -4692,8 +4723,15 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       return;
     }
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== 1) { setAviso({ erro: true, texto: "A conexão com o Home Assistant caiu. Toque no ↻ (atualizar) no topo e tente de novo." }); return; }
-    ws.send(JSON.stringify({ id: idRef.current++, type: "call_service", domain, service, target: { entity_id: entityId }, service_data: serviceData || {} }));
+    if (!ws || ws.readyState !== 1) {
+      setOtim((o) => { const n = { ...o }; delete n[entityId]; return n; }); // não foi: mostra o estado real
+      setAviso({ erro: true, texto: "A conexão com a casa caiu. Reconectando… toque de novo em alguns segundos." });
+      if (!ws || ws.readyState > 1) setTentativa((t) => t + 1);
+      return;
+    }
+    const idCmd = idRef.current++;
+    comandosRef.current[idCmd] = entityId;
+    ws.send(JSON.stringify({ id: idCmd, type: "call_service", domain, service, target: { entity_id: entityId }, service_data: serviceData || {} }));
     setAviso({ texto: "Comando enviado…" });
     setTimeout(() => setAviso((a) => (a && !a.erro ? null : a)), 2000);
   };
@@ -5229,7 +5267,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               comodos={listaPavBase.flatMap((p) => p.comodos.map((c) => ({ id: c.id, nome: c.nome, pavNome: p.nome })))} />
           )}
 
-          {aviso && <div style={{ background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, borderRadius: 12, fontSize: 13.5 }} className="p-3 mb-3">{aviso.texto}</div>}
+          {/* Aviso flutuando embaixo da tela (antes ficava no fim da página, fora da vista). Tocar fecha. */}
+          {aviso && <div role={aviso.erro ? "alert" : "status"} onClick={() => setAviso(null)}
+            style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: "calc(16px + env(safe-area-inset-bottom))", width: "calc(100% - 24px)", maxWidth: 436, zIndex: 66,
+              background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, border: `1px solid ${aviso.erro ? alfa(C.vermelho, 33) : alfa(C.pasto, 25)}`,
+              borderRadius: 14, fontSize: 14, fontWeight: 600, padding: "12px 14px", boxShadow: "0 8px 22px #0003" }}>{aviso.texto}</div>}
         </main>
       </div>
     </div>
@@ -5434,6 +5476,8 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
   const respPadrao = (eu?.papel === "colaborador" && users.find((u) => u.ativo !== false && norm(u.nome).startsWith("ana carolina"))?.id) || eu?.id;
   const [f, setF] = useState(() => task || { titulo: "", descricao: "", responsavelId: respPadrao, setor: eu?.setor || "", tipo: "unica", freq: "diaria", dias: [], intervaloSemanas: 1, data: hojeISO(), dataInicio: hojeISO(), horaInicio: "", horaFim: "", imagemUrl: null, imagens: [], ehCompra: !!ehCompraInicial, darEntrada: true, compra: { itens: [] } });
   const [salvandoImg, setSalvandoImg] = useState(false);
+  // Enquanto salva, o botão trava (toque duplo criava a tarefa/compra duas vezes).
+  const [salvando, setSalvando] = useState(false); const salvandoRef = useRef(false);
   const [novoProd, setNovoProd] = useState(false);
   const [np, setNp] = useState({ nome: "", categoria: "Supermercado", subcategoria: "", unidade: "un" });
   const [addProdId, setAddProdId] = useState("");
@@ -5486,14 +5530,15 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
   const respSetor = users.find((u) => u.id === f.responsavelId)?.setor || "";
   const semDiaSelecionado = f.tipo === "recorrente" && f.freq === "semanal" && (f.dias || []).length === 0;
   const podeSalvar = (f.ehCompra ? itens.length > 0 : !!f.titulo.trim()) && !semDiaSelecionado;
-  const submit = () => {
-    if (!podeSalvar) return;
+  const submit = async () => {
+    if (!podeSalvar || salvandoRef.current) return;
     const dados = { ...f, setor: respSetor || f.setor || "" };
     if (f.ehCompra) {
       dados.compra = { itens };
       if (!dados.titulo.trim()) dados.titulo = "Compras";
     }
-    onSalvar(dados);
+    salvandoRef.current = true; setSalvando(true);
+    try { await onSalvar(dados); } finally { salvandoRef.current = false; setSalvando(false); }
   };
 
   return (
@@ -5626,7 +5671,7 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
       </Campo>
 
       {semDiaSelecionado && <div style={{ color: C.vermelho, fontSize: 13 }} className="mb-2">Escolha pelo menos um dia da semana.</div>}
-      <button disabled={!podeSalvar} onClick={submit} style={{ width: "100%", background: podeSalvar ? C.pasto : C.cinzaClaro, color: "#fff", borderRadius: 12, padding: 15, fontWeight: 700, fontSize: 16, marginTop: 4 }}>{task ? "Salvar alterações" : "Criar tarefa"}</button>
+      <button disabled={!podeSalvar || salvando} onClick={submit} style={{ width: "100%", background: podeSalvar && !salvando ? C.pasto : C.cinzaClaro, color: "#fff", borderRadius: 12, padding: 15, fontWeight: 700, fontSize: 16, marginTop: 4 }}>{salvando ? "Salvando…" : task ? "Salvar alterações" : "Criar tarefa"}</button>
     </Sheet>
   );
 }
