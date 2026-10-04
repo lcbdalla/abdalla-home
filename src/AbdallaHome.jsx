@@ -177,7 +177,7 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -486,7 +486,7 @@ export default function App() {
 
   // Se deixar de ser admin (ex.: rebaixado em tempo real), sai das abas restritas.
   useEffect(() => {
-    if (!souAdmin && (aba === "painel" || aba === "equipe")) setAba("tarefas");
+    if (!souAdmin && (aba === "painel" || (aba === "equipe" && !eu?.podeGerarVisitante))) setAba("tarefas");
   }, [souAdmin, aba]);
 
   // Ativa os lembretes: pede permissão e inscreve ESTE aparelho para receber avisos
@@ -695,7 +695,7 @@ export default function App() {
   if (rota === "controle") {
     return (<>{barraAtualizar(16)}{(eu?.podeControle || eu?.podeGerirControle)
       ? <ControleApp eu={eu} onVoltar={() => { window.location.hash = ""; }} onSair={sair}
-          onEquipe={souAdmin ? () => { setAba("equipe"); window.location.hash = ""; } : null}
+          onEquipe={souAdmin || eu?.podeGerarVisitante ? () => { setAba("equipe"); window.location.hash = ""; } : null}
           onSobre={souAdmin ? () => { setInfoAberto(true); window.location.hash = ""; } : null} />
       : <ControleSemAcesso onVoltar={() => { window.location.hash = ""; }} />}</>);
   }
@@ -726,7 +726,7 @@ export default function App() {
               <BotaoTempo />
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
-                ...(souAdmin ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: () => setAba("equipe") }] : []),
+                ...(souAdmin || eu?.podeGerarVisitante ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: () => setAba("equipe") }] : []),
                 { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: alternarTema },
                 ...(souAdmin ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: () => setInfoAberto(true) }] : []),
                 { key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) sair(); } },
@@ -756,7 +756,7 @@ export default function App() {
           {aba === "compras" && <ComprasView {...{ tasks, produtos, podeMexer, onConcluir: (t) => setModal({ tipo: "concluir", task: t }), onEditar: (t) => setModal({ tipo: "tarefa", task: t }), onExcluir: excluirTarefa, onReabrir: reabrir, onAbrir: (t) => setModal({ tipo: "detalhe", task: t }) }} />}
           {aba === "estoque" && <EstoqueView {...{ produtos, estoque, movs, users, onAjustar: ajustarEstoque, onAbrirProdutos: () => setProdutosAberto(true), onMovimento: (mv) => setModal({ tipo: "movimento", mov: mv }), onSaidaRapida: saidaRapida }} />}
           {aba === "painel" && souAdmin && <PainelView {...{ tasks, users }} />}
-          {aba === "equipe" && souAdmin && <EquipeView {...{ users, souAdmin, euId, showToast, onRecarregar: reloadPerfis }} />}
+          {aba === "equipe" && (souAdmin || eu?.podeGerarVisitante) && <EquipeView {...{ users, souAdmin, euId, showToast, onRecarregar: reloadPerfis }} />}
         </main>
 
         {(aba === "tarefas" || aba === "compras" || aba === "agenda") && (
@@ -1151,6 +1151,13 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
     });
   };
 
+  if (!souAdmin) return (
+    // Quem tem só "Pode gerar acesso de visitante": a Equipe mostra apenas o QR Code de visitante.
+    <div>
+      <button onClick={() => setVisitante(true)} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}><Clock size={18} /> Gerar acesso de visitante (QR Code)</button>
+      {visitante && <VisitanteSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setVisitante(false)} />}
+    </div>
+  );
   return (
     <div>
       <div style={{ background: C.lagoClaro, borderRadius: 14 }} className="p-3 mb-3"><div style={{ color: C.lago }} className="text-xs font-semibold uppercase">Equipe do rancho</div><div style={{ color: C.terra }} className="text-sm mt-0.5">Administradores criam e organizam. Colaboradores executam e pedem compras. {souAdmin ? "Para dar acesso a alguém, toque em Adicionar pessoa." : "Somente administradores podem alterar a equipe."}</div></div>
@@ -1208,6 +1215,13 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                 <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode controlar a casa</div>
                 <Toggle on={u.podeControle === true} onToggle={() => editar(u.id, "pode_controle", !(u.podeControle === true))} />
               </div>
+              {u.papel !== "admin" && u.papel !== "visitante" && (
+                <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
+                  <Clock size={13} style={{ color: C.cinzaClaro }} />
+                  <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode gerar acesso de visitante</div>
+                  <Toggle on={u.podeGerarVisitante === true} onToggle={() => editar(u.id, "pode_gerar_visitante", !(u.podeGerarVisitante === true))} />
+                </div>
+              )}
               {u.podeControle && (
                 <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
                   <LayoutGrid size={13} style={{ color: C.cinzaClaro }} />
@@ -1420,11 +1434,11 @@ function VisitanteSheet({ showToast, onCriado, onFechar }) {
     const email = `visitante-${uid()}@convidado.local`;
     const senha = senhaForte();
     const { data, error } = await supabase.functions.invoke("quick-service", {
-      body: { nome: "Visitante", email, senha, telefone: "", papel: "colaborador", setor: "" },
+      body: { nome: "Visitante", email, senha, telefone: "", papel: "colaborador", setor: "", visitante: true, dias: d },
     });
     if (error || data?.error) { setErro(await erroDaFuncao(error, data)); setCriando(false); return; }
     const ate = new Date(Date.now() + d * 86400000);
-    if (data?.id) {
+    if (data?.id && !data?.visitante) {
       const { error: e2 } = await supabase.from("perfis").update({ papel: "visitante", pode_controle: true, expira_em: ate.toISOString(), nome: `Visitante · ${d}d` }).eq("id", data.id);
       if (e2) {
         // Não deixa para trás uma conta de colaborador sem dono.

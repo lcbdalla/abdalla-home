@@ -39,25 +39,32 @@ Deno.serve(async (req) => {
   const { data: userData, error: userErr } = await admin.auth.getUser(token);
   if (userErr || !userData?.user) return json({ error: "Sua sessão expirou. Saia e entre de novo no app." }, 401);
 
-  // 2) Confere se o chamador é admin e está ativo.
-  const { data: perfilChamador } = await admin
-    .from("perfis")
-    .select("papel, ativo")
-    .eq("id", userData.user.id)
-    .maybeSingle();
-  if (!perfilChamador || perfilChamador.ativo === false || perfilChamador.papel !== "admin") {
-    return json({ error: "Apenas administradores podem adicionar pessoas." }, 403);
-  }
-
-  // 3) Valida a entrada.
+  // 3) Lê o pedido (antes de conferir a permissão: visitante tem regra própria).
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "Corpo inválido" }, 400); }
+  const ehVisitante = body?.visitante === true;
+
+  // 2) Confere quem chamou: admin ativo cria qualquer pessoa; quem tem "Pode gerar acesso de
+  //    visitante" cria só visitante (conta temporária, com validade).
+  const { data: perfilChamador } = await admin
+    .from("perfis")
+    .select("papel, ativo, pode_gerar_visitante")
+    .eq("id", userData.user.id)
+    .maybeSingle();
+  const ativo = !!perfilChamador && perfilChamador.ativo !== false;
+  const podeTudo = ativo && perfilChamador.papel === "admin";
+  const podeVisitante = ativo && (podeTudo || perfilChamador.pode_gerar_visitante === true);
+  if (ehVisitante ? !podeVisitante : !podeTudo) {
+    return json({ error: ehVisitante ? "Você não tem permissão para gerar acesso de visitante." : "Apenas administradores podem adicionar pessoas." }, 403);
+  }
   const nome = String(body?.nome || "").trim();
   const email = String(body?.email || "").trim().toLowerCase();
   const senha = String(body?.senha || "");
   const telefone = String(body?.telefone || "").trim();
-  const papel = body?.papel === "admin" ? "admin" : "colaborador";
-  const setor = papel === "admin" ? "" : String(body?.setor || "").trim();
+  const papel = ehVisitante ? "visitante" : body?.papel === "admin" ? "admin" : "colaborador";
+  const dias = Math.max(1, Math.min(90, parseInt(body?.dias) || 1));
+  if (ehVisitante && !email.endsWith("@convidado.local")) return json({ error: "E-mail de visitante inválido." }, 400);
+  const setor = papel === "colaborador" ? String(body?.setor || "").trim() : "";
   if (!nome || !email || senha.length < 6) return json({ error: "Nome, e-mail e senha (mín. 6) são obrigatórios." }, 400);
 
   // 4) Cria o usuário no Auth (já confirmado, para poder entrar de imediato).
@@ -76,11 +83,12 @@ Deno.serve(async (req) => {
   //    o perfil automaticamente quando o usuário nasce no Auth.
   const { error: perfilErr } = await admin.from("perfis").upsert({
     id: novo.user.id,
-    nome,
+    nome: ehVisitante ? `Visitante · ${dias}d` : nome,
     papel,
     telefone,
     setor: setor || null,
     ativo: true,
+    ...(ehVisitante ? { pode_controle: true, expira_em: new Date(Date.now() + dias * 86400000).toISOString() } : {}),
   }, { onConflict: "id" });
   if (perfilErr) {
     // Desfaz o usuário do Auth se o perfil falhar, para não deixar conta órfã.
@@ -88,5 +96,5 @@ Deno.serve(async (req) => {
     return json({ error: "Falha ao criar o perfil: " + perfilErr.message }, 400);
   }
 
-  return json({ ok: true, id: novo.user.id });
+  return json({ ok: true, id: novo.user.id, visitante: ehVisitante });
 });
