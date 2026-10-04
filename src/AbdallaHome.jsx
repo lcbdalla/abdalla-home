@@ -4151,6 +4151,61 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return () => document.removeEventListener("touchmove", barrar);
   }, [!!arrPav]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---- Segurar e arrastar CÔMODOS dentro do pavimento (só gestor) ----
+  // Mesmo jeito dos pavimentos: segura ~0,5 s no título do cômodo, ele flutua e os outros abrem vaga.
+  // Enquanto arrasta, os cômodos ficam recolhidos (só os títulos).
+  const [arrAmb, setArrAmb] = useState(null); // { id, pavId, ordem, y, offY, left, w, h }
+  const ambPress = useRef(null), ambTimer = useRef(null), ambLongo = useRef(false), ambRefs = useRef({});
+  const pegarAmb = () => {
+    const p = ambPress.current; if (!p || arrAmb) return;
+    ambPress.current = null; clearTimeout(ambTimer.current); ambLongo.current = true;
+    const r = ambRefs.current[p.id]?.getBoundingClientRect() || p.el.getBoundingClientRect(); // caixa do cômodo
+    try { p.el.setPointerCapture?.(p.pid); } catch { /* ok */ }
+    setArrAmb({ id: p.id, pavId: p.pavId, ordem: p.ordem, y: p.y, offY: p.y - r.top, left: r.left, w: r.width, h: r.height });
+  };
+  const aoPressionarAmb = (e, id, pavId, ordem) => {
+    if (!souGestor || arrAmb || arrPav) return;
+    e.stopPropagation(); // não deixa o pavimento "pegar" junto
+    ambLongo.current = false;
+    ambPress.current = { id, pavId, ordem, pid: e.pointerId, el: e.currentTarget, x: e.clientX, y: e.clientY };
+    clearTimeout(ambTimer.current); ambTimer.current = setTimeout(pegarAmb, 500);
+  };
+  const aoMoverAmb = (e) => {
+    if (!arrAmb) {
+      const p = ambPress.current;
+      if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) { clearTimeout(ambTimer.current); ambPress.current = null; } // era rolagem
+      return;
+    }
+    const y = e.clientY;
+    setArrAmb((a) => {
+      if (!a) return a;
+      const outros = a.ordem.filter((id) => id !== a.id);
+      let alvo = 0;
+      for (const id of outros) { const el = ambRefs.current[id]; if (el) { const r = el.getBoundingClientRect(); if (y > r.top + r.height / 2) alvo++; } }
+      const nova = outros.slice(); nova.splice(alvo, 0, a.id);
+      return { ...a, y, ordem: nova.join() === a.ordem.join() ? a.ordem : nova };
+    });
+  };
+  const aoSoltarAmb = async () => {
+    clearTimeout(ambTimer.current); ambPress.current = null;
+    const a = arrAmb; if (!a) return;
+    setArrAmb(null);
+    setTimeout(() => { ambLongo.current = false; }, 0);
+    const antes = ambientes.filter((x) => x.pavimento_id === (a.pavId === "__sem__" ? null : a.pavId)).sort((x, y) => x.ordem - y.ordem).map((x) => x.id);
+    if (a.ordem.join() === antes.join()) return;
+    setAmbientes((lista) => lista.map((x) => (a.ordem.includes(x.id) ? { ...x, ordem: a.ordem.indexOf(x.id) } : x))); // já mostra na nova ordem
+    const res = await Promise.all(a.ordem.map((id, i) => supabase.from("ambientes").update({ ordem: i }).eq("id", id)));
+    if (res.some((r) => r.error)) setAviso({ erro: true, texto: "Não consegui salvar a nova ordem dos cômodos." });
+    carregarConfig();
+  };
+  useEffect(() => () => clearTimeout(ambTimer.current), []);
+  useEffect(() => {
+    if (!arrAmb) return;
+    const barrar = (ev) => ev.preventDefault();
+    document.addEventListener("touchmove", barrar, { passive: false });
+    return () => document.removeEventListener("touchmove", barrar);
+  }, [!!arrAmb]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- Desligar tudo de um pavimento/cômodo: um aparelho por vez, 600 ms entre cada ----
   const desligarTudo = async (itens, nivel) => {
     const alvo = achatar(itens).filter((e) => ehDesligavel(e) && estaLigado(e));
@@ -4582,23 +4637,35 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               </div>
               {abertoP && (
                 <div className="flex flex-col" style={{ gap: 8, marginTop: 4 }}>
-                  {pav.comodos.map((c) => {
-                    const abertoC = abertos.amb === c.id;
+                  {(arrAmb?.pavId === pav.id ? arrAmb.ordem.map((id) => pav.comodos.find((x) => x.id === id)).filter(Boolean) : pav.comodos).map((c) => {
+                    const naMaoC = arrAmb?.id === c.id;
+                    const abertoC = !arrAmb && abertos.amb === c.id;
                     const acesoC = contarLigados(c.itens).on > 0; // algo ligado: a caixa ganha um tom âmbar
                     return (
                       // Cômodo com algo ligado "acende": fundo âmbar em degradê, borda mais forte e um brilho em volta.
-                      <div key={c.id} data-comodo={c.id} style={{ border: `1px solid ${acesoC ? alfa(C.aceso, 75) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
+                      <React.Fragment key={c.id}>
+                      {naMaoC && <div style={{ height: arrAmb.h, borderRadius: 18, border: `2px dashed ${C.cinzaClaro}`, background: alfa(C.cinzaClaro, 8) }} />}
+                      <div ref={(el) => { ambRefs.current[c.id] = el; }} data-comodo={c.id}
+                        style={{ border: `1px solid ${acesoC ? alfa(C.aceso, 75) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
+                        ...(naMaoC ? { position: "fixed", left: arrAmb.left, top: arrAmb.y - arrAmb.offY, width: arrAmb.w, zIndex: 60, transform: "scale(1.02)" } : {}),
                         background: acesoC ? `linear-gradient(160deg, color-mix(in srgb, ${C.aceso} 26%, ${C.card}) 0%, color-mix(in srgb, ${C.aceso} 9%, ${C.card}) 100%)` : C.card, padding: "6px 12px",
-                        boxShadow: acesoC ? `0 0 0 3px ${alfa(C.aceso, 18)}, 0 12px 30px -12px ${alfa(C.aceso, 70)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
+                        boxShadow: naMaoC ? "0 22px 44px -16px rgba(0,0,0,.5)" : acesoC ? `0 0 0 3px ${alfa(C.aceso, 18)}, 0 12px 30px -12px ${alfa(C.aceso, 70)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
                         transition: "box-shadow .25s, border-color .25s, background .25s" }}>
-                        <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
-                          itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} musica={musicaDe(c.itens, enviar)} />
+                        {/* Segurar o título do cômodo: arrasta para mudar a ordem (só o título, para não brigar com os cartões). */}
+                        <div onPointerDown={(ev) => aoPressionarAmb(ev, c.id, pav.id, pav.comodos.map((x) => x.id))} onPointerMove={aoMoverAmb} onPointerUp={aoSoltarAmb} onPointerCancel={aoSoltarAmb}
+                          onContextMenu={(ev) => { if (souGestor) { ev.preventDefault(); pegarAmb(); } }}
+                          onClickCapture={(ev) => { if (ambLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}
+                          style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: arrAmb ? "none" : "auto" }}>
+                          <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
+                            itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} musica={musicaDe(c.itens, enviar)} />
+                        </div>
                         {abertoC && (
                           <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
                             <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} editando={editando} setEditando={setEditando} onTamanho={cbs.onTamanho} />
                           </div>
                         )}
                       </div>
+                      </React.Fragment>
                     );
                   })}
                 </div>
