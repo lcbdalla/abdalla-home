@@ -3906,7 +3906,7 @@ function PaineisSheet({ paineis, ativo, ocultos, onEscolher, onCriar, onRenomear
     );
   };
   return (
-    <Sheet titulo="Painéis" onFechar={onFechar}>
+    <Sheet titulo="Dashboard" onFechar={onFechar}>
       {linha("padrao", "Padrão", false)}
       {paineis.map((x) => linha(x.id, x.nome, true))}
       <button onClick={onCriar} className="flex items-center justify-center gap-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 13, fontWeight: 700, marginTop: 4 }}><Plus size={18} /> Novo painel</button>
@@ -4715,9 +4715,12 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 style={{ background: "#ffffff22", borderRadius: 10, padding: 6, display: "flex", color: "#fff" }}><IconeControleRemoto size={20} /></button>
             ))}
             <BotaoTempo />
-            {/* O menu ⋮ só aparece para quem tem a chave "Menu ⋮ do Controle" ligada na Equipe. */}
-            {eu?.podeMenuControle && (
+            {/* O menu ⋮ aparece para quem tem a chave "Menu ⋮ do Controle" (tudo) ou "Pode montar o
+                próprio painel" (só o Dashboard). */}
+            {(eu?.podeMenuControle || podePessoal) && (
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
+                ...(podePessoal && modo === "usar" ? [{ key: "dash", icon: LayoutGrid, cor: C.lago, txt: `Dashboard · ${painel ? painel.nome : "Padrão"}`, on: () => setPaineisAberto(true) }] : []),
+                ...(!eu?.podeMenuControle ? [] : [
                 // Mesmos itens do ⋮ das tarefas (com "Tarefas" no lugar de "Controle da casa") + Configuração.
                 { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => { topoDoCabecalho(); setPortaoAberto(true); } },
                 { key: "porta", icon: Lock, cor: C.ambar, txt: "Porta Entrada", on: () => { topoDoCabecalho(); setPortaAberta(true); } },
@@ -4727,6 +4730,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 { key: "tema", icon: tema === "dark" ? Sun : Moon, cor: C.ambar, txt: tema === "dark" ? "Modo claro" : "Modo noturno", on: () => { const n = tema === "dark" ? "light" : "dark"; aplicarTema(n); setTema(n); } },
                 ...(onSobre ? [{ key: "sobre", icon: Info, cor: C.lago, txt: "Sobre a propriedade", on: onSobre }] : []),
                 ...(onSair ? [{ key: "sair", icon: LogOut, cor: C.vermelho, txt: "Sair", on: async () => { if (await Dialog.confirm({ titulo: "Sair", mensagem: "Deseja sair desta conta?", okLabel: "Sair" })) onSair(); } }] : []),
+                ]),
               ]} />
             )}
           </div>
@@ -4758,13 +4762,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 <button onClick={() => setEditando(false)} style={{ background: C.pasto, color: "#fff", borderRadius: 8, padding: "6px 16px", fontWeight: 700, fontSize: 13 }}>Concluir</button>
               </div>
             ) : null
-          )}
-          {modo === "usar" && status === "ok" && podePessoal && (
-            <div className="flex justify-end" style={{ marginBottom: 8 }}>
-              <button onClick={() => setPaineisAberto(true)} className="flex items-center gap-1" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "5px 12px", fontSize: 12.5, fontWeight: 700, color: C.terra }}>
-                <LayoutGrid size={14} style={{ color: C.cinza }} /> {painel ? painel.nome : "Padrão"} <ChevronDown size={14} style={{ color: C.cinza }} />
-              </button>
-            </div>
           )}
           {modo === "usar" && status === "ok" && (arrPav
             ? [...arrPav.ordem.map((id) => listaPav.find((x) => x.id === id)).filter(Boolean), ...listaPav.filter((x) => !arrPav.ordem.includes(x.id))]
