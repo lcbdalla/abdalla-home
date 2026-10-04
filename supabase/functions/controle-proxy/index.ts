@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
   if (errQuem || !quem?.user) return json({ error: "Sua sessão expirou. Saia e entre de novo no app." }, 401);
   const { data: p } = await admin
     .from("perfis")
-    .select("ativo, papel, pode_controle, pode_gerir_controle, expira_em, nome")
+    .select("*")
     .eq("id", quem.user.id)
     .maybeSingle();
   if (!p || p.ativo === false) return json({ error: "Seu acesso ao app foi removido." }, 403);
@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
     if (!r.ok) return json({ error: `O Home Assistant não respondeu (${r.status}).` }, 502);
     const todos = await r.json();
     const estados = (Array.isArray(todos) ? todos : [])
-      .filter((s: any) => cadastrados.has(s.entity_id) || ehMeuSpotify(s, p.nome))
+      .filter((s: any) => cadastrados.has(s.entity_id) || s.entity_id === p.spotify_entity || ehMeuSpotify(s, p.nome))
       .map((s: any) => {
         const a = { ...(s.attributes || {}) };
         delete a.access_token; // nunca expor tokens de câmera/mídia
@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
   if (body?.acao === "servico") {
     const entity = String(body.entity_id || ""), domain = String(body.domain || ""), service = String(body.service || "");
     if (!ENTIDADE.test(entity) || !NOME.test(domain) || !NOME.test(service)) return json({ error: "Comando inválido." }, 400);
-    let liberado = cadastrados.has(entity);
+    let liberado = cadastrados.has(entity) || entity === p.spotify_entity;
     if (!liberado && entity.startsWith("media_player.spotify_")) {
       const rs = await fetch(`${base}/api/states/${entity}`, { headers: cabecalho });
       liberado = rs.ok && ehMeuSpotify(await rs.json(), p.nome);

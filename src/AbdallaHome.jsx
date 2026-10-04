@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Music, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -177,7 +177,7 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, spotifyEntity: r.spotify_entity || null, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -2243,7 +2243,8 @@ function mesmaPessoa(perfil, conta) {
   if (!a.length || !b.length) return false;
   return a.join(" ") === b.join(" ") || (a.length > 1 && a[0] === b[0] && a[a.length - 1] === b[b.length - 1]);
 }
-function spotifyDaPessoa(ents, nome) {
+function spotifyDaPessoa(ents, nome, fixo) {
+  if (fixo && ents[fixo]) return fixo; // vínculo feito pelo gestor (Configuração → Spotify de cada pessoa)
   if (!palavrasNome(nome).length) return null;
   const ids = Object.keys(ents).filter((id) => id.startsWith("media_player.spotify_"));
   const exato = (t) => palavrasNome(t).join(" ") === palavrasNome(nome).join(" ");
@@ -3819,6 +3820,42 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, ar
     </div>
   );
 }
+// Liga cada pessoa do app ao Spotify dela que está no Home Assistant (quando o nome não bate
+// sozinho, ex.: "calinoandrade", "Priscila Neri"). Fica gravado no perfil (perfis.spotify_entity).
+function SpotifyPessoas({ ents }) {
+  const [pessoas, setPessoas] = useState(null), [erro, setErro] = useState("");
+  const contas = Object.keys(ents).filter((id) => id.startsWith("media_player.spotify_"))
+    .map((id) => ({ id, nome: String(ents[id]?.attributes?.friendly_name || id).replace(/^Spotify\s*/i, "") }));
+  const carregar = () => supabase.from("perfis").select("*").eq("ativo", true).order("nome").then(({ data, error }) => {
+    if (error) { setErro(error.message); return; }
+    setPessoas((data || []).filter((x) => x.papel !== "visitante"));
+  });
+  useEffect(() => { carregar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const salvar = async (id, valor) => {
+    const { error } = await supabase.from("perfis").update({ spotify_entity: valor || null }).eq("id", id);
+    if (error) { setErro(/spotify_entity/.test(error.message) ? "Falta rodar o SQL spotify-pessoa.sql no Supabase." : error.message); return; }
+    setErro(""); carregar();
+  };
+  return (
+    <div className="mb-4" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, padding: 12 }}>
+      <div className="flex items-center gap-2 mb-2"><Music size={16} style={{ color: C.pasto }} /><span className="font-bold" style={{ fontSize: 15 }}>Spotify de cada pessoa</span></div>
+      {erro && <div style={{ color: C.vermelho, fontSize: 13, marginBottom: 8 }}>{erro}</div>}
+      {!pessoas ? <div style={{ color: C.cinza, fontSize: 13 }}>Carregando…</div> : pessoas.map((x) => {
+        const auto = spotifyDaPessoa(ents, x.nome);
+        return (
+          <div key={x.id} className="flex items-center gap-2" style={{ borderTop: `1px solid ${C.linha}`, padding: "8px 0" }}>
+            <span className="flex-1 min-w-0 truncate" style={{ fontSize: 14, fontWeight: 600 }}>{x.nome}</span>
+            <select value={x.spotify_entity || ""} onChange={(e) => salvar(x.id, e.target.value)}
+              style={{ flexShrink: 0, maxWidth: "55%", border: `1px solid ${C.linha}`, borderRadius: 9, padding: "6px 8px", fontSize: 13, background: C.card, color: C.terra }}>
+              <option value="">{auto ? `Automático (${contas.find((c) => c.id === auto)?.nome || auto})` : "Sem Spotify"}</option>
+              {contas.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }) {
   const [novoPav, setNovoPav] = useState("");
   const usados = new Set(equipamentos.map((q) => q.entity_id));
@@ -4568,7 +4605,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   };
 
   // ---- Monta a lista para o modo "usar" (pavimento -> cômodo -> aparelhos) ----
-  const meuSpotify = spotifyDaPessoa(entsVis, eu?.nome);
+  const meuSpotify = spotifyDaPessoa(entsVis, eu?.nome, eu?.spotifyEntity);
   // Alexa desligada pela chave: a música fica pausada e o cartão desligado até ligar de novo
   // (ou até a música voltar a tocar por outro caminho).
   const [alexaOff, setAlexaOff] = useState(() => { try { return JSON.parse(localStorage.getItem("alexaDesligada") || "[]"); } catch { return []; } });
@@ -4900,7 +4937,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           )}
 
           {modo === "gerenciar" && souGestor && (
-            <GerenciarView pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} areas={areas} cbs={cbs} />
+            <><SpotifyPessoas ents={ents} /><GerenciarView pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} areas={areas} cbs={cbs} /></>
           )}
 
           {modo === "usar" && status === "ok" && listaPav.length === 0 && (
