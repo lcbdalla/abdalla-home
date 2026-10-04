@@ -3569,9 +3569,13 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
         <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" }}>{e.nome}</div>
         {e.tipo === "alexa" && (() => {
           const tocando = e.state === "playing", ligada = ["playing", "paused"].includes(e.state);
-          const txt = e.alheio ? `Com ${e.usoDe || "outra pessoa"}` : !e.spotify ? "Sem Spotify ligado" : !e.connect ? "Alexa não encontrada" : tocando ? "Tocando" : e.soArmado ? "Escolha onde tocar" : ligada ? "Pausado" : "Desligado";
+          // Sem o Spotify da pessoa no HA: a chave abre o Spotify do celular dela para escolher a Alexa.
+          const txt = e.alheio ? `Com ${e.usoDe || "outra pessoa"}` : !e.spotify ? "Pelo seu Spotify" : !e.connect ? "Alexa não encontrada" : tocando ? "Tocando" : e.soArmado ? "Escolha onde tocar" : ligada ? "Pausado" : "Desligado";
           return (<>
             <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: ligada ? LAGO : C.cinza }}>{txt}</span>
+            {!e.spotify && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
+              <PillToggle on={false} cor={LAGO} onClick={abrirSpotify} />
+            </span>}
             {e.spotify && e.connect && <span onClick={(ev) => ev.stopPropagation()} onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
               <PillToggle on={ligada && !e.alheio} cor={LAGO} onClick={() => alternarUso(e, !ligada, () => ligarAlexa(e, !ligada, enviar))} />
             </span>}
