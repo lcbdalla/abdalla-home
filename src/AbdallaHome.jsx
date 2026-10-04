@@ -2244,7 +2244,7 @@ function previsto(service, v, data = {}) {
     case "media_play_pause": return { state: v?.state === "playing" ? "paused" : "playing" };
     case "media_pause": return { state: "paused" };
     case "media_play": return { state: "playing" };
-    case "set_temperature": return { attributes: { temperature: data.temperature } };
+    case "set_temperature": return { ...(data.hvac_mode ? { state: data.hvac_mode } : {}), attributes: { temperature: data.temperature } };
     case "set_hvac_mode": return { state: data.hvac_mode };
     case "set_fan_mode": return { attributes: { fan_mode: data.fan_mode } };
     case "open_cover": return { state: "opening" };
@@ -2702,6 +2702,16 @@ function CtrlPersiana({ e, enviar }) {
     </div>
   );
 }
+// Ligar o ar sempre no padrão da casa: frio, 22° e vento automático (vale para todos os ares).
+const AR_PADRAO = { modo: "cool", temperatura: 22 };
+function ligarAr(e, enviar) {
+  const a = e.attributes || {};
+  const modo = (a.hvac_modes || []).includes(AR_PADRAO.modo) ? { hvac_mode: AR_PADRAO.modo } : {};
+  enviar("climate", "set_temperature", e.id, { temperature: AR_PADRAO.temperatura, ...modo });
+  if (!modo.hvac_mode) enviar("climate", "turn_on", e.id);
+  const auto = (a.fan_modes || []).find((f) => /^auto/i.test(f));
+  if (auto) setTimeout(() => enviar("climate", "set_fan_mode", e.id, { fan_mode: auto }), 1200);
+}
 function CtrlAr({ e, enviar }) {
   const ind = !e.disponivel; const a = e.attributes || {};
   const ligado = !!e.state && e.state !== "off" && !ind;
@@ -2723,7 +2733,7 @@ function CtrlAr({ e, enviar }) {
           {ind ? "Indisponível" : (ligado ? `Ligado · ${AR_MODO_NOME[e.state] || e.state}` : "Desligado")}
           {atual != null && <span style={{ color: C.cinzaClaro }}> · ambiente {Math.round(atual)}°</span>}
         </div>
-        <PillToggle on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={() => enviar("climate", ligado ? "turn_off" : "turn_on", e.id)} />
+        <PillToggle on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={() => (ligado ? enviar("climate", "turn_off", e.id) : ligarAr(e, enviar))} />
       </div>
       {ligado && (
         <>
@@ -3274,7 +3284,7 @@ function CtrlArCompacto({ e, enviar }) {
       ) : (
         <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : C.cinza, fontWeight: 600 }}>{ind ? "Indisponível" : "Desligado"}</div>
       )}
-      <span style={{ marginLeft: "auto" }}><PillToggle pequeno on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={(ev) => { ev.stopPropagation(); enviar("climate", ligado ? "turn_off" : "turn_on", e.id); }} /></span>
+      <span style={{ marginLeft: "auto" }}><PillToggle pequeno on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={(ev) => { ev.stopPropagation(); if (ligado) enviar("climate", "turn_off", e.id); else ligarAr(e, enviar); }} /></span>
     </div>
   );
 }
@@ -3393,7 +3403,8 @@ function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
     const ligar = acesas === 0;
     const lista = e.membros.filter((m) => m.disponivel && estaLigado(m) !== ligar);
     for (let i = 0; i < lista.length; i++) {
-      enviar("homeassistant", ligar ? "turn_on" : "turn_off", lista[i].id);
+      if (ligar && lista[i].tipo === "ar") ligarAr(lista[i], enviar);
+      else enviar("homeassistant", ligar ? "turn_on" : "turn_off", lista[i].id);
       if (i < lista.length - 1) await new Promise((r) => setTimeout(r, 300));
     }
   };
