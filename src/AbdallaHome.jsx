@@ -2794,7 +2794,9 @@ function ligarAr(e, enviar) {
   enviar("climate", "set_temperature", e.id, { temperature: AR_PADRAO.temperatura, ...modo });
   if (!modo.hvac_mode) enviar("climate", "turn_on", e.id);
   const auto = (a.fan_modes || []).find((f) => /^auto/i.test(f));
-  if (auto) setTimeout(() => enviar("climate", "set_fan_mode", e.id, { fan_mode: auto }), 1200);
+  // O vento só vai depois que o HA confirmar o ar LIGADO: alguns (Midea) mandam o estado inteiro
+  // a cada comando — com o HA ainda achando "desligado", o comando de vento desligava o ar.
+  if (auto) { const vento = () => enviar("climate", "set_fan_mode", e.id, { fan_mode: auto }); if (e.quandoLigado) e.quandoLigado(vento); else setTimeout(vento, 1200); }
 }
 // Ares que às vezes não desligam de primeira (Living, K7 da Churrasqueira e Varanda): ao desligar
 // pelo app, desliga → 1 s → liga → 1 s → desliga de novo.
@@ -4633,6 +4635,13 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   useEffect(() => { if (spState === "playing" && alexaOff.length) { setAlexaOff([]); try { localStorage.setItem("alexaDesligada", "[]"); } catch { /* ok */ } } }, [spState]); // eslint-disable-line react-hooks/exhaustive-deps
   // Com o Spotify parado, o HA só aceita "escolher o aparelho"; tocar/play_media só depois que o
   // Spotify conecta nele. Então: escolhe o aparelho, espera o estado mostrar a conexão e segue.
+  // Estado real do HA (sem a previsão do toque): para esperar o ar ligar de verdade.
+  const entsReaisRef = useRef(ents); entsReaisRef.current = ents;
+  const quandoLigado = (id, fn) => {
+    const t0 = Date.now();
+    const ver = () => { const st = entsReaisRef.current[id]?.state; if (st && !["off", "unavailable", "unknown"].includes(st)) { fn(); return; } if (Date.now() - t0 < 25000) setTimeout(ver, 1000); };
+    setTimeout(ver, 1500);
+  };
   const entsRef = useRef(entsVis);
   entsRef.current = entsVis;
   const bat = entsVis[BATERIA_PORTA.sensor]?.state;
@@ -4765,6 +4774,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       disponivel: row.tipo === "botao" ? state != null && state !== "unavailable" : state != null && !["unavailable", "unknown", "none", ""].includes(state),
       streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : RECEIVERS_SOM[row.entity_id] ? streamerSpotify(RECEIVERS_SOM[row.entity_id]) : null,
       zonas: ehZonaAAT(row.entity_id) ? zonasAAT : null,
+      ...(row.tipo === "ar" ? { quandoLigado: (fn) => quandoLigado(row.entity_id, fn) } : {}),
       tons: ehZonaAAT(row.entity_id) ? tonsAAT : null,
       mesa: ehZonaAAT(row.entity_id) ? { cfg: MESA_TV, ents: Object.fromEntries(MESA_IDS.map((id) => [id, entsVis[id]])) } : null,
     };
