@@ -2406,7 +2406,7 @@ const ALEXA_CARTOES = {
   },
   "alexa.quarto_carlos_e_sandra": {
     alexas: [["Quarto", ["Quarto Master Echo"]], ["Closet", ["Closet Master Echo"]], ["Sala", ["Sala Quarto Master Echo"]], ["Banheiro", ["Banheiro Master Echo"]]],
-    grupos: [[["Som quarto closet sala e banheiro Master"], [0, 1, 2, 3]]],
+    grupos: [[["Som quarto closet sala e banheiro Master"], [0, 1, 2, 3]], [["Som quarto closet banheiro carlos e sandra"], [0, 1, 3]]],
   },
 };
 function acharConnect(sp, nomes) {
