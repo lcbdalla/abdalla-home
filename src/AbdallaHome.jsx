@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Music, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, ShieldCheck, Music, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -1628,8 +1628,18 @@ const BATERIA_PORTA = {
   sensor: "sensor.fechadura_porta_frente_battery", limite: 35, recupera: 60, responsavel: "ana carolina",
   titulo: "Comprar 4 pilhas AA (fechadura da porta da frente)",
 };
+// Alarmes Intelbras (integrações amt8000 e amt4010). Armar/desarmar pedem a senha da central a
+// cada vez (o app NÃO guarda). "zonas" = sensores de porta/janela/movimento (on = aberta/violada);
+// "memoria" = zonas que dispararam (atributo zones), que é o que diz onde disparou.
+const ALARMES = [
+  { nome: "Casa principal", painel: "alarm_control_panel.intelbras_amt_8000_all_groups",
+    zona: /^binary_sensor\.intelbras_amt_8000_(\d{2}_|sensor_\d+$)/, memoria: "binary_sensor.intelbras_amt_8000_memoria_de_disparo", sirene: "binary_sensor.intelbras_amt_8000_siren" },
+  { nome: "Casa Baixa", painel: "alarm_control_panel.amt_4010_central",
+    zona: /^binary_sensor\.amt_4010_zona_\d+$/, memoria: "binary_sensor.amt_4010_memoria_de_disparo", sirene: "binary_sensor.amt_4010_sirene" },
+];
+const ehDoAlarme = (id) => ALARMES.some((a) => id === a.painel || id === a.memoria || id === a.sirene || a.zona.test(id));
 const ehTomAAT = (id) => /^number\.aat_pmr7_zona_\d+_(graves|agudos|balanco)$/.test(id);
-const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button", "remote"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
@@ -1801,6 +1811,66 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
           ))}
         </div>
       </div>
+    </Sheet>
+  );
+}
+
+/* ---- Alarme (menu ⋮ do Controle) ---- */
+const ESTADO_ALARME = {
+  disarmed: ["Desarmado", "#2f7d4f"], armed_away: ["Armado", "#c8862a"], armed_home: ["Armado (em casa)", "#c8862a"], armed_night: ["Armado (noite)", "#c8862a"],
+  arming: ["Armando…", "#c8862a"], pending: ["Disparando em instantes…", "#b34a3a"], disarming: ["Desarmando…", "#2f7d4f"], triggered: ["DISPARADO", "#b34a3a"],
+};
+// Número da zona no nome ("03-Esq Garagem", "AMT 4010 05 Entr SL Var") para casar com a memória de disparo.
+const numeroZona = (id, nome) => { const m = String(nome || "").replace(/^AMT 4010\s*/i, "").match(/^(\d{1,2})/) || String(id).match(/_(\d{2})(?:_|$)/) || String(id).match(/sensor_(\d+)$/); return m ? String(Number(m[1])) : null; };
+function lerAlarme(cfg, ents) {
+  const painel = ents[cfg.painel];
+  const zonas = Object.keys(ents).filter((id) => cfg.zona.test(id)).map((id) => {
+    const v = ents[id]; const nome = String(v?.attributes?.friendly_name || id).replace(/^AMT 4010\s*/i, "");
+    return { id, nome, num: numeroZona(id, v?.attributes?.friendly_name), aberta: v?.state === "on", fora: !v || ["unavailable", "unknown"].includes(v.state) };
+  }).sort((a, b) => Number(a.num || 999) - Number(b.num || 999));
+  const mem = (ents[cfg.memoria]?.attributes?.zones || []).map((z) => String(Number(String(z).replace(/\D/g, "")) || z));
+  const disparadas = zonas.filter((z) => mem.includes(z.num));
+  return { painel, estado: painel?.state, zonas, disparadas, memoria: mem, sirene: ents[cfg.sirene]?.state === "on" };
+}
+function AlarmeModal({ ents, enviar, onFechar }) {
+  const comando = async (cfg, armar) => {
+    const code = await Dialog.prompt({ titulo: armar ? `Armar · ${cfg.nome}` : `Desarmar · ${cfg.nome}`, mensagem: "Digite a senha da central do alarme.", valor: "", inputType: "password", okLabel: armar ? "Armar" : "Desarmar" });
+    if (!code) return;
+    enviar("alarm_control_panel", armar ? "alarm_arm_away" : "alarm_disarm", cfg.painel, { code: String(code).trim() });
+  };
+  return (
+    <Sheet titulo="Alarme" onFechar={onFechar}>
+      {ALARMES.map((cfg) => {
+        const al = lerAlarme(cfg, ents);
+        const [txt, cor] = ESTADO_ALARME[al.estado] || [al.painel ? haEstado(al.estado).texto : "Sem sinal da central", C.cinza];
+        const armado = /^armed|arming|triggered|pending/.test(al.estado || "");
+        const abertas = al.zonas.filter((z) => z.aberta);
+        return (
+          <div key={cfg.painel} style={{ background: C.card, border: `1px solid ${al.estado === "triggered" ? "#b34a3a" : C.linha}`, borderRadius: 14, padding: 12, marginBottom: 12 }}>
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={20} style={{ color: cor, flexShrink: 0 }} />
+              <span className="flex-1 font-bold" style={{ fontSize: 16 }}>{cfg.nome}</span>
+              <span className={al.estado === "triggered" ? "ah-pisca" : ""} style={{ fontSize: 13, fontWeight: 800, color: cor }}>{txt}</span>
+            </div>
+            {al.estado === "triggered" && (
+              <div style={{ marginTop: 8, background: alfa("#b34a3a", 12), borderRadius: 10, padding: "8px 10px", color: "#b34a3a", fontSize: 14, fontWeight: 700 }}>
+                {al.disparadas.length ? `Disparou: ${al.disparadas.map((z) => z.nome).join(", ")}` : al.memoria.length ? `Disparou: zona ${al.memoria.join(", ")}` : "Disparou (zona não informada)"}
+                {al.sirene && " · sirene tocando"}
+              </div>
+            )}
+            <div className="flex gap-2" style={{ marginTop: 10 }}>
+              <BotaoAcao icon={Lock} label="Armar" cor={C.ambar} disabled={!al.painel || armado} onClick={() => comando(cfg, true)} />
+              <BotaoAcao icon={LockOpen} label="Desarmar" cor={C.pasto} disabled={!al.painel || !armado} onClick={() => comando(cfg, false)} />
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 700, color: C.cinza }}>
+              {abertas.length ? `Abertas agora (${abertas.length}): ${abertas.map((z) => z.nome).join(", ")}` : "Todas as zonas fechadas"}
+            </div>
+            {al.memoria.length > 0 && al.estado !== "triggered" && (
+              <div style={{ marginTop: 4, fontSize: 12, color: C.cinzaClaro }}>Último disparo na memória: {al.disparadas.length ? al.disparadas.map((z) => z.nome).join(", ") : `zona ${al.memoria.join(", ")}`}</div>
+            )}
+          </div>
+        );
+      })}
     </Sheet>
   );
 }
@@ -4129,6 +4199,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [portaoAberto, setPortaoAberto] = useState(false);
   const [portaAberta, setPortaAberta] = useState(false); // popup da Porta Entrada
   const [tvAberta, setTvAberta] = useState(null); // TV com o controle remoto aberto
+  const [alarmeAberto, setAlarmeAberto] = useState(false);
   const cabRef = useRef(null), [topoPortao, setTopoPortao] = useState(null);
   const gruposRef = useRef({}); // id do cartão de grupo -> ids reais dos aparelhos dentro dele
   const [tema, setTema] = useState(() => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
@@ -4900,6 +4971,14 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         <DialogHost />
         {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} topo={topoPortao}
           cameras={camerasDe(PORTAO_CAMERAS)} />}
+        {alarmeAberto && <AlarmeModal ents={entsVis} enviar={enviar} onFechar={() => setAlarmeAberto(false)} />}
+        {/* Alarme disparado: faixa vermelha no alto, com o lugar que disparou; toca para abrir. */}
+        {ALARMES.map((cfg) => { const al = lerAlarme(cfg, entsVis); if (al.estado !== "triggered") return null; return (
+          <button key={cfg.painel} onClick={() => setAlarmeAberto(true)} className="ah-pisca"
+            style={{ position: "fixed", left: 8, right: 8, top: 8, zIndex: 80, background: "#b34a3a", color: "#fff", borderRadius: 14, padding: "12px 14px", fontWeight: 800, fontSize: 15, textAlign: "left", boxShadow: "0 10px 30px #0006" }}>
+            🚨 ALARME DISPARADO · {cfg.nome}{al.disparadas.length ? ` · ${al.disparadas.map((z) => z.nome).join(", ")}` : al.memoria.length ? ` · zona ${al.memoria.join(", ")}` : ""}
+          </button>
+        ); })}
         {tvAberta && <TvControleModal cfg={tvAberta} ent={entsVis[tvAberta.tv]} entSom={entsVis[tvAberta.som]} enviar={enviar} onFechar={() => setTvAberta(null)} topo={topoPortao} />}
         {dividir && (
           <DividirSheet e={dividir} temSpotify={!!meuSpotify} onFechar={() => setDividir(null)}
@@ -4947,6 +5026,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 ...(!eu?.podeMenuControle ? [] : [
                   { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => { topoDoCabecalho(); setPortaoAberto(true); } },
                   { key: "porta", icon: Lock, cor: C.ambar, txt: "Porta Entrada", on: () => { topoDoCabecalho(); setPortaAberta(true); } },
+                  { key: "alarme", icon: ShieldCheck, cor: C.vermelho, txt: "Alarme", on: () => setAlarmeAberto(true) },
                 ]),
                 ...(podePessoal && modo === "usar" ? [{ key: "dash", icon: LayoutGrid, cor: C.lago, txt: `Dashboard · ${painel ? painel.nome : "Padrão"}`, on: () => setPaineisAberto(true) }] : []),
                 ...(!eu?.podeMenuControle ? [] : [

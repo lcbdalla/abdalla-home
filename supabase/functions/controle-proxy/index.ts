@@ -27,6 +27,8 @@ const json = (body: unknown, status = 200) =>
 const NOME = /^[a-z0-9_]+$/;
 const ENTIDADE = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 const GENERICOS = ["toggle", "turn_on", "turn_off"]; // homeassistant.* permitidos
+// Alarmes Intelbras: painéis e sensores — só para quem tem o menu ⋮ do Controle (ou é admin).
+const ALARME = /^(alarm_control_panel\.(intelbras_amt_8000_all_groups|amt_4010_central)|binary_sensor\.(intelbras_amt_8000_|amt_4010_))/;
 // O Spotify de cada pessoa (media_player.spotify_*) é dela: nome igual, ou mesmo primeiro e último nome.
 const palavras = (t: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
   .replace(/^spotify\s*/, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
@@ -108,6 +110,7 @@ Deno.serve(async (req) => {
     lista = lista.filter((q: { ambiente_id: string }) => liberados.has(q.ambiente_id));
   }
   const cadastrados = new Set(lista.map((q: { entity_id: string }) => q.entity_id));
+  const podeAlarme = p.papel === "admin" || p.pode_menu_controle === true;
   for (const id of [...cadastrados]) for (const v of VINCULADOS[id] || []) cadastrados.add(v);
   // Zonas do AAT: agudo, grave e balanço da zona (number.aat_pmr7_zona_N_…).
   for (const id of [...cadastrados]) {
@@ -127,7 +130,7 @@ Deno.serve(async (req) => {
     if (!r.ok) return json({ error: `O Home Assistant não respondeu (${r.status}).` }, 502);
     const todos = await r.json();
     const estados = (Array.isArray(todos) ? todos : [])
-      .filter((s: any) => cadastrados.has(s.entity_id) || s.entity_id === p.spotify_entity || ehMeuSpotify(s, p.nome))
+      .filter((s: any) => cadastrados.has(s.entity_id) || s.entity_id === p.spotify_entity || ehMeuSpotify(s, p.nome) || (podeAlarme && ALARME.test(s.entity_id)))
       .map((s: any) => {
         const a = { ...(s.attributes || {}) };
         delete a.access_token; // nunca expor tokens de câmera/mídia
@@ -141,7 +144,7 @@ Deno.serve(async (req) => {
   if (body?.acao === "servico") {
     const entity = String(body.entity_id || ""), domain = String(body.domain || ""), service = String(body.service || "");
     if (!ENTIDADE.test(entity) || !NOME.test(domain) || !NOME.test(service)) return json({ error: "Comando inválido." }, 400);
-    let liberado = cadastrados.has(entity) || entity === p.spotify_entity;
+    let liberado = cadastrados.has(entity) || entity === p.spotify_entity || (podeAlarme && ALARME.test(entity));
     if (!liberado && entity.startsWith("media_player.spotify_")) {
       const rs = await fetch(`${base}/api/states/${entity}`, { headers: cabecalho });
       liberado = rs.ok && ehMeuSpotify(await rs.json(), p.nome);
