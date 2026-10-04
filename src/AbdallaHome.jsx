@@ -4719,11 +4719,14 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 próprio painel" (só o Dashboard). */}
             {(eu?.podeMenuControle || podePessoal) && (
               <MenuPontinhos aberto={menuAberto} setAberto={setMenuAberto} itens={[
+                // Portão e Porta Entrada sempre em primeiro; depois o Dashboard e o resto.
+                ...(!eu?.podeMenuControle ? [] : [
+                  { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => { topoDoCabecalho(); setPortaoAberto(true); } },
+                  { key: "porta", icon: Lock, cor: C.ambar, txt: "Porta Entrada", on: () => { topoDoCabecalho(); setPortaAberta(true); } },
+                ]),
                 ...(podePessoal && modo === "usar" ? [{ key: "dash", icon: LayoutGrid, cor: C.lago, txt: `Dashboard · ${painel ? painel.nome : "Padrão"}`, on: () => setPaineisAberto(true) }] : []),
                 ...(!eu?.podeMenuControle ? [] : [
                 // Mesmos itens do ⋮ das tarefas (com "Tarefas" no lugar de "Controle da casa") + Configuração.
-                { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => { topoDoCabecalho(); setPortaoAberto(true); } },
-                { key: "porta", icon: Lock, cor: C.ambar, txt: "Porta Entrada", on: () => { topoDoCabecalho(); setPortaAberta(true); } },
                 ...(souGestor && modo === "usar" ? [{ key: "config", icon: Wrench, cor: C.pasto, txt: "Configuração", on: () => setModo("gerenciar") }] : []),
                 ...(!estaInstalado() ? [{ key: "inst", icon: ArrowDownToLine, cor: C.pasto, txt: "Instalar app", on: () => _installOpen.fn && _installOpen.fn() }] : []),
                 ...(onEquipe ? [{ key: "equipe", icon: Users, cor: C.pasto, txt: "Equipe", on: onEquipe }] : []),
