@@ -3833,6 +3833,7 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, ar
 // sozinho, ex.: "calinoandrade", "Priscila Neri"). Fica gravado no perfil (perfis.spotify_entity).
 function SpotifyPessoas({ ents }) {
   const [pessoas, setPessoas] = useState(null), [erro, setErro] = useState("");
+  const [aberto, setAberto] = useState(false); // começa recolhido; toca no título para configurar
   const contas = Object.keys(ents).filter((id) => id.startsWith("media_player.spotify_"))
     .map((id) => ({ id, nome: String(ents[id]?.attributes?.friendly_name || id).replace(/^Spotify\s*/i, "") }));
   const carregar = () => supabase.from("perfis").select("*").eq("ativo", true).order("nome").then(({ data, error }) => {
@@ -3847,9 +3848,12 @@ function SpotifyPessoas({ ents }) {
   };
   return (
     <div className="mb-4" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, padding: 12 }}>
-      <div className="flex items-center gap-2 mb-2"><Music size={16} style={{ color: C.pasto }} /><span className="font-bold" style={{ fontSize: 15 }}>Spotify de cada pessoa</span></div>
-      {erro && <div style={{ color: C.vermelho, fontSize: 13, marginBottom: 8 }}>{erro}</div>}
-      {!pessoas ? <div style={{ color: C.cinza, fontSize: 13 }}>Carregando…</div> : pessoas.map((x) => {
+      <button onClick={() => setAberto((v) => !v)} aria-expanded={aberto} className="flex items-center gap-2" style={{ width: "100%", textAlign: "left" }}>
+        <Music size={16} style={{ color: C.pasto }} /><span className="flex-1 font-bold" style={{ fontSize: 15 }}>Spotify de cada pessoa</span>
+        <ChevronDown size={18} style={{ color: C.cinza, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+      </button>
+      {aberto && erro && <div style={{ color: C.vermelho, fontSize: 13, margin: "8px 0" }}>{erro}</div>}
+      {!aberto ? null : !pessoas ? <div style={{ color: C.cinza, fontSize: 13, marginTop: 8 }}>Carregando…</div> : pessoas.map((x) => {
         const auto = spotifyDaPessoa(ents, x.nome);
         return (
           <div key={x.id} className="flex items-center gap-2" style={{ borderTop: `1px solid ${C.linha}`, padding: "8px 0" }}>
