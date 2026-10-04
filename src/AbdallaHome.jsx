@@ -4784,14 +4784,15 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               const abertoC = !arrAmb && abertos.amb === c.id;
               const acesoC = contarLigados(c.itens).on > 0; // algo ligado: a caixa ganha um tom âmbar
               return (
-                // Cômodo com algo ligado "acende": fundo âmbar em degradê, borda mais forte e um brilho em volta.
+                // Cômodo com algo ligado: como o nível — fundo normal, borda levemente âmbar e um brilho suave
+                // (o ⏻ do título já fica aceso).
                 <React.Fragment key={c.id}>
                 {naMaoC && <div style={{ height: arrAmb.h, borderRadius: 18, border: `2px dashed ${C.cinzaClaro}`, background: alfa(C.cinzaClaro, 8) }} />}
                 <div ref={(el) => { ambRefs.current[c.id] = el; }} data-comodo={c.id}
-                  style={{ border: `1px solid ${acesoC ? alfa(C.aceso, 75) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
+                  style={{ border: `1px solid ${acesoC ? alfa(C.ambar, 45) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
                   ...(naMaoC ? { position: "fixed", left: arrAmb.left, top: arrAmb.y - arrAmb.offY, width: arrAmb.w, zIndex: 60, transform: "scale(1.02)" } : {}),
-                  background: acesoC ? `linear-gradient(160deg, color-mix(in srgb, ${C.aceso} 26%, ${C.card}) 0%, color-mix(in srgb, ${C.aceso} 9%, ${C.card}) 100%)` : C.card, padding: "6px 12px",
-                  boxShadow: naMaoC ? "0 22px 44px -16px rgba(0,0,0,.5)" : acesoC ? `0 0 0 3px ${alfa(C.aceso, 18)}, 0 12px 30px -12px ${alfa(C.aceso, 70)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
+                  background: C.card, padding: "6px 12px",
+                  boxShadow: naMaoC ? "0 22px 44px -16px rgba(0,0,0,.5)" : acesoC ? `0 0 0 1px ${alfa(C.ambar, 14)}, 0 8px 22px -14px ${alfa(C.ambar, 60)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
                   transition: "box-shadow .25s, border-color .25s, background .25s" }}>
                   {/* Segurar o título do cômodo: arrasta (gestor no Padrão) ou abre as opções do painel pessoal. */}
                   <div onPointerDown={(ev) => (usarPessoal ? pressMenu(ev, { tipo: "amb", id: c.id, nome: c.nome }) : aoPressionarAmb(ev, c.id, pav.id, pav.comodos.map((x) => x.id)))}
