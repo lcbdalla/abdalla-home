@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -177,7 +177,7 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -1208,6 +1208,13 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                 <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode controlar a casa</div>
                 <Toggle on={u.podeControle === true} onToggle={() => editar(u.id, "pode_controle", !(u.podeControle === true))} />
               </div>
+              {u.podeControle && (
+                <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
+                  <LayoutGrid size={13} style={{ color: C.cinzaClaro }} />
+                  <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Pode montar o próprio painel</div>
+                  <Toggle on={u.podePersonalizar === true} onToggle={() => editar(u.id, "pode_personalizar", !(u.podePersonalizar === true))} />
+                </div>
+              )}
               {u.podeControle && (
                 <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
                   <MoreVertical size={13} style={{ color: C.cinzaClaro }} />
@@ -3749,7 +3756,7 @@ function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }
 
 // Grade de aparelhos de um cômodo, com "segurar para arrastar" (igual ao app Vitá):
 // segura 3s → o card flutua seguindo o dedo, os outros tremem e abrem vaga; solta e salva.
-function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onReordenar, editando, setEditando, onTamanho }) {
+function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onReordenar, editando, setEditando, onTamanho, onSegurar }) {
   const [ordem, setOrdem] = useState(() => itens.map((e) => e.dbId));
   const [arrastando, setArrastando] = useState(null);
   const [pos, setPos] = useState(null);
@@ -3801,11 +3808,12 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
     arrastou.current = false; setPos({ x: p.x, y: p.y }); setArrastando(p.id); setEditando?.(true);
   }
   function aoPressionar(e, id) {
-    if (!podeArrastar) return;
+    if (!podeArrastar && !onSegurar) return;
     longPressed.current = false;
     press.current = { id, pid: e.pointerId, el: e.currentTarget, x: e.clientX, y: e.clientY };
     clearTimeout(pressTimer.current);
-    pressTimer.current = setTimeout(pegar, ESPERA_MS);
+    // Painel pessoal: segurar abre as opções do aparelho (em vez de arrastar).
+    pressTimer.current = setTimeout(onSegurar ? () => { const it = itens.find((x) => x.dbId === id); press.current = null; longPressed.current = true; if (it) onSegurar(it); } : pegar, ESPERA_MS);
   }
   function aoMover(e) {
     if (arrastando == null) {
@@ -3854,7 +3862,7 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
               onPointerMove={aoMover}
               onPointerUp={aoSoltar}
               onPointerCancel={aoSoltar}
-              onContextMenu={(ev) => { ev.preventDefault(); pegar(); }}
+              onContextMenu={(ev) => { ev.preventDefault(); if (!onSegurar) pegar(); }}
               onClickCapture={(ev) => { if (longPressed.current || arrastou.current) { ev.stopPropagation(); ev.preventDefault(); } }}
               style={{
                 userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
@@ -3874,6 +3882,77 @@ function GradeEquip({ itens, enviar, expandidos, toggleExpand, podeArrastar, onR
         );
       })}
     </div>
+  );
+}
+
+/* ---- Painel pessoal do Controle ----
+   Quem tem a chave "Pode montar o próprio painel" (e o gestor) cria painéis com nome, guardados SÓ
+   neste celular. No painel pessoal, segurar um nível, cômodo ou aparelho abre as opções: ocultar
+   (mostrando ou não o que tem dentro) e mudar o aparelho de cômodo. O "Padrão" é o que o gestor
+   monta para todos: não dá para apagar, e voltar para ele desfaz tudo na hora. */
+function PaineisSheet({ paineis, ativo, ocultos, onEscolher, onCriar, onRenomear, onExcluir, onMostrar, onFechar }) {
+  const linha = (id, nome, apagavel) => {
+    const sel = ativo === id;
+    return (
+      <div key={id} className="flex items-center gap-2" style={{ background: sel ? C.pastoClaro : C.card, border: `1px solid ${sel ? C.pasto : C.linha}`, borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
+        <button onClick={() => onEscolher(id)} className="flex items-center gap-2 flex-1 min-w-0" style={{ textAlign: "left" }}>
+          {sel ? <CheckCircle2 size={18} style={{ color: C.pasto, flexShrink: 0 }} /> : <span style={{ width: 18, height: 18, borderRadius: 999, border: `2px solid ${C.cinzaClaro}`, flexShrink: 0 }} />}
+          <span className="truncate" style={{ fontWeight: 700, color: C.terra }}>{nome}</span>
+          {!apagavel && <span style={{ fontSize: 11.5, color: C.cinzaClaro, fontWeight: 600, flexShrink: 0 }}>· de todos</span>}
+        </button>
+        {apagavel && <button onClick={() => onRenomear(id)} title="Renomear" style={{ color: C.cinza, padding: 4 }}><Pencil size={16} /></button>}
+        {apagavel && <button onClick={() => onExcluir(id)} title="Excluir" style={{ color: C.vermelho, padding: 4 }}><Trash2 size={16} /></button>}
+      </div>
+    );
+  };
+  return (
+    <Sheet titulo="Painéis" onFechar={onFechar}>
+      {linha("padrao", "Padrão", false)}
+      {paineis.map((x) => linha(x.id, x.nome, true))}
+      <button onClick={onCriar} className="flex items-center justify-center gap-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 13, fontWeight: 700, marginTop: 4 }}><Plus size={18} /> Novo painel</button>
+      {ativo !== "padrao" && ocultos.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: C.cinza, textTransform: "uppercase", marginBottom: 6 }}>Escondido neste painel</div>
+          {ocultos.map((o) => (
+            <div key={o.chave} className="flex items-center gap-2" style={{ borderTop: `1px solid ${C.linha}`, padding: "8px 0" }}>
+              <span className="flex-1 min-w-0 truncate" style={{ fontSize: 14, color: C.terra }}>{o.rotulo}</span>
+              <button onClick={() => onMostrar(o)} style={{ flexShrink: 0, background: C.pastoClaro, color: C.pastoEsc, borderRadius: 999, padding: "5px 12px", fontSize: 12.5, fontWeight: 700 }}>{o.desfazer || "Mostrar"}</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+function MenuPainelSheet({ alvo, comodos, onAcao, onFechar }) {
+  const [mover, setMover] = useState(false);
+  const bt = (txt, Ic, fn, perigo) => (
+    <button onClick={fn} className="flex items-center gap-3" style={{ width: "100%", textAlign: "left", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "12px 14px", marginBottom: 8, fontWeight: 700, color: perigo ? C.vermelho : C.terra }}>
+      <Ic size={18} style={{ flexShrink: 0, color: perigo ? C.vermelho : C.cinza }} /> {txt}
+    </button>
+  );
+  return (
+    <Sheet titulo={alvo.nome} onFechar={onFechar}>
+      {alvo.tipo === "pav" && (<>
+        {bt("Esconder o nível e mostrar os cômodos", EyeOff, () => onAcao("expor"))}
+        {bt("Esconder o nível e tudo o que tem nele", EyeOff, () => onAcao("tudo"), true)}
+      </>)}
+      {alvo.tipo === "amb" && (<>
+        {bt("Esconder o cômodo e mostrar os aparelhos", EyeOff, () => onAcao("expor"))}
+        {bt("Esconder o cômodo e os aparelhos", EyeOff, () => onAcao("tudo"), true)}
+      </>)}
+      {alvo.tipo === "eq" && !mover && (<>
+        {bt("Mudar de cômodo", ArrowLeftRight, () => setMover(true))}
+        {bt("Esconder este aparelho", EyeOff, () => onAcao("ocultar"), true)}
+      </>)}
+      {alvo.tipo === "eq" && mover && comodos.map((c) => (
+        <button key={c.id} onClick={() => onAcao("mover", c.id)} disabled={c.id === alvo.ambId} className="flex items-center gap-2"
+          style={{ width: "100%", textAlign: "left", background: c.id === alvo.ambId ? C.pastoClaro : C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "11px 14px", marginBottom: 6 }}>
+          <span className="flex-1 truncate" style={{ fontWeight: 700, color: C.terra }}>{c.nome}</span>
+          <span style={{ fontSize: 12, color: C.cinzaClaro, flexShrink: 0 }}>{c.id === alvo.ambId ? "aqui agora" : c.pavNome}</span>
+        </button>
+      ))}
+    </Sheet>
   );
 }
 
@@ -3923,6 +4002,52 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const proxyRefresh = useRef(null);
   const souGestor = eu?.podeGerirControle === true;
   const pavAberto = (id) => abertos.pavs.includes(id);
+  // Painéis pessoais (deste celular, desta pessoa).
+  const podePessoal = eu?.podePersonalizar === true || eu?.podeGerirControle === true;
+  const chavePaineis = "paineis:" + (eu?.id || "");
+  const [paineis, setPaineisSt] = useState(() => { try { return JSON.parse(localStorage.getItem(chavePaineis) || "null") || { ativo: "padrao", lista: [] }; } catch { return { ativo: "padrao", lista: [] }; } });
+  const setPaineis = (fn) => setPaineisSt((p0) => { const n = fn(p0); try { localStorage.setItem(chavePaineis, JSON.stringify(n)); } catch { /* ok */ } return n; });
+  const painel = podePessoal ? paineis.lista.find((x) => x.id === paineis.ativo) || null : null;
+  const cfgP = painel?.cfg || {};
+  const mudarCfg = (fn) => setPaineis((p0) => ({ ...p0, lista: p0.lista.map((x) => (x.id === p0.ativo ? { ...x, cfg: fn({ ocultoPav: {}, ocultoAmb: {}, ocultoEq: {}, mover: {}, ...(x.cfg || {}) }) } : x)) }));
+  const [paineisAberto, setPaineisAberto] = useState(false);
+  const [menuPainel, setMenuPainel] = useState(null); // { tipo: "pav"|"amb"|"eq", id, nome, ambId?, dbIds? }
+  // No Padrão o gestor continua arrastando para todos; no painel pessoal (ou quem não é gestor), segurar abre as opções.
+  const usarPessoal = podePessoal && (!!painel || eu?.podeGerirControle !== true);
+  const criarPainel = async () => {
+    const nome = await Dialog.prompt({ titulo: "Novo painel", mensagem: "Dê um nome ao seu painel (fica só neste celular).", valor: "Meu painel", okLabel: "Criar" });
+    if (!nome || !nome.trim()) return false;
+    const id = "p" + Date.now();
+    setPaineis((p0) => ({ ativo: id, lista: [...p0.lista, { id, nome: nome.trim(), cfg: {} }] }));
+    return true;
+  };
+  const segurarPainel = async (alvo) => {
+    try { navigator.vibrate?.(15); } catch { /* ok */ }
+    if (!painel && !(await criarPainel())) return;
+    setMenuPainel(alvo);
+  };
+  const acaoPainel = (acao, extra) => {
+    const a = menuPainel; setMenuPainel(null); if (!a) return;
+    mudarCfg((c) => {
+      if (a.tipo === "pav") return { ...c, ocultoPav: { ...c.ocultoPav, [a.id]: acao } };
+      if (a.tipo === "amb") return { ...c, ocultoAmb: { ...c.ocultoAmb, [a.id]: acao } };
+      const ids = a.dbIds;
+      if (acao === "ocultar") return { ...c, ocultoEq: { ...c.ocultoEq, ...Object.fromEntries(ids.map((i) => [i, true])) } };
+      const mover = { ...c.mover };
+      ids.forEach((i) => { const orig = equipamentos.find((q) => q.id === i)?.ambiente_id; if (extra === orig) delete mover[i]; else mover[i] = extra; });
+      return { ...c, mover };
+    });
+  };
+  // Toque longo nos títulos (nível/cômodo) no modo pessoal.
+  const menuPress = useRef(null), menuLongo = useRef(false);
+  const pressMenu = (ev, alvo) => {
+    menuLongo.current = false;
+    const x = ev.clientX, y = ev.clientY;
+    const t = setTimeout(() => { menuLongo.current = true; menuPress.current = null; segurarPainel(alvo); }, 500);
+    menuPress.current = { t, x, y };
+  };
+  const moverMenu = (ev) => { const m = menuPress.current; if (m && Math.hypot(ev.clientX - m.x, ev.clientY - m.y) > 10) { clearTimeout(m.t); menuPress.current = null; } };
+  const soltarMenu = () => { const m = menuPress.current; if (m) clearTimeout(m.t); menuPress.current = null; setTimeout(() => { menuLongo.current = false; }, 0); };
   // Fechar o pavimento fecha também o cômodo aberto dentro dele.
   // Um pavimento aberto por vez: abrir um recolhe os outros (e o cômodo que estava aberto neles).
   const alternarPav = (id, comodoIds) => setAbertos((a) => a.pavs.includes(id)
@@ -4510,14 +4635,41 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return { ...x, preverEstados };
   });
   const semPav = { id: "__sem__", nome: "Outros", ordem: 99999 };
-  const listaPav = [...pavimentos, semPav].map((p) => ({
+  // Painel pessoal: aparelhos mudados de cômodo e escondidos.
+  const equipamentosVis = painel
+    ? equipamentos.map((q) => (cfgP.mover?.[q.id] ? { ...q, ambiente_id: cfgP.mover[q.id] } : q)).filter((q) => !cfgP.ocultoEq?.[q.id])
+    : equipamentos;
+  const listaPavBase = [...pavimentos, semPav].map((p) => ({
     id: p.id, nome: p.nome, ordem: p.ordem,
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
     comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
-      itens: comGrupos(somPrimeiro(comFontePadrao(agruparBotoes(agruparLuzes(agruparPersianas(juntarZonasDoComodo(equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), a.id), a.id), p.nome))),
+      itens: comGrupos(somPrimeiro(comFontePadrao(agruparBotoes(agruparLuzes(agruparPersianas(juntarZonasDoComodo(equipamentosVis.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), a.id), a.id), p.nome))),
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
+  // Painel pessoal: cômodo escondido "mostrando os aparelhos" põe os aparelhos soltos no nível;
+  // nível escondido "mostrando os cômodos" tira a caixa do nível.
+  const listaPav = listaPavBase.flatMap((p) => {
+    if (!painel) return [{ ...p, soltos: [] }];
+    const oP = cfgP.ocultoPav?.[p.id];
+    if (oP === "tudo") return [];
+    const soltos = [], comodos = [];
+    p.comodos.forEach((c) => { const oA = cfgP.ocultoAmb?.[c.id]; if (!oA) comodos.push(c); else if (oA === "expor") soltos.push(...c.itens); });
+    if (!comodos.length && !soltos.length) return [];
+    return [{ ...p, comodos, soltos, semCaixa: oP === "expor" }];
+  });
+  const ambientePorEq = Object.fromEntries(equipamentosVis.map((q) => [q.id, q.ambiente_id]));
+  // O que está escondido neste painel (para mostrar de novo).
+  const ocultosPainel = !painel ? [] : [
+    ...Object.entries(cfgP.ocultoPav || {}).map(([id]) => ({ chave: "p" + id, tipo: "pav", id, rotulo: `Nível ${pavimentos.find((x) => x.id === id)?.nome || ""}` })),
+    ...Object.entries(cfgP.ocultoAmb || {}).map(([id]) => ({ chave: "a" + id, tipo: "amb", id, rotulo: `Cômodo ${ambientes.find((x) => x.id === id)?.nome || ""}` })),
+    ...Object.keys(cfgP.ocultoEq || {}).map((id) => { const q = equipamentos.find((x) => x.id === id); return { chave: "e" + id, tipo: "eq", id, rotulo: q?.nome || entsVis[q?.entity_id]?.attributes?.friendly_name || q?.entity_id || "Aparelho" }; }),
+    ...Object.entries(cfgP.mover || {}).map(([id, amb]) => { const q = equipamentos.find((x) => x.id === id); return { chave: "m" + id, tipo: "mov", id, desfazer: "Desfazer", rotulo: `${q?.nome || entsVis[q?.entity_id]?.attributes?.friendly_name || "Aparelho"} → ${ambientes.find((x) => x.id === amb)?.nome || ""}` }; }),
+  ];
+  const mostrarOculto = (o) => mudarCfg((c) => {
+    const tira = (obj) => { const n = { ...obj }; delete n[o.id]; return n; };
+    return o.tipo === "pav" ? { ...c, ocultoPav: tira(c.ocultoPav) } : o.tipo === "amb" ? { ...c, ocultoAmb: tira(c.ocultoAmb) } : o.tipo === "eq" ? { ...c, ocultoEq: tira(c.ocultoEq) } : { ...c, mover: tira(c.mover) };
+  });
 
   // Câmeras dos popups (portão, porta): foto ao vivo pelo camera_proxy do HA (só conexão direta).
   const camerasDe = (lista) => lista.map((c) => {
@@ -4607,12 +4759,63 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               </div>
             ) : null
           )}
+          {modo === "usar" && status === "ok" && podePessoal && (
+            <div className="flex justify-end" style={{ marginBottom: 8 }}>
+              <button onClick={() => setPaineisAberto(true)} className="flex items-center gap-1" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "5px 12px", fontSize: 12.5, fontWeight: 700, color: C.terra }}>
+                <LayoutGrid size={14} style={{ color: C.cinza }} /> {painel ? painel.nome : "Padrão"} <ChevronDown size={14} style={{ color: C.cinza }} />
+              </button>
+            </div>
+          )}
           {modo === "usar" && status === "ok" && (arrPav
             ? [...arrPav.ordem.map((id) => listaPav.find((x) => x.id === id)).filter(Boolean), ...listaPav.filter((x) => !arrPav.ordem.includes(x.id))]
             : listaPav).map((pav) => {
             const naMao = arrPav?.id === pav.id;
             const abertoP = !arrPav && pavAberto(pav.id);
-            const acesoP = contarLigados(pav.comodos.flatMap((c) => c.itens)).on > 0;
+            const todosP = [...pav.soltos, ...pav.comodos.flatMap((c) => c.itens)];
+            const acesoP = contarLigados(todosP).on > 0;
+            // Aparelhos soltos (cômodo escondido "mostrando os aparelhos") e cartões de cada cômodo.
+            const grade = (itens, ambId) => (
+              <GradeEquip itens={itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor && !painel} onReordenar={cbs.onReordenar} editando={editando} setEditando={setEditando} onTamanho={cbs.onTamanho}
+                onSegurar={usarPessoal ? (e) => segurarPainel({ tipo: "eq", id: e.dbId, nome: e.nome, ambId: ambId || ambientePorEq[e.dbId], dbIds: gruposRef.current[e.dbId] || [e.dbId] }) : undefined} />
+            );
+            const soltosGrade = pav.soltos.length > 0 && <div style={{ padding: "4px 2px 8px" }}>{grade(pav.soltos, null)}</div>;
+            const renderComodo = (c) => {
+              const naMaoC = arrAmb?.id === c.id;
+              const abertoC = !arrAmb && abertos.amb === c.id;
+              const acesoC = contarLigados(c.itens).on > 0; // algo ligado: a caixa ganha um tom âmbar
+              return (
+                // Cômodo com algo ligado "acende": fundo âmbar em degradê, borda mais forte e um brilho em volta.
+                <React.Fragment key={c.id}>
+                {naMaoC && <div style={{ height: arrAmb.h, borderRadius: 18, border: `2px dashed ${C.cinzaClaro}`, background: alfa(C.cinzaClaro, 8) }} />}
+                <div ref={(el) => { ambRefs.current[c.id] = el; }} data-comodo={c.id}
+                  style={{ border: `1px solid ${acesoC ? alfa(C.aceso, 75) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
+                  ...(naMaoC ? { position: "fixed", left: arrAmb.left, top: arrAmb.y - arrAmb.offY, width: arrAmb.w, zIndex: 60, transform: "scale(1.02)" } : {}),
+                  background: acesoC ? `linear-gradient(160deg, color-mix(in srgb, ${C.aceso} 26%, ${C.card}) 0%, color-mix(in srgb, ${C.aceso} 9%, ${C.card}) 100%)` : C.card, padding: "6px 12px",
+                  boxShadow: naMaoC ? "0 22px 44px -16px rgba(0,0,0,.5)" : acesoC ? `0 0 0 3px ${alfa(C.aceso, 18)}, 0 12px 30px -12px ${alfa(C.aceso, 70)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
+                  transition: "box-shadow .25s, border-color .25s, background .25s" }}>
+                  {/* Segurar o título do cômodo: arrasta (gestor no Padrão) ou abre as opções do painel pessoal. */}
+                  <div onPointerDown={(ev) => (usarPessoal ? pressMenu(ev, { tipo: "amb", id: c.id, nome: c.nome }) : aoPressionarAmb(ev, c.id, pav.id, pav.comodos.map((x) => x.id)))}
+                    onPointerMove={(ev) => { moverMenu(ev); aoMoverAmb(ev); }} onPointerUp={() => { soltarMenu(); aoSoltarAmb(); }} onPointerCancel={() => { soltarMenu(); aoSoltarAmb(); }}
+                    onContextMenu={(ev) => { if (souGestor || usarPessoal) ev.preventDefault(); if (souGestor && !usarPessoal) pegarAmb(); }}
+                    onClickCapture={(ev) => { if (ambLongo.current || menuLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}
+                    style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: arrAmb ? "none" : "auto" }}>
+                    <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
+                      itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} musica={musicaDe(c.itens, enviar)} />
+                  </div>
+                  {abertoC && (
+                    <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
+                      {grade(c.itens, c.id)}
+                    </div>
+                  )}
+                </div>
+                </React.Fragment>
+              );
+            };
+            const comodosOrd = arrAmb?.pavId === pav.id ? arrAmb.ordem.map((id) => pav.comodos.find((x) => x.id === id)).filter(Boolean) : pav.comodos;
+            // Nível escondido "mostrando os cômodos": sem a caixa e o título do nível.
+            if (pav.semCaixa) return (
+              <div key={pav.id} className="flex flex-col" style={{ gap: 8, marginBottom: 10 }}>{soltosGrade}{comodosOrd.map(renderComodo)}</div>
+            );
             return (
             <React.Fragment key={pav.id}>
             {naMao && <div style={{ height: arrPav.h, marginBottom: 10, borderRadius: 22, border: `2px dashed ${C.cinzaClaro}`, background: alfa(C.cinzaClaro, 8) }} />}
@@ -4627,53 +4830,37 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               {/* Mesmo recuo à DIREITA do cabeçalho do cômodo (12 de respiro + 1 de borda): os "Desligar tudo" alinham.
                   Aqui o recuo conta a partir da borda interna da caixa do pavimento. */}
               <div style={{ padding: "0 13px 0 3px", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: arrPav ? "none" : "auto" }}
-                onPointerDown={(ev) => aoPressionarPav(ev, pav.id)} onPointerMove={aoMoverPav} onPointerUp={aoSoltarPav} onPointerCancel={aoSoltarPav}
-                onContextMenu={(ev) => { if (souGestor && pav.id !== "__sem__") { ev.preventDefault(); pegarPav(); } }}
-                onClickCapture={(ev) => { if (pavLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}>
+                onPointerDown={(ev) => (usarPessoal ? pressMenu(ev, { tipo: "pav", id: pav.id, nome: pav.nome }) : aoPressionarPav(ev, pav.id))}
+                onPointerMove={(ev) => { moverMenu(ev); aoMoverPav(ev); }} onPointerUp={() => { soltarMenu(); aoSoltarPav(); }} onPointerCancel={() => { soltarMenu(); aoSoltarPav(); }}
+                onContextMenu={(ev) => { if (usarPessoal) { ev.preventDefault(); return; } if (souGestor && pav.id !== "__sem__") { ev.preventDefault(); pegarPav(); } }}
+                onClickCapture={(ev) => { if (pavLongo.current || menuLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}>
                 <CabecalhoNivel nome={pav.nome} grande aberto={abertoP} onAlternar={() => alternarPav(pav.id, pav.comodos.map((c) => c.id))}
-                  itens={pav.comodos.flatMap((c) => c.itens)} onDesligarTudo={(itens) => desligarTudo(itens, pav.nome)}
-                  musica={musicaDe(pav.comodos.flatMap((c) => c.itens), enviar)}
+                  itens={todosP} onDesligarTudo={(itens) => desligarTudo(itens, pav.nome)}
+                  musica={musicaDe(todosP, enviar)}
                   sub={`${pav.comodos.length} ${pav.comodos.length === 1 ? "cômodo" : "cômodos"}`} />
               </div>
               {abertoP && (
                 <div className="flex flex-col" style={{ gap: 8, marginTop: 4 }}>
-                  {(arrAmb?.pavId === pav.id ? arrAmb.ordem.map((id) => pav.comodos.find((x) => x.id === id)).filter(Boolean) : pav.comodos).map((c) => {
-                    const naMaoC = arrAmb?.id === c.id;
-                    const abertoC = !arrAmb && abertos.amb === c.id;
-                    const acesoC = contarLigados(c.itens).on > 0; // algo ligado: a caixa ganha um tom âmbar
-                    return (
-                      // Cômodo com algo ligado "acende": fundo âmbar em degradê, borda mais forte e um brilho em volta.
-                      <React.Fragment key={c.id}>
-                      {naMaoC && <div style={{ height: arrAmb.h, borderRadius: 18, border: `2px dashed ${C.cinzaClaro}`, background: alfa(C.cinzaClaro, 8) }} />}
-                      <div ref={(el) => { ambRefs.current[c.id] = el; }} data-comodo={c.id}
-                        style={{ border: `1px solid ${acesoC ? alfa(C.aceso, 75) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
-                        ...(naMaoC ? { position: "fixed", left: arrAmb.left, top: arrAmb.y - arrAmb.offY, width: arrAmb.w, zIndex: 60, transform: "scale(1.02)" } : {}),
-                        background: acesoC ? `linear-gradient(160deg, color-mix(in srgb, ${C.aceso} 26%, ${C.card}) 0%, color-mix(in srgb, ${C.aceso} 9%, ${C.card}) 100%)` : C.card, padding: "6px 12px",
-                        boxShadow: naMaoC ? "0 22px 44px -16px rgba(0,0,0,.5)" : acesoC ? `0 0 0 3px ${alfa(C.aceso, 18)}, 0 12px 30px -12px ${alfa(C.aceso, 70)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
-                        transition: "box-shadow .25s, border-color .25s, background .25s" }}>
-                        {/* Segurar o título do cômodo: arrasta para mudar a ordem (só o título, para não brigar com os cartões). */}
-                        <div onPointerDown={(ev) => aoPressionarAmb(ev, c.id, pav.id, pav.comodos.map((x) => x.id))} onPointerMove={aoMoverAmb} onPointerUp={aoSoltarAmb} onPointerCancel={aoSoltarAmb}
-                          onContextMenu={(ev) => { if (souGestor) { ev.preventDefault(); pegarAmb(); } }}
-                          onClickCapture={(ev) => { if (ambLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}
-                          style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: arrAmb ? "none" : "auto" }}>
-                          <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
-                            itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} musica={musicaDe(c.itens, enviar)} />
-                        </div>
-                        {abertoC && (
-                          <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
-                            <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} podeArrastar={souGestor} onReordenar={cbs.onReordenar} editando={editando} setEditando={setEditando} onTamanho={cbs.onTamanho} />
-                          </div>
-                        )}
-                      </div>
-                      </React.Fragment>
-                    );
-                  })}
+                  {soltosGrade}
+                  {comodosOrd.map(renderComodo)}
                 </div>
               )}
             </section>
             </React.Fragment>
             );
           })}
+          {paineisAberto && (
+            <PaineisSheet paineis={paineis.lista} ativo={painel ? painel.id : "padrao"} ocultos={ocultosPainel}
+              onEscolher={(id) => setPaineis((p0) => ({ ...p0, ativo: id }))}
+              onCriar={() => criarPainel()}
+              onRenomear={async (id) => { const atual = paineis.lista.find((x) => x.id === id); const n = await Dialog.prompt({ titulo: "Renomear painel", mensagem: "Novo nome:", valor: atual?.nome || "", okLabel: "Salvar" }); if (n && n.trim()) setPaineis((p0) => ({ ...p0, lista: p0.lista.map((x) => (x.id === id ? { ...x, nome: n.trim() } : x)) })); }}
+              onExcluir={async (id) => { const atual = paineis.lista.find((x) => x.id === id); if (await Dialog.confirm({ titulo: "Excluir painel", mensagem: `Excluir o painel "${atual?.nome}"? O Padrão continua igual.`, okLabel: "Excluir", perigo: true })) setPaineis((p0) => ({ ativo: p0.ativo === id ? "padrao" : p0.ativo, lista: p0.lista.filter((x) => x.id !== id) })); }}
+              onMostrar={mostrarOculto} onFechar={() => setPaineisAberto(false)} />
+          )}
+          {menuPainel && (
+            <MenuPainelSheet alvo={menuPainel} onAcao={acaoPainel} onFechar={() => setMenuPainel(null)}
+              comodos={listaPavBase.flatMap((p) => p.comodos.map((c) => ({ id: c.id, nome: c.nome, pavNome: p.nome })))} />
+          )}
 
           {aviso && <div style={{ background: aviso.erro ? C.vermelhoClaro : C.pastoClaro, color: aviso.erro ? C.vermelho : C.pastoEsc, borderRadius: 12, fontSize: 13.5 }} className="p-3 mb-3">{aviso.texto}</div>}
         </main>
