@@ -171,6 +171,10 @@ Deno.serve(async (req) => {
     const recarregarMesa = domain === "homeassistant" && service === "reload_config_entry" && entity === "number.main_fader";
     const generico = (domain === "homeassistant" && GENERICOS.includes(service)) || recarregarMesa;
     if (!doProprioTipo && !generico) return json({ error: "Comando não permitido para este aparelho." }, 403);
+    // Visitante nunca abre a casa: fechadura, alarme e portão ficam só para ver, mesmo num cômodo liberado.
+    if (p.papel === "visitante" && (["lock", "alarm_control_panel"].includes(entity.split(".")[0]) || entity === "cover.portao_garagem")) {
+      return json({ error: "Visitante não pode usar fechadura, portão ou alarme." }, 403);
+    }
 
     const dados = (body.data && typeof body.data === "object" && !Array.isArray(body.data)) ? { ...body.data } : {};
     for (const k of ["entity_id", "device_id", "area_id", "floor_id", "label_id", "target"]) delete dados[k]; // alvo travado

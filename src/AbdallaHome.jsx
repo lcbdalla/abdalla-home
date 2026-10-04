@@ -1137,7 +1137,13 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   };
   const alternarPapel = async (u) => {
     if (u.papel === "crianca") { showToast("Conta de criança: mude a função pelo campo, se precisar."); return; }
-    const { error } = await supabase.from("perfis").update({ papel: u.papel === "admin" ? "colaborador" : "admin" }).eq("id", u.id);
+    if (u.papel === "visitante") { showToast("Visitante não muda de função: gere um acesso novo se precisar."); return; }
+    if (u.id === euId) { showToast("Você não pode mudar a sua própria função."); return; }
+    const virarAdmin = u.papel !== "admin";
+    if (!(await Dialog.confirm(virarAdmin
+      ? { titulo: "Tornar administrador", mensagem: `${u.nome} vai poder ver e mudar tudo no app, inclusive a equipe. Continuar?`, okLabel: "Tornar administrador", perigo: true }
+      : { titulo: "Tirar de administrador", mensagem: `${u.nome} volta a ser colaborador. Continuar?`, okLabel: "Tirar de administrador" }))) return;
+    const { error } = await supabase.from("perfis").update({ papel: virarAdmin ? "admin" : "colaborador" }).eq("id", u.id);
     if (error) { showToast("Erro ao salvar: " + error.message); return; }
     onRecarregar();
   };
@@ -2450,9 +2456,10 @@ function acionarZonas(e, ligar, enviar) {
   if (e.receiver) return acionarReceiver(e, ligar, enviar);
   const ids = e.zonasComodo || [e.id];
   if (!ligar) {
-    // Desliga também as zonas sincronizadas (ligadas tocando a mesma fonte deste cartão).
+    // Desliga também as zonas sincronizadas (ligadas tocando a mesma fonte deste cartão), menos as
+    // que estão com outra pessoa.
     const fonte = e.attributes?.source;
-    const juntas = fonte ? (e.zonas || []).filter((z) => !ids.includes(z.id) && z.state === "on" && z.attributes?.source === fonte).map((z) => z.id) : [];
+    const juntas = fonte ? (e.zonas || []).filter((z) => !ids.includes(z.id) && !z.deOutro && z.state === "on" && z.attributes?.source === fonte).map((z) => z.id) : [];
     [...ids, ...juntas].forEach((id) => enviar("media_player", "turn_off", id));
     return;
   }
@@ -2894,7 +2901,12 @@ function CtrlPersiana({ e, enviar }) {
 }
 // Ligar o ar sempre no padrão da casa: frio, 22° e vento automático (vale para todos os ares).
 const AR_PADRAO = { modo: "cool", temperatura: 22 };
+// Comandos atrasados de cada ar (sequência de desligar, vento): um toque novo cancela os anteriores,
+// senão "desligar e religar logo" terminava com o ar desligado.
+const _arTimers = {}, _arVez = {};
+const novoToqueAr = (id) => { (_arTimers[id] || []).forEach(clearTimeout); _arTimers[id] = []; return (_arVez[id] = (_arVez[id] || 0) + 1); };
 function ligarAr(e, enviar) {
+  const vez = novoToqueAr(e.id);
   const a = e.attributes || {};
   const modo = (a.hvac_modes || []).includes(AR_PADRAO.modo) ? { hvac_mode: AR_PADRAO.modo } : {};
   enviar("climate", "set_temperature", e.id, { temperature: AR_PADRAO.temperatura, ...modo });
@@ -2902,16 +2914,20 @@ function ligarAr(e, enviar) {
   const auto = (a.fan_modes || []).find((f) => /^auto/i.test(f));
   // O vento só vai depois que o HA confirmar o ar LIGADO: alguns (Midea) mandam o estado inteiro
   // a cada comando — com o HA ainda achando "desligado", o comando de vento desligava o ar.
-  if (auto) { const vento = () => enviar("climate", "set_fan_mode", e.id, { fan_mode: auto }); if (e.quandoLigado) e.quandoLigado(vento); else setTimeout(vento, 1200); }
+  if (auto) {
+    const vento = () => { if (_arVez[e.id] === vez) enviar("climate", "set_fan_mode", e.id, { fan_mode: auto }); }; // outro toque depois: não manda
+    if (e.quandoLigado) e.quandoLigado(vento); else _arTimers[e.id].push(setTimeout(vento, 1200));
+  }
 }
 // Ares que às vezes não desligam de primeira (Living, K7 da Churrasqueira e Varanda): ao desligar
 // pelo app, desliga → 1 s → liga → 1 s → desliga de novo.
 const AR_DESLIGA_DUPLO = new Set(["climate.ac_living_ac", "climate.midea_ac_150633095934489", "climate.midea_ac_150633095631273"]);
 function desligarAr(e, enviar) {
+  novoToqueAr(e.id);
   enviar("climate", "turn_off", e.id);
   if (!AR_DESLIGA_DUPLO.has(e.id)) return;
-  setTimeout(() => enviar("climate", "turn_on", e.id), 1000);
-  setTimeout(() => enviar("climate", "turn_off", e.id), 2000);
+  _arTimers[e.id].push(setTimeout(() => enviar("climate", "turn_on", e.id), 1000));
+  _arTimers[e.id].push(setTimeout(() => enviar("climate", "turn_off", e.id), 2000));
 }
 function CtrlAr({ e, enviar }) {
   const ind = !e.disponivel; const a = e.attributes || {};
@@ -4825,9 +4841,17 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // As 6 zonas do amplificador AAT (nome = cômodo, como estão no HA), para "Sincronizar ambientes".
   const nZona = (id) => Number(String(id).split("_").pop()) || 0;
   const tonsAAT = Object.fromEntries(Object.entries(entsVis).filter(([id]) => ehTomAAT(id)));
+  // Zonas que estão com outra pessoa (cartão do cômodo com dono que não sou eu): desligar o meu
+  // som não desliga essas, mesmo tocando a mesma fonte (no Térreo todas ligam no Som Térreo).
+  const zonasDeOutros = new Set();
+  [...new Set(equipamentos.filter((q) => ehZonaAAT(q.entity_id)).map((q) => q.ambiente_id))].forEach((amb) => {
+    const linhas = equipamentos.filter((q) => q.ambiente_id === amb && ehZonaAAT(q.entity_id));
+    const ses = linhas.map((q) => sessoes[q.id]).find(Boolean); // cômodo com 2 zonas: a sessão fica na 1ª
+    if (ses && !(ses.participantes || []).includes(eu?.id)) linhas.forEach((q) => zonasDeOutros.add(q.entity_id));
+  });
   const zonasAAT = Object.keys(entsVis).filter(ehZonaAAT).sort((x, y) => nZona(x) - nZona(y)).map((id) => {
     const v = entsVis[id], st = v?.state;
-    return { id, tipo: "tv", nome: v?.attributes?.friendly_name || id, state: st, attributes: v?.attributes || {}, disponivel: st != null && !["unavailable", "unknown"].includes(st) };
+    return { id, tipo: "tv", nome: v?.attributes?.friendly_name || id, state: st, attributes: v?.attributes || {}, disponivel: st != null && !["unavailable", "unknown"].includes(st), deOutro: zonasDeOutros.has(id) };
   });
   // Pergunta algo ao HA e espera a resposta (só na conexão direta da família).
   const pedirHA = (msg) => new Promise((resolve, reject) => {
@@ -4873,7 +4897,9 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const live = entsVis[tvc ? tvc.tv : row.entity_id];
     const state = live?.state;
     return {
-      dbId: row.id, id: tvc ? tvc.tv : row.entity_id, tipo: row.tipo,
+      // Visitante: fechadura e portão aparecem só para ver (o intermediário também barra).
+      dbId: row.id, id: tvc ? tvc.tv : row.entity_id,
+      tipo: eu?.papel === "visitante" && (row.tipo === "fechadura" || row.entity_id === PORTAO_ID) ? "sensor" : row.tipo,
       ...(tvc ? { controleTv: tvc, abrirControle: () => { topoDoCabecalho(); setTvAberta(tvc); } } : {}),
       ...(RECEIVERS_SOM[row.entity_id] ? { receiver: RECEIVERS_SOM[row.entity_id], spotify: meuSpotify, conectarSpotify, tvNaSala: tvLigada(entsVis[RECEIVERS_SOM[row.entity_id].tvId]) } : {}),
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
