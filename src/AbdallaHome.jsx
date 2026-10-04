@@ -2712,6 +2712,15 @@ function ligarAr(e, enviar) {
   const auto = (a.fan_modes || []).find((f) => /^auto/i.test(f));
   if (auto) setTimeout(() => enviar("climate", "set_fan_mode", e.id, { fan_mode: auto }), 1200);
 }
+// Ares que às vezes não desligam de primeira (Living, K7 da Churrasqueira e Varanda): ao desligar
+// pelo app, desliga → 1 s → liga → 1 s → desliga de novo.
+const AR_DESLIGA_DUPLO = new Set(["climate.ac_living_ac", "climate.midea_ac_150633095934489", "climate.midea_ac_150633095631273"]);
+function desligarAr(e, enviar) {
+  enviar("climate", "turn_off", e.id);
+  if (!AR_DESLIGA_DUPLO.has(e.id)) return;
+  setTimeout(() => enviar("climate", "turn_on", e.id), 1000);
+  setTimeout(() => enviar("climate", "turn_off", e.id), 2000);
+}
 function CtrlAr({ e, enviar }) {
   const ind = !e.disponivel; const a = e.attributes || {};
   const ligado = !!e.state && e.state !== "off" && !ind;
@@ -2733,7 +2742,7 @@ function CtrlAr({ e, enviar }) {
           {ind ? "Indisponível" : (ligado ? `Ligado · ${AR_MODO_NOME[e.state] || e.state}` : "Desligado")}
           {atual != null && <span style={{ color: C.cinzaClaro }}> · ambiente {Math.round(atual)}°</span>}
         </div>
-        <PillToggle on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={() => (ligado ? enviar("climate", "turn_off", e.id) : ligarAr(e, enviar))} />
+        <PillToggle on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={() => (ligado ? desligarAr(e, enviar) : ligarAr(e, enviar))} />
       </div>
       {ligado && (
         <>
@@ -3284,7 +3293,7 @@ function CtrlArCompacto({ e, enviar }) {
       ) : (
         <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : C.cinza, fontWeight: 600 }}>{ind ? "Indisponível" : "Desligado"}</div>
       )}
-      <span style={{ marginLeft: "auto" }}><PillToggle pequeno on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={(ev) => { ev.stopPropagation(); if (ligado) enviar("climate", "turn_off", e.id); else ligarAr(e, enviar); }} /></span>
+      <span style={{ marginLeft: "auto" }}><PillToggle pequeno on={ligado} cor={visualEquip(e).cor} disabled={ind} onClick={(ev) => { ev.stopPropagation(); if (ligado) desligarAr(e, enviar); else ligarAr(e, enviar); }} /></span>
     </div>
   );
 }
@@ -3403,7 +3412,7 @@ function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
     const ligar = acesas === 0;
     const lista = e.membros.filter((m) => m.disponivel && estaLigado(m) !== ligar);
     for (let i = 0; i < lista.length; i++) {
-      if (ligar && lista[i].tipo === "ar") ligarAr(lista[i], enviar);
+      if (lista[i].tipo === "ar") (ligar ? ligarAr : desligarAr)(lista[i], enviar);
       else enviar("homeassistant", ligar ? "turn_on" : "turn_off", lista[i].id);
       if (i < lista.length - 1) await new Promise((r) => setTimeout(r, 300));
     }
@@ -4115,6 +4124,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     for (let i = 0; i < alvo.length; i++) {
       if (alvo[i].tipo === "alexa") ligarAlexa(alvo[i], false, enviar);
       else if (alvo[i].zonasComodo || alvo[i].receiver) acionarZonas(alvo[i], false, enviar);
+      else if (alvo[i].tipo === "ar") desligarAr(alvo[i], enviar);
       else { const [dom, serv] = servicoDesligar(alvo[i]); enviar(dom, serv, alvo[i].id); }
       if (i < alvo.length - 1) await new Promise((r) => setTimeout(r, 600));
     }
