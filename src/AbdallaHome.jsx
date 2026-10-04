@@ -2306,7 +2306,13 @@ function acionarReceiver(e, ligar, enviar) {
 function acionarZonas(e, ligar, enviar) {
   if (e.receiver) return acionarReceiver(e, ligar, enviar);
   const ids = e.zonasComodo || [e.id];
-  if (!ligar) { ids.forEach((id) => enviar("media_player", "turn_off", id)); return; }
+  if (!ligar) {
+    // Desliga também as zonas sincronizadas (ligadas tocando a mesma fonte deste cartão).
+    const fonte = e.attributes?.source;
+    const juntas = fonte ? (e.zonas || []).filter((z) => !ids.includes(z.id) && z.state === "on" && z.attributes?.source === fonte).map((z) => z.id) : [];
+    [...ids, ...juntas].forEach((id) => enviar("media_player", "turn_off", id));
+    return;
+  }
   ids.forEach((id) => enviar("media_player", "turn_on", id));
   const fonte = e.fontePadrao || e.attributes?.source;
   if (fonte && (e.fontePadrao || ids.length > 1)) setTimeout(() => ids.forEach((id) => enviar("media_player", "select_source", id, { source: fonte })), 900);
