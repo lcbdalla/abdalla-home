@@ -28,7 +28,7 @@ const NOME = /^[a-z0-9_]+$/;
 const ENTIDADE = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 const GENERICOS = ["toggle", "turn_on", "turn_off"]; // homeassistant.* permitidos
 // Alarmes Intelbras: painéis e sensores — só para quem tem o menu ⋮ do Controle (ou é admin).
-const ALARME = /^(alarm_control_panel\.(intelbras_amt_8000_all_groups|amt_4010_central)|binary_sensor\.(intelbras_amt_8000_|amt_4010_))/;
+const ALARME = /^(alarm_control_panel\.(intelbras_amt_8000_all_groups|amt_4010_central|amt_4010_particao_[abc])|binary_sensor\.(intelbras_amt_8000_|amt_4010_))/;
 // O Spotify de cada pessoa (media_player.spotify_*) é dela: nome igual, ou mesmo primeiro e último nome.
 const palavras = (t: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
   .replace(/^spotify\s*/, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);

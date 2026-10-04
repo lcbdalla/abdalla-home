@@ -1635,9 +1635,11 @@ const ALARMES = [
   { nome: "Casa principal", painel: "alarm_control_panel.intelbras_amt_8000_all_groups",
     zona: /^binary_sensor\.intelbras_amt_8000_(\d{2}_|sensor_\d+$)/, memoria: "binary_sensor.intelbras_amt_8000_memoria_de_disparo", sirene: "binary_sensor.intelbras_amt_8000_siren" },
   { nome: "Casa Baixa", painel: "alarm_control_panel.amt_4010_central",
-    zona: /^binary_sensor\.amt_4010_zona_\d+$/, memoria: "binary_sensor.amt_4010_memoria_de_disparo", sirene: "binary_sensor.amt_4010_sirene" },
+    zona: /^binary_sensor\.amt_4010_zona_\d+$/, memoria: "binary_sensor.amt_4010_memoria_de_disparo", sirene: "binary_sensor.amt_4010_sirene",
+    // A central pode seguir "desarmada" enquanto as partições estão armadas: conta como armado.
+    partes: ["alarm_control_panel.amt_4010_particao_a", "alarm_control_panel.amt_4010_particao_b", "alarm_control_panel.amt_4010_particao_c"] },
 ];
-const ehDoAlarme = (id) => ALARMES.some((a) => id === a.painel || id === a.memoria || id === a.sirene || a.zona.test(id));
+const ehDoAlarme = (id) => ALARMES.some((a) => id === a.painel || id === a.memoria || id === a.sirene || a.zona.test(id) || (a.partes || []).includes(id));
 const ehTomAAT = (id) => /^number\.aat_pmr7_zona_\d+_(graves|agudos|balanco)$/.test(id);
 const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button", "remote"]);
@@ -1830,7 +1832,13 @@ function lerAlarme(cfg, ents) {
   }).sort((a, b) => Number(a.num || 999) - Number(b.num || 999));
   const mem = (ents[cfg.memoria]?.attributes?.zones || []).map((z) => String(Number(String(z).replace(/\D/g, "")) || z));
   const disparadas = zonas.filter((z) => mem.includes(z.num));
-  return { painel, estado: painel?.state, zonas, disparadas, memoria: mem, sirene: ents[cfg.sirene]?.state === "on" };
+  // Estado de verdade: o da central, ou o das partições/atributo partitions_armed (AMT 4010).
+  const partes = (cfg.partes || []).map((id) => ents[id]?.state).filter(Boolean);
+  let estado = painel?.state;
+  const at = painel?.attributes || {};
+  if (partes.includes("triggered") || (at.partitions_alarmed || []).length > 0) estado = "triggered";
+  else if (!/^armed|arming|triggered|pending/.test(estado || "") && (partes.some((x) => /^armed/.test(x)) || at.armed_bit === true || (at.partitions_armed || []).length > 0)) estado = "armed_away";
+  return { painel, estado, zonas, disparadas, memoria: mem, sirene: ents[cfg.sirene]?.state === "on" };
 }
 // Com a senha salva no servidor (tabela alarme_senha), armar/desarmar vai pelo intermediário, que
 // põe a senha — o celular nunca a vê. Sem senha salva, o app pede a senha como antes.
