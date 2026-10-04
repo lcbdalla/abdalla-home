@@ -4887,7 +4887,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                 <div ref={(el) => { ambRefs.current[c.id] = el; }} data-comodo={c.id}
                   style={{ border: `1px solid ${acesoC ? alfa(C.ambar, 45) : abertoC ? alfa(C.cinzaClaro, 45) : C.linha}`, borderRadius: 18,
                   ...(naMaoC ? { position: "fixed", left: arrAmb.left, top: arrAmb.y - arrAmb.offY, width: arrAmb.w, zIndex: 60, transform: "scale(1.02)" } : {}),
-                  background: C.card, padding: "6px 12px",
+                  background: "var(--c-comodo, #fff)", padding: "6px 12px",
                   boxShadow: naMaoC ? "0 22px 44px -16px rgba(0,0,0,.5)" : acesoC ? `0 0 0 1px ${alfa(C.ambar, 14)}, 0 8px 22px -14px ${alfa(C.ambar, 60)}` : abertoC ? "0 10px 28px -18px rgba(0,0,0,.45)" : C.comodoSombra,
                   transition: "box-shadow .25s, border-color .25s, background .25s" }}>
                   {/* Segurar o título do cômodo: arrasta (gestor no Padrão) ou abre as opções do painel pessoal. */}

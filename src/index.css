@@ -18,6 +18,7 @@
   --c-nivelSombra: 0 16px 36px -24px rgba(31, 92, 57, 0.55);
   --c-comodoSombra: 0 10px 24px -20px rgba(31, 92, 57, 0.5);
   --c-aceso: #f2ae2e; /* dourado do cômodo com algo ligado (mais "luz" que o âmbar) */
+  --c-comodo: #ffffff; /* fundo da caixa do cômodo */
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -34,6 +35,7 @@
   /* Caixa do pavimento: degradê verde bem escuro sobre o fundo preto. */
   --c-nivel: linear-gradient(160deg, #0a160e 0%, #0d2817 55%, #123b21 100%); --c-nivelBorda: #245a37;
   --c-tela: #050706; --c-nivelSombra: none; --c-comodoSombra: none; --c-aceso: #e6a444;
+  --c-comodo: #000000; /* caixa do cômodo: preto absoluto */
 }
 
 /* Reset minimo. O layout/cores do app vem de estilos inline (paleta acima). */
