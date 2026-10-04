@@ -19,6 +19,7 @@
   --c-comodoSombra: 0 10px 24px -20px rgba(31, 92, 57, 0.5);
   --c-aceso: #f2ae2e; /* dourado do cômodo com algo ligado (mais "luz" que o âmbar) */
   --c-comodo: #ffffff; /* fundo da caixa do cômodo */
+  --c-cartaoOff: #f3efe4; /* cartão de aparelho desligado: um tom acima do fundo do cômodo */
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -36,6 +37,7 @@
   --c-nivel: linear-gradient(160deg, #0a160e 0%, #0d2817 55%, #123b21 100%); --c-nivelBorda: #245a37;
   --c-tela: #050706; --c-nivelSombra: none; --c-comodoSombra: none; --c-aceso: #e6a444;
   --c-comodo: #000000; /* caixa do cômodo: preto absoluto */
+  --c-cartaoOff: #111713; /* cartão desligado: um pouco mais claro que o preto do cômodo */
 }
 
 /* Reset minimo. O layout/cores do app vem de estilos inline (paleta acima). */

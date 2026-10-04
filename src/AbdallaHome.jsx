@@ -2644,7 +2644,7 @@ function visualPorTipo(e) {
     const portao = /port[aã]o|gate/.test(alvo);
     return { Icon: portao ? (aberto ? DoorOpen : DoorClosed) : Blinds, ativo: aberto, cor: C.ambar };
   }
-  if (e.tipo === "ar") return { Icon: Snowflake, ativo: estaLigado(e), cor: C.lago };
+  if (e.tipo === "ar") return { Icon: Snowflake, ativo: estaLigado(e), cor: AZUL_AR };
   if (e.tipo === "tv") return { Icon: ["speaker", "receiver"].includes(e.attributes?.device_class) ? Speaker : Tv, ativo: estaLigado(e), cor: C.lago };
   if (e.tipo === "irrigacao") return { Icon: Droplets, ativo: estaLigado(e), cor: C.lago };
   if (e.tipo === "fechadura") { const aberta = e.disponivel && e.state === "unlocked"; return { Icon: aberta ? LockOpen : Lock, ativo: aberta, cor: C.ambar }; }
@@ -3510,6 +3510,15 @@ function DividirSheet({ e, temSpotify, onDividir, onMeuSpotify, onFechar }) {
     </Sheet>
   );
 }
+// Cor do cartão por tipo: desligado = bem clarinho (só se destaca do fundo do cômodo); ligado = vivo.
+// Tipos com cor própria (ex.: ar = azul) ganham um toque da cor também desligados.
+const AZUL_AR = "#3b7dd8";
+const COR_TIPO = { ar: AZUL_AR };
+function fundoCartao(e, v, ativo) {
+  const cor = COR_TIPO[e.tipo];
+  if (ativo) return { background: `color-mix(in srgb, ${v.cor} ${cor ? 22 : 10}%, ${C.card})`, border: `1px solid ${alfa(v.cor, cor ? 60 : 38)}` };
+  return { background: cor ? `color-mix(in srgb, ${cor} 13%, var(--c-cartaoOff, ${C.card}))` : `var(--c-cartaoOff, ${C.card})`, border: `1px solid ${cor ? alfa(cor, 18) : "transparent"}` };
+}
 function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
   const [tomAberto, setTomAberto] = useState(false); // ajustes de som (zonas do AAT)
   if (e.tipo === "grupoBotoes") return <CartaoGrupoBotoes e={e} enviar={enviar} />;
@@ -3527,7 +3536,7 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
   return (
     // Ligado = o quadro "acende" na cor do aparelho; desligado = fundo rebaixado e ícone apagado.
     <div onClick={cardClick} role={cardClick ? "button" : undefined}
-      style={{ background: ativo ? `color-mix(in srgb, ${v.cor} 10%, ${C.card})` : C.bg, border: `1px solid ${ativo ? alfa(v.cor, 38) : "transparent"}`,
+      style={{ ...fundoCartao(e, v, ativo),
         borderRadius: 16, height: "100%", padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10,
         cursor: cardClick ? "pointer" : "default", transition: "background .25s, border-color .25s" }}>
       <div className="flex items-center" onClick={!editando && compactavel && expandido ? (ev) => { ev.stopPropagation(); onExpandir(); } : undefined} style={{ gap: 8, cursor: compactavel && !editando ? "pointer" : "default" }}>
