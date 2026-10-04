@@ -1628,8 +1628,8 @@ const BATERIA_PORTA = {
   sensor: "sensor.fechadura_porta_frente_battery", limite: 35, recupera: 60, responsavel: "ana carolina",
   titulo: "Comprar 4 pilhas AA (fechadura da porta da frente)",
 };
-// Alarmes Intelbras (integrações amt8000 e amt4010). Armar/desarmar pedem a senha da central a
-// cada vez (o app NÃO guarda). "zonas" = sensores de porta/janela/movimento (on = aberta/violada);
+// Alarmes Intelbras (integrações amt8000 e amt4010). O administrador arma/desarma com a senha
+// guardada no servidor (alarme_senha); os demais digitam a senha da central. "zonas" = sensores de porta/janela/movimento (on = aberta/violada);
 // "memoria" = zonas que dispararam (atributo zones), que é o que diz onde disparou.
 const ALARMES = [
   { nome: "Casa principal", painel: "alarm_control_panel.intelbras_amt_8000_all_groups",
@@ -1852,7 +1852,8 @@ function AlarmeModal({ ents, enviar, souAdmin, onFechar }) {
     if (code) enviar("alarm_control_panel", armar ? "alarm_arm_away" : "alarm_disarm", cfg.painel, { code: String(code).trim() });
   };
   const comando = async (cfg, armar) => {
-    if (!comSenha.has(cfg.painel)) { pedirSenha(cfg, armar); return; }
+    // Senha salva só vale para administrador; os demais digitam a senha da central.
+    if (!souAdmin || !comSenha.has(cfg.painel)) { pedirSenha(cfg, armar); return; }
     if (!(await Dialog.confirm({ titulo: armar ? "Armar o alarme" : "Desarmar o alarme", mensagem: `${armar ? "Armar" : "Desarmar"} o alarme da ${cfg.nome}?`, okLabel: armar ? "Armar" : "Desarmar", perigo: !armar }))) return;
     setAviso("Enviando…");
     const { data, error } = await supabase.functions.invoke(PROXY_FN, { body: { acao: "alarme", painel: cfg.painel, armar } });

@@ -125,10 +125,11 @@ Deno.serve(async (req) => {
   }
 
   // 3) Alarme com a senha guardada no servidor (tabela alarme_senha): arma/desarma sem a senha
-  //    passar pelo celular. Só para quem tem o menu ⋮ do Controle (ou é admin).
+  //    passar pelo celular. SÓ administrador: quem tem apenas o menu ⋮ precisa digitar a senha
+  //    (vai pelo "servico" abaixo, com o código que a pessoa sabe).
   if (body?.acao === "alarme") {
     const painel = String(body.painel || "");
-    if (!podeAlarme || !/^alarm_control_panel\.(intelbras_amt_8000_all_groups|amt_4010_central)$/.test(painel)) return json({ error: "Sem permissão para o alarme." }, 403);
+    if (p.papel !== "admin" || !/^alarm_control_panel\.(intelbras_amt_8000_all_groups|amt_4010_central)$/.test(painel)) return json({ error: "Sem permissão para o alarme." }, 403);
     const { data: sen } = await admin.from("alarme_senha").select("senha").eq("painel", painel).maybeSingle();
     if (!sen?.senha) return json({ semSenha: true });
     const r = await fetch(`${base}/api/services/alarm_control_panel/${body.armar ? "alarm_arm_away" : "alarm_disarm"}`, {

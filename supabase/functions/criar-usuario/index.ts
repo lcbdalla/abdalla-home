@@ -48,12 +48,14 @@ Deno.serve(async (req) => {
   //    visitante" cria só visitante (conta temporária, com validade).
   const { data: perfilChamador } = await admin
     .from("perfis")
-    .select("papel, ativo, pode_gerar_visitante")
+    .select("papel, ativo, pode_gerar_visitante, pode_gerir_equipe")
     .eq("id", userData.user.id)
     .maybeSingle();
   const ativo = !!perfilChamador && perfilChamador.ativo !== false;
-  const podeTudo = ativo && perfilChamador.papel === "admin";
-  const podeVisitante = ativo && (podeTudo || perfilChamador.pode_gerar_visitante === true);
+  const ehAdmin = ativo && perfilChamador.papel === "admin";
+  // Admin com "Pode mexer na equipe" desligado só gera visitante.
+  const podeTudo = ehAdmin && perfilChamador.pode_gerir_equipe !== false;
+  const podeVisitante = ativo && (ehAdmin || perfilChamador.pode_gerar_visitante === true);
   if (ehVisitante ? !podeVisitante : !podeTudo) {
     return json({ error: ehVisitante ? "Você não tem permissão para gerar acesso de visitante." : "Apenas administradores podem adicionar pessoas." }, 403);
   }
