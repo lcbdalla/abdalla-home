@@ -2236,13 +2236,20 @@ const STREAMER_DA_FONTE = { "Entrada 2": "media_player.som_terreo", "Entrada 4":
 const STREAMER_CONNECT = { "media_player.som_terreo": "SOM TERREO", "media_player.aat_audiocast_ac_1_aeab": "SOM SUBSOLO", "media_player.som_terreo_1": "SOM TERREO 1" }; // WiiM Mini na Entrada 5
 // Cada pessoa usa o próprio Spotify: no HA cada conta vira media_player.spotify_<nome da conta>
 // ("Spotify Leo Abdalla"). Acha a da pessoa logada pelo nome do perfil no app.
+// Nome igual, ou mesmo primeiro e último nome ("Carlos Abdalla" = "Carlos Maurício Abdalla").
+const palavrasNome = (t) => norm(t).replace(/^spotify\s*/, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+function mesmaPessoa(perfil, conta) {
+  const a = palavrasNome(perfil), b = palavrasNome(conta);
+  if (!a.length || !b.length) return false;
+  return a.join(" ") === b.join(" ") || (a.length > 1 && a[0] === b[0] && a[a.length - 1] === b[b.length - 1]);
+}
 function spotifyDaPessoa(ents, nome) {
-  const alvo = norm(nome).replace(/[^a-z0-9]+/g, " ").trim();
-  if (!alvo) return null;
+  if (!palavrasNome(nome).length) return null;
   const ids = Object.keys(ents).filter((id) => id.startsWith("media_player.spotify_"));
-  const limpa = (t) => norm(t).replace(/^spotify\s*/, "").replace(/[^a-z0-9]+/g, " ").trim();
-  return ids.find((id) => limpa(ents[id]?.attributes?.friendly_name || "") === alvo)
-    || ids.find((id) => limpa(id.slice("media_player.spotify_".length)) === alvo) || null;
+  const exato = (t) => palavrasNome(t).join(" ") === palavrasNome(nome).join(" ");
+  // Primeiro o nome exato; depois primeiro + último nome (pelo nome no HA ou pelo identificador).
+  return ids.find((id) => exato(ents[id]?.attributes?.friendly_name || "")) || ids.find((id) => exato(id.slice("media_player.spotify_".length)))
+    || ids.find((id) => mesmaPessoa(nome, ents[id]?.attributes?.friendly_name || "")) || ids.find((id) => mesmaPessoa(nome, id.slice("media_player.spotify_".length))) || null;
 }
 
 /* ---- Resposta imediata ao toque ----
@@ -2406,7 +2413,7 @@ const ALEXA_CARTOES = {
   },
   "alexa.quarto_carlos_e_sandra": {
     alexas: [["Quarto", ["Quarto Master Echo"]], ["Closet", ["Closet Master Echo"]], ["Sala", ["Sala Quarto Master Echo"]], ["Banheiro", ["Banheiro Master Echo"]]],
-    grupos: [[["Som quarto closet sala e banheiro Master"], [0, 1, 2, 3]], [["Som quarto closet banheiro carlos e sandra"], [0, 1, 3]]],
+    grupos: [[["Som quarto closet sala e banheiro Master"], [0, 1, 2, 3]]],
   },
 };
 function acharConnect(sp, nomes) {

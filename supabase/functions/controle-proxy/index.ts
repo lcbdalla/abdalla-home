@@ -27,6 +27,16 @@ const json = (body: unknown, status = 200) =>
 const NOME = /^[a-z0-9_]+$/;
 const ENTIDADE = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 const GENERICOS = ["toggle", "turn_on", "turn_off"]; // homeassistant.* permitidos
+// O Spotify de cada pessoa (media_player.spotify_*) é dela: nome igual, ou mesmo primeiro e último nome.
+const palavras = (t: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  .replace(/^spotify\s*/, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+function mesmaPessoa(perfil: string, conta: string) {
+  const a = palavras(perfil), b = palavras(conta);
+  if (!a.length || !b.length) return false;
+  return a.join(" ") === b.join(" ") || (a.length > 1 && a[0] === b[0] && a[a.length - 1] === b[b.length - 1]);
+}
+const ehMeuSpotify = (s: any, nome: string) => String(s?.entity_id || "").startsWith("media_player.spotify_")
+  && (mesmaPessoa(nome, s?.attributes?.friendly_name || "") || mesmaPessoa(nome, String(s.entity_id).slice("media_player.spotify_".length)));
 // Aparelhos que vêm junto com um cadastrado: o cartão "TV Sala" (Chromecast da TV) comanda a
 // Android TV, o controle remoto dela e o receiver Denon (volume da sala).
 const VINCULADOS: Record<string, string[]> = {
@@ -51,7 +61,7 @@ Deno.serve(async (req) => {
   if (errQuem || !quem?.user) return json({ error: "Sua sessão expirou. Saia e entre de novo no app." }, 401);
   const { data: p } = await admin
     .from("perfis")
-    .select("ativo, papel, pode_controle, pode_gerir_controle, expira_em")
+    .select("ativo, papel, pode_controle, pode_gerir_controle, expira_em, nome")
     .eq("id", quem.user.id)
     .maybeSingle();
   if (!p || p.ativo === false) return json({ error: "Seu acesso ao app foi removido." }, 403);
@@ -115,7 +125,7 @@ Deno.serve(async (req) => {
     if (!r.ok) return json({ error: `O Home Assistant não respondeu (${r.status}).` }, 502);
     const todos = await r.json();
     const estados = (Array.isArray(todos) ? todos : [])
-      .filter((s: any) => cadastrados.has(s.entity_id))
+      .filter((s: any) => cadastrados.has(s.entity_id) || ehMeuSpotify(s, p.nome))
       .map((s: any) => {
         const a = { ...(s.attributes || {}) };
         delete a.access_token; // nunca expor tokens de câmera/mídia
@@ -129,7 +139,12 @@ Deno.serve(async (req) => {
   if (body?.acao === "servico") {
     const entity = String(body.entity_id || ""), domain = String(body.domain || ""), service = String(body.service || "");
     if (!ENTIDADE.test(entity) || !NOME.test(domain) || !NOME.test(service)) return json({ error: "Comando inválido." }, 400);
-    if (!cadastrados.has(entity)) return json({ error: "Este aparelho não está liberado no controle." }, 403);
+    let liberado = cadastrados.has(entity);
+    if (!liberado && entity.startsWith("media_player.spotify_")) {
+      const rs = await fetch(`${base}/api/states/${entity}`, { headers: cabecalho });
+      liberado = rs.ok && ehMeuSpotify(await rs.json(), p.nome);
+    }
+    if (!liberado) return json({ error: "Este aparelho não está liberado no controle." }, 403);
     const doProprioTipo = domain === entity.split(".")[0];
     // Única exceção de "recarregar integração": a da mesa XR18 (pela entidade dela), que demora a
     // reconectar sozinha depois que o plug liga.
