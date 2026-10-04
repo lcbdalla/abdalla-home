@@ -1578,7 +1578,7 @@ const CTRL_TIPOS = [
 const CTRL_TIPO_NOME = Object.fromEntries(CTRL_TIPOS.map((t) => [t.id, t.nome]));
 const CTRL_EMOJI = { botao: "🔘", interruptor: "💡", persiana: "🪟", ar: "❄️", tv: "📺", irrigacao: "💧", fechadura: "🔒", sensor: "📊" };
 const CTRL_LARGO = ["ar", "tv", "persiana", "irrigacao", "alexa", "grupoPersianas", "grupoLuzes", "grupoBotoes"]; // ocupam a linha inteira (têm mais botões)
-const CTRL_COMPACTAVEL = ["ar", "persiana"]; // começam pequenos; tocar no quadro amplia; encolhem ao recarregar
+const CTRL_COMPACTAVEL = ["ar", "persiana", "grupoLuzes"]; // começam pequenos; tocar no quadro amplia; encolhem ao recarregar
 // Botões de ação que dá para renomear, por tipo de aparelho. [chave, nome padrão].
 const ROTULOS_POR_TIPO = {
   persiana: [["abrir", "Abrir"], ["parar", "Parar"], ["fechar", "Fechar"]],
@@ -2472,7 +2472,7 @@ function agruparLuzes(itens, comodoId) {
     if (membros.length < (g.min || 3)) return;
     const pos = lista.indexOf(membros[0]);
     const grupo = { dbId: `grupo-luzes-${gi}-${comodoId}`, id: `grupo.luzes_${gi}_${comodoId}`, tipo: "grupoLuzes", nome: g.nome, icone: g.icone, rotulos: {},
-      tamanho: "g", membros, disponivel: membros.some((m) => m.disponivel), state: membros.some(estaLigado) ? "on" : "off" };
+      tamanho: "p", membros, disponivel: membros.some((m) => m.disponivel), state: membros.some(estaLigado) ? "on" : "off" };
     const resto = lista.filter((x) => !membros.includes(x));
     resto.splice(Math.min(pos, resto.length), 0, grupo);
     lista = resto;
@@ -3464,15 +3464,17 @@ function CartaoGrupoLuzes({ e, enviar, aberto, onAlternar, editando }) {
     }
   };
   return (
-    <div style={{ background: v.ativo ? `color-mix(in srgb, ${v.cor} 10%, ${C.card})` : C.bg, border: `1px solid ${v.ativo ? alfa(v.cor, 38) : "transparent"}`,
-      borderRadius: 16, padding: 12, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10, transition: "background .25s, border-color .25s" }}>
-      <div className="flex items-center" style={{ gap: 8 }}>
-        <div className="flex items-center flex-1 min-w-0" onClick={editando ? undefined : onAlternar} role="button" style={{ gap: 8, cursor: editando ? "default" : "pointer" }}>
-          <IconeEquip v={v} disponivel={e.disponivel} />
-          <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra }}>{e.nome} <span style={{ color: C.cinzaClaro, fontWeight: 600 }}>({e.membros.length})</span></div>
-          <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: acesas ? C.ambarTexto : C.cinza }}>{soLuzes ? (acesas ? `${acesas} ${acesas === 1 ? "ligada" : "ligadas"}` : "Todas desligadas") : (acesas ? `${acesas} ${acesas === 1 ? "ligado" : "ligados"}` : "Todos desligados")}</span>
-          <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+    // Mesmo formato dos outros cartões: título em cima; resumo e chave embaixo. Cabe pequeno.
+    <div style={{ ...fundoCartao(e, v, v.ativo), borderRadius: 16, padding: 12, height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 10, transition: "background .25s, border-color .25s" }}>
+      <div className="flex items-center" onClick={editando ? undefined : onAlternar} role="button" style={{ gap: 8, cursor: editando ? "default" : "pointer" }}>
+        <IconeEquip v={v} disponivel={e.disponivel} />
+        <div className="flex-1 min-w-0" style={{ fontSize: 14, fontWeight: 650, color: C.terra, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" }}>
+          {e.nome} <span style={{ color: C.cinzaClaro, fontWeight: 600 }}>({e.membros.length})</span>
         </div>
+        <ChevronDown size={16} style={{ color: C.cinzaClaro, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 text-sm" style={{ fontWeight: 600, color: acesas ? C.terra : C.cinza }}>{soLuzes ? (acesas ? `${acesas} ${acesas === 1 ? "ligada" : "ligadas"}` : "Desligadas") : (acesas ? `${acesas} ${acesas === 1 ? "ligado" : "ligados"}` : "Desligados")}</div>
         <span onPointerDown={(ev) => ev.stopPropagation()} style={{ flexShrink: 0, display: "flex" }}>
           <PillToggle on={acesas > 0} cor={C.ambar} disabled={!e.disponivel} onClick={alternarTodas} />
         </span>
