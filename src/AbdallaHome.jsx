@@ -2885,6 +2885,8 @@ const iconeComodo = (nome) => { const n = norm(nome); const a = ICONE_COMODO.fin
 // filtro, hidro e aquecedor = piscina. Assim todo cartão com um desses ícones entra no atalho.
 const ICONES_PISCINA = new Set([WavesLadder, IconeCascata, Funnel, Bubbles, Flame]);
 function categoriaAtalho(x) {
+  // Aquecedor da piscina é um "ar" no HA (climate), mas o cartão mostra a chama: vai para Piscina.
+  if (["ar", "interruptor"].includes(x.tipo) && ICONES_PISCINA.has(visualEquip(x).Icon)) return "piscina";
   if (x.tipo === "ar") return "ar";
   if (ehCoifa(x)) return "coifa";
   if (x.tipo === "grupoPersianas") return "persiana";
@@ -5316,7 +5318,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         {pav.comodos.map((c) => {
           const aberto = abertos.amb === c.id, todos = achatar(c.itens);
           const { Icon, cor } = iconeComodo(c.nome);
-          const ares = todos.filter((x) => x.tipo === "ar").slice(0, 2);
+          const ares = todos.filter((x) => categoriaAtalho(x) === "ar").slice(0, 2);
           const som = todos.find((x) => ehSomCartao(x) && estaLigado(x)) || todos.find(ehSomCartao);
           const fech = todos.find((x) => x.tipo === "fechadura" && x.disponivel);
           const luzes = todos.filter((x) => ehLuzCartao(x) && x.disponivel), luzAcesa = luzes.some(estaLigado);
