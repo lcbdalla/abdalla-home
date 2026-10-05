@@ -1835,15 +1835,23 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
    Lista todas as câmeras do HA, separadas em Casa Alta (as G5) e Externas. Só abre a imagem ao vivo
    da câmera em que a pessoa tocar (uma por vez, para não pesar). Só na conexão direta (família). */
 const CAMERAS_FORA = /demo|low_resolution|_package_|unvr|birdseye/i; // baixa resolução, mosaico do Frigate etc.
-// "G5 Turret Ultra 109 High resolution channel" → "Câmera 109"; "Cam07" → "Câmera 07".
-const nomeCamera = (nome) => { const m = String(nome).match(/G5 Turret Ultra (\d+)/i) || String(nome).match(/^cam\s*(\d+)$/i); return m ? `Câmera ${m[1]}` : nome; };
+// Nome e ordem das câmeras da Casa Alta (número da G5 → nome), nesta ordem na tela.
+const CAMERAS_CASA_ALTA = [
+  [101, "Despensa"], [115, "Living"], [102, "Varanda"], [120, "Churrasqueira"], [103, "Área de Serviço 1"], [118, "Área de Serviço 2"],
+  [104, "Cozinha"], [105, "Corredor Quartos 1"], [106, "Corredor Quartos 3"], [112, "Corredor Quartos 2"], [107, "Piscina 1"], [121, "Piscina 2"],
+  [124, "Piscina 3"], [111, "Ofurô"], [108, "Porta Garagem"], [109, "Hall Entrada"], [110, "Escada e Elevador"], [113, "Brinquedoteca"],
+  [114, "Santuário"], [116, "Ducha Externa"], [117, "Entrada"], [119, "Porta Entrada"], [122, "Pátio Casa Alta"], [123, "Lateral Casa Alta"],
+];
+const numeroG5 = (nome) => { const m = String(nome).match(/G5 Turret Ultra (\d+)/i); return m ? Number(m[1]) : null; };
+// "G5 Turret Ultra 109 High resolution channel" → nome da lista (ou "Câmera 109"); "Cam07" → "Câmera 07".
+const nomeCamera = (nome) => { const g = numeroG5(nome), dono = CAMERAS_CASA_ALTA.find(([n]) => n === g); if (dono) return dono[1]; const m = String(nome).match(/G5 Turret Ultra (\d+)/i) || String(nome).match(/^cam\s*(\d+)$/i); return m ? `Câmera ${m[1]}` : nome; };
 function CamerasModal({ pedirHA, baseUrl, direto, onFechar }) {
   const [lista, setLista] = useState(null), [erro, setErro] = useState(""), [aberta, setAberta] = useState(null);
   const carregar = () => pedirHA({ type: "get_states" }).then((todos) => {
     setLista((todos || []).filter((x) => String(x.entity_id).startsWith("camera.") && !CAMERAS_FORA.test(x.entity_id))
-      .map((x) => ({ id: x.entity_id, nome: nomeCamera(x.attributes?.friendly_name || x.entity_id), tk: x.attributes?.access_token, fora: ["unavailable", "unknown"].includes(x.state),
+      .map((x) => ({ id: x.entity_id, nome: nomeCamera(x.attributes?.friendly_name || x.entity_id), ordem: (() => { const i = CAMERAS_CASA_ALTA.findIndex(([n]) => n === numeroG5(x.attributes?.friendly_name || "")); return i < 0 ? 999 : i; })(), tk: x.attributes?.access_token, fora: ["unavailable", "unknown"].includes(x.state),
         g5: /g5/i.test(x.entity_id + " " + (x.attributes?.friendly_name || "")) }))
-      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true })));
+      .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, "pt-BR", { numeric: true })));
   }).catch((e) => setErro(e.message));
   useEffect(() => { if (direto) carregar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // O token da câmera troca de tempos em tempos: com uma aberta, relê a cada 4 min.
@@ -1873,7 +1881,8 @@ function CamerasModal({ pedirHA, baseUrl, direto, onFechar }) {
       {direto && erro && <div style={{ color: C.vermelho, fontSize: 13.5 }}>{erro}</div>}
       {direto && !lista && !erro && <div style={{ color: C.cinza, fontSize: 14 }}>Carregando as câmeras…</div>}
       {cam && (
-        <div style={{ marginBottom: 12 }}>
+        // Imagem ao vivo parada no alto enquanto a lista rola por baixo.
+        <div style={{ position: "sticky", top: 56, zIndex: 1, background: C.bg, paddingBottom: 8, marginBottom: 4 }}>
           <CameraAoVivo key={cam.id} cam={{ id: cam.id, nome: cam.nome, url: cam.tk ? `${baseUrl}/api/camera_proxy/${cam.id}?token=${cam.tk}${cam.g5 ? "&width=960" : ""}` : null, aviso: cam.tk ? null : "Câmera sem imagem agora." }} />
           <button onClick={() => setAberta(null)} style={{ width: "100%", marginTop: 6, color: C.cinza, fontWeight: 700, fontSize: 13.5, padding: 6 }}>Fechar a câmera</button>
         </div>
