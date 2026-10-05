@@ -1634,6 +1634,10 @@ const MESA_IDS = [MESA_TV.plug, ...MESA_TV.canais.flatMap((c) => [c.fader, c.on]
 // Bateria da fechadura Yale da Porta da Frente: em 35% ou menos o app avisa (popup, 1x por dia em
 // cada aparelho) e cria uma tarefa para a Ana Carolina comprar as pilhas (só se não houver uma aberta).
 // Acima de 60% (pilhas trocadas) o aviso "zera" para a próxima vez.
+// Caixa d'água (sensor Zigbee de nível, em %): abaixo de 55% avisa (1 vez por dia em cada
+// celular); só volta a avisar depois de passar de 60% (para não repetir com o nível oscilando).
+// O próprio sensor liga a bomba perto de 50% (min_set), então o aviso chega antes.
+const CAIXA_AGUA = { sensor: "sensor.0xa4c13818adff06db_liquid_level_percent", limite: 55, recupera: 60 };
 const BATERIA_PORTA = {
   sensor: "sensor.fechadura_porta_frente_battery", limite: 35, recupera: 60, responsavel: "ana carolina",
   titulo: "Comprar 4 pilhas AA (fechadura da porta da frente)",
@@ -1651,7 +1655,7 @@ const ALARMES = [
 ];
 const ehDoAlarme = (id) => ALARMES.some((a) => id === a.painel || id === a.memoria || id === a.sirene || a.zona.test(id) || (a.partes || []).includes(id));
 const ehTomAAT = (id) => /^number\.aat_pmr7_zona_\d+_(graves|agudos|balanco)$/.test(id);
-const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || id === CAIXA_AGUA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button", "remote"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
@@ -4265,6 +4269,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Erro some sozinho depois de 6 s (os avisos comuns já somem em 2 s).
   useEffect(() => { if (!aviso?.erro) return; const t = setTimeout(() => setAviso((a) => (a === aviso ? null : a)), 6000); return () => clearTimeout(t); }, [aviso]);
   const [avisoBateria, setAvisoBateria] = useState(null); // % da bateria da porta, quando baixa
+  const [avisoAgua, setAvisoAgua] = useState(null); // % da caixa d'água, quando baixa
   const [pavimentos, setPavimentos] = useState([]);
   const [ambientes, setAmbientes] = useState([]);
   const [equipamentos, setEquipamentos] = useState([]);
@@ -4807,6 +4812,16 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   entsRef.current = entsVis;
   const bat = entsVis[BATERIA_PORTA.sensor]?.state;
   const nivelPorta = bat != null && bat !== "" && !isNaN(Number(bat)) ? Number(bat) : null; // "unknown"/"unavailable" = sem leitura
+  const agua = entsVis[CAIXA_AGUA.sensor]?.state;
+  const nivelAgua = agua != null && agua !== "" && !isNaN(Number(agua)) ? Number(agua) : null; // sem leitura = não avisa
+  useEffect(() => {
+    if (nivelAgua == null) return;
+    const chave = "caixaAguaAvisoDia";
+    if (nivelAgua > CAIXA_AGUA.recupera) { try { localStorage.removeItem(chave); } catch { /* ok */ } return; }
+    if (nivelAgua >= CAIXA_AGUA.limite) return;
+    let dia = null; try { dia = localStorage.getItem(chave); } catch { /* ok */ }
+    if (dia !== hojeISO()) { setAvisoAgua(nivelAgua); try { localStorage.setItem(chave, hojeISO()); } catch { /* ok */ } }
+  }, [nivelAgua]);
   const tarefaPilhas = useRef(false);
   useEffect(() => {
     if (nivelPorta == null) return;
@@ -5089,6 +5104,16 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               if (meuSpotify && destino) conectarSpotify(meuSpotify, destino, (v) => { if (v.state !== "playing") enviar("media_player", "media_play", meuSpotify); });
               else abrirSpotify();
             }} />
+        )}
+        {avisoAgua != null && (
+          <Sheet titulo="Caixa d'água baixa" onFechar={() => setAvisoAgua(null)}>
+            <div className="text-center" style={{ padding: "4px 0 10px" }}>
+              <div style={{ width: 64, height: 64, borderRadius: 999, background: alfa(LAGO, 16), color: LAGO, display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Droplets size={30} /></div>
+              <div className="font-bold" style={{ fontSize: 18, marginTop: 10 }}>Caixa d'água em {avisoAgua}%</div>
+              <div style={{ color: C.cinza, fontSize: 14.5, marginTop: 6 }}>O nível está abaixo de {CAIXA_AGUA.limite}%. A bomba deve ligar sozinha perto de 50%; se não subir, confira a bomba.</div>
+            </div>
+            <button onClick={() => setAvisoAgua(null)} style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>Entendi</button>
+          </Sheet>
         )}
         {avisoBateria != null && (
           <Sheet titulo="Trocar a bateria da fechadura" onFechar={() => setAvisoBateria(null)}>
@@ -5815,7 +5840,7 @@ const AVISOS_AUTOMATICOS = [
   { titulo: "Bateria da fechadura da Porta da Frente", quando: "Bateria em 35% ou menos.",
     faz: "Aviso no Controle (1 vez por dia em cada celular) e tarefa para a Ana Carolina comprar 4 pilhas AA.", situacao: "ativo" },
   { titulo: "Caixa d'água", quando: "Nível abaixo de 55%.",
-    faz: "Aviso no Controle e mensagem no WhatsApp dos administradores com acesso ao Controle.", situacao: "em montagem" },
+    faz: "Aviso no Controle (1 vez por dia em cada celular; volta a avisar depois de passar de 60%). WhatsApp dos administradores com Controle: em montagem.", situacao: "ativo" },
   { titulo: "Alarme disparado (Casa principal e Casa Baixa)", quando: "Quando uma das centrais dispara.",
     faz: "Faixa vermelha no app com a zona que disparou; notificação que toca no celular (app Home Assistant) e WhatsApp dos administradores.", situacao: "em montagem" },
 ];

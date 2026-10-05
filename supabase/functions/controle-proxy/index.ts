@@ -111,6 +111,7 @@ Deno.serve(async (req) => {
   }
   const cadastrados = new Set(lista.map((q: { entity_id: string }) => q.entity_id));
   const podeAlarme = p.papel === "admin" || p.pode_menu_controle === true;
+  cadastrados.add("sensor.0xa4c13818adff06db_liquid_level_percent"); // nível da caixa d'água (só leitura, para o aviso)
   for (const id of [...cadastrados]) for (const v of VINCULADOS[id] || []) cadastrados.add(v);
   // Zonas do AAT: agudo, grave e balanço da zona (number.aat_pmr7_zona_N_…).
   for (const id of [...cadastrados]) {
