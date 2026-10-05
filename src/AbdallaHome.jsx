@@ -1847,6 +1847,7 @@ const numeroG5 = (nome) => { const m = String(nome).match(/G5 Turret Ultra (\d+)
 const nomeCamera = (nome) => { const g = numeroG5(nome), dono = CAMERAS_CASA_ALTA.find(([n]) => n === g); if (dono) return dono[1]; const m = String(nome).match(/G5 Turret Ultra (\d+)/i) || String(nome).match(/^cam\s*(\d+)$/i); return m ? `Câmera ${m[1]}` : nome; };
 function CamerasModal({ pedirHA, baseUrl, direto, onFechar }) {
   const [lista, setLista] = useState(null), [erro, setErro] = useState(""), [aberta, setAberta] = useState(null);
+  const [rapido, setRapido] = useState(false); // 12 fps (internet boa); padrão 1 fps
   const carregar = () => pedirHA({ type: "get_states" }).then((todos) => {
     setLista((todos || []).filter((x) => String(x.entity_id).startsWith("camera.") && !CAMERAS_FORA.test(x.entity_id))
       .map((x) => ({ id: x.entity_id, nome: nomeCamera(x.attributes?.friendly_name || x.entity_id), ordem: (() => { const i = CAMERAS_CASA_ALTA.findIndex(([n]) => n === numeroG5(x.attributes?.friendly_name || "")); return i < 0 ? 999 : i; })(), tk: x.attributes?.access_token, fora: ["unavailable", "unknown"].includes(x.state),
@@ -1883,8 +1884,15 @@ function CamerasModal({ pedirHA, baseUrl, direto, onFechar }) {
       {cam && (
         // Imagem ao vivo parada no alto enquanto a lista rola por baixo.
         <div style={{ position: "sticky", top: 56, zIndex: 1, background: C.bg, paddingBottom: 8, marginBottom: 4 }}>
-          <CameraAoVivo key={cam.id} cam={{ id: cam.id, nome: cam.nome, url: cam.tk ? `${baseUrl}/api/camera_proxy/${cam.id}?token=${cam.tk}${cam.g5 ? "&width=960" : ""}` : null, aviso: cam.tk ? null : "Câmera sem imagem agora." }} />
-          <button onClick={() => setAberta(null)} style={{ width: "100%", marginTop: 6, color: C.cinza, fontWeight: 700, fontSize: 13.5, padding: 6 }}>Fechar a câmera</button>
+          <CameraAoVivo key={cam.id} cam={{ id: cam.id, nome: cam.nome, url: cam.tk ? `${baseUrl}/api/camera_proxy/${cam.id}?token=${cam.tk}${cam.g5 ? "&width=960" : ""}` : null, aviso: cam.tk ? null : "Câmera sem imagem agora." }} ms={rapido ? 83 : CAMERA_MS} />
+          <div className="flex items-center gap-2" style={{ marginTop: 6 }}>
+            <div className="flex" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 999, padding: 3 }}>
+              {[[false, "1 fps"], [true, "12 fps"]].map(([v, t]) => (
+                <button key={t} onClick={() => setRapido(v)} style={{ borderRadius: 999, padding: "5px 12px", fontSize: 13, fontWeight: 700, background: rapido === v ? LAGO : "transparent", color: rapido === v ? "#fff" : C.cinza }}>{t}</button>
+              ))}
+            </div>
+            <button onClick={() => setAberta(null)} className="flex-1" style={{ color: C.cinza, fontWeight: 700, fontSize: 13.5, padding: 6 }}>Fechar a câmera</button>
+          </div>
         </div>
       )}
       {lista && lista.length === 0 && <div style={{ color: C.cinza, fontSize: 14 }}>Nenhuma câmera encontrada no Home Assistant.</div>}
@@ -2100,27 +2108,33 @@ function PortaModal({ ent, enviar, onFechar, cameras = [], topo }) {
 // Câmera "ao vivo" leve para o celular: uma foto nova da câmera a cada ~1 s (camera_proxy).
 // A foto seguinte só troca quando terminou de carregar (sem piscar); para quando o popup fecha
 // ou o app vai para segundo plano. O token da câmera muda a cada ~5 min e a URL acompanha.
+// No modo rápido (12 fps) pede uma foto a cada ~83 ms, com até 3 a caminho ao mesmo tempo (cada
+// foto da câmera leva uns 100–300 ms); mostra sempre a mais nova que chegar.
 const CAMERA_MS = 1000;
-function CameraAoVivo({ cam, topo }) {
+function CameraAoVivo({ cam, topo, ms = CAMERA_MS }) {
   const [src, setSrc] = useState(null);
   const [falhou, setFalhou] = useState(false);
   const urlRef = useRef(cam.url);
   urlRef.current = cam.url;
   useEffect(() => {
     if (!cam.url) return;
-    let vivo = true, timer = null, erros = 0;
-    const proxima = () => {
-      if (!vivo) return;
-      if (document.visibilityState !== "visible") { timer = setTimeout(proxima, CAMERA_MS); return; }
-      const img = new Image();
-      const t0 = Date.now();
-      img.onload = () => { if (!vivo) return; erros = 0; setFalhou(false); setSrc(img.src); timer = setTimeout(proxima, Math.max(150, CAMERA_MS - (Date.now() - t0))); };
-      img.onerror = () => { if (!vivo) return; erros++; if (erros >= 3) setFalhou(true); timer = setTimeout(proxima, CAMERA_MS * 2); };
-      img.src = `${urlRef.current}&t=${Date.now()}`;
+    let vivo = true, timer = null, erros = 0, voando = 0, ultima = 0;
+    const max = ms < CAMERA_MS ? 3 : 1;
+    const pedir = () => {
+      const img = new Image(), t0 = Date.now();
+      voando++;
+      img.onload = () => { voando--; if (!vivo || t0 < ultima) return; ultima = t0; erros = 0; setFalhou(false); setSrc(img.src); };
+      img.onerror = () => { voando--; if (!vivo) return; erros++; if (erros >= 3) setFalhou(true); };
+      img.src = `${urlRef.current}&t=${t0}`;
     };
-    proxima();
+    const tique = () => {
+      if (!vivo) return;
+      if (document.visibilityState === "visible" && voando < max) pedir();
+      timer = setTimeout(tique, erros ? CAMERA_MS * 2 : ms);
+    };
+    tique();
     return () => { vivo = false; clearTimeout(timer); };
-  }, [!!cam.url]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [!!cam.url, ms]); // eslint-disable-line react-hooks/exhaustive-deps
   const ok = cam.url && src && !falhou;
   return (
     // Cada câmera fica em 16:9, mas nunca mais alta que metade do espaço que sobra na tela
