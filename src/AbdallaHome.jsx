@@ -5844,18 +5844,47 @@ const AVISOS_AUTOMATICOS = [
   { titulo: "Alarme disparado (Casa principal e Casa Baixa)", quando: "Quando uma das centrais dispara.",
     faz: "Faixa vermelha no app com a zona que disparou; notificação que toca no celular (app Home Assistant) e WhatsApp dos administradores.", situacao: "em montagem" },
 ];
+// "Sobre a propriedade": situação da casa (caixa d'água e baterias, pelo intermediário) e a
+// lista dos avisos automáticos.
 function InfoModal({ onFechar }) {
-  const areaPrincipal = 61217.65, deck = 501.66, total = areaPrincipal + deck;
-  const Linha = ({ l, v }) => (<div className="flex justify-between py-2" style={{ borderTop: `1px solid ${C.bg}` }}><span style={{ color: C.cinza }}>{l}</span><span className="font-bold">{v}</span></div>);
+  const [dados, setDados] = useState(null), [erro, setErro] = useState("");
+  useEffect(() => {
+    supabase.functions.invoke(PROXY_FN, { body: { acao: "saude" } }).then(({ data, error }) => {
+      if (error || data?.error) setErro(data?.error || "Atualize a função controle-proxy no Supabase para ver esses dados.");
+      else setDados(data);
+    });
+  }, []);
+  const num = (v) => (v != null && v !== "" && !isNaN(Number(v)) ? Number(v) : null);
+  const corNivel = (n, baixo, medio) => (n == null ? C.cinzaClaro : n <= baixo ? C.vermelho : n <= medio ? C.ambar : C.pasto);
+  const agua = num(dados?.agua?.state);
+  const bats = (dados?.baterias || []).map((b) => ({ ...b, n: b.binario ? null : num(b.state) }))
+    .sort((a, b) => (a.binario === b.binario ? (a.n ?? 999) - (b.n ?? 999) : a.binario ? 1 : -1));
+  const titulo = (t) => <div className="font-bold mt-4 mb-2" style={{ fontSize: 15 }}>{t}</div>;
   return (
     <Sheet titulo="Rancho Abdalla" onFechar={onFechar}>
-      <div style={{ background: C.pastoClaro, borderRadius: 14 }} className="p-4 mb-3 text-center"><div style={{ color: C.cinza }} className="text-xs uppercase font-semibold">Área total da propriedade</div><div className="font-bold" style={{ fontSize: 30, color: C.pastoEsc }}>{total.toLocaleString("pt-BR")} m²</div><div style={{ color: C.cinza }} className="text-sm">{(total / 10000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} hectares</div></div>
-      <Linha l="Área principal" v={`${areaPrincipal.toLocaleString("pt-BR")} m²`} />
-      <Linha l="Deck do lago" v={`${deck.toLocaleString("pt-BR")} m²`} />
-      <Linha l="Perímetro principal" v="1.208,82 m" />
-      <Linha l="Localização" v="Tocantins, BR" />
-      <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="mt-3 flex items-center gap-1"><Info size={12} /> Área total = área principal + deck do lago.</div>
-      <div className="font-bold mt-5 mb-2" style={{ fontSize: 15 }}>Avisos automáticos</div>
+      {erro && <div style={{ color: C.vermelho, fontSize: 13.5, marginBottom: 8 }}>{erro}</div>}
+      {!dados && !erro && <div style={{ color: C.cinza, fontSize: 14 }}>Carregando a situação da casa…</div>}
+      {dados && (<>
+        <div style={{ background: C.lagoClaro, borderRadius: 14 }} className="p-4 mb-1">
+          <div className="flex items-center gap-2"><Droplets size={18} style={{ color: LAGO }} /><span className="flex-1 text-xs uppercase font-semibold" style={{ color: C.cinza }}>Caixa d'água</span></div>
+          <div className="font-bold" style={{ fontSize: 30, color: corNivel(agua, 55, 70) }}>{agua == null ? "Sem leitura" : `${agua}%`}</div>
+          {agua != null && <div style={{ height: 10, borderRadius: 999, background: alfa(C.cinzaClaro, 30), overflow: "hidden", marginTop: 6 }}><div style={{ width: `${Math.max(0, Math.min(100, agua))}%`, height: "100%", background: corNivel(agua, 55, 70) }} /></div>}
+        </div>
+        {titulo("Baterias")}
+        {bats.length === 0 && <div style={{ color: C.cinza, fontSize: 13.5 }}>Nenhuma bateria encontrada no Home Assistant.</div>}
+        {bats.map((b) => {
+          const sem = ["unavailable", "unknown"].includes(b.state);
+          const texto = sem ? "Sem leitura" : b.binario ? (b.state === "on" ? "Bateria fraca" : "OK") : `${b.n}${b.unidade || "%"}`;
+          const cor = sem ? C.cinzaClaro : b.binario ? (b.state === "on" ? C.vermelho : C.pasto) : corNivel(b.n, 35, 60);
+          return (
+            <div key={b.id} className="flex items-center gap-2 py-2" style={{ borderTop: `1px solid ${C.bg}` }}>
+              <span className="flex-1 min-w-0 truncate" style={{ fontSize: 14 }}>{b.nome}</span>
+              <span style={{ flexShrink: 0, fontWeight: 800, fontSize: 14, color: cor }}>{texto}</span>
+            </div>
+          );
+        })}
+      </>)}
+      {titulo("Avisos automáticos")}
       {AVISOS_AUTOMATICOS.map((a) => (
         <div key={a.titulo} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
           <div className="flex items-center gap-2">

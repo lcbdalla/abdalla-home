@@ -75,6 +75,26 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "Pedido inválido." }, 400); }
 
   // 1b) Tempo: qualquer pessoa ativa do app pode LER a estação meteorológica (nada é comandado).
+  // 1c) Situação da casa ("Sobre a propriedade", só admin): nível da caixa d'água e baterias
+  //     (fechaduras, sensores, estação Ecowitt). Só leitura.
+  if (body?.acao === "saude") {
+    if (p.papel !== "admin") return json({ error: "Só para administradores." }, 403);
+    const { data: cfgS } = await admin.from("ha_config").select("base_url, token").eq("id", "default").maybeSingle();
+    if (!cfgS?.base_url || !cfgS?.token) return json({ error: "O controle da casa ainda não foi configurado." }, 500);
+    const rs = await fetch(String(cfgS.base_url).replace(/\/+$/, "") + "/api/states", { headers: { Authorization: "Bearer " + cfgS.token } });
+    if (!rs.ok) return json({ error: `O Home Assistant não respondeu (${rs.status}).` }, 502);
+    const todos: any[] = await rs.json();
+    const nome = (x: any) => x.attributes?.friendly_name || x.entity_id;
+    const agua = todos.find((x) => x.entity_id === "sensor.0xa4c13818adff06db_liquid_level_percent");
+    const baterias = todos
+      // bateria pelo tipo (device_class) ou pelo nome — a estação Ecowitt às vezes não marca o tipo
+      .filter((x) => /^(sensor|binary_sensor)\./.test(x.entity_id) && (x.attributes?.device_class === "battery" || /batter|bateria/i.test(x.entity_id + " " + nome(x))))
+      .filter((x) => !/voltage|tensao|tensão|_charging|carregando/i.test(x.entity_id + " " + nome(x)))
+      .filter((x) => !/^(sensor|binary_sensor)\.(mobile|sm_|iphone|galaxy|pixel)/i.test(x.entity_id)) // celulares não
+      .map((x) => ({ id: x.entity_id, nome: nome(x), state: x.state, unidade: x.attributes?.unit_of_measurement || "", binario: x.entity_id.startsWith("binary_sensor.") }));
+    return json({ agua: agua ? { state: agua.state, mudou: agua.last_changed } : null, baterias });
+  }
+
   if (body?.acao === "clima") {
     const { data: cfgC } = await admin.from("ha_config").select("base_url, token").eq("id", "default").maybeSingle();
     if (!cfgC?.base_url || !cfgC?.token) return json({ error: "O controle da casa ainda não foi configurado." }, 500);
