@@ -4,7 +4,7 @@ import {
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
   ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Cctv, ShieldCheck, Music, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
-  LampDesk,
+  LampDesk, Sofa, BedDouble, Bath, CookingPot, Refrigerator, WashingMachine, Armchair, Warehouse, Trees, Briefcase,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -2864,6 +2864,29 @@ const ICONE_POR_NOME = [
   [/hidro/, Bubbles, "lago"], [/aquec/, Flame, "ambar"], [/coifa/, AirVent, "lago"], [/chafariz/, IconeChafariz, "lago"], [/abajur/, LampDesk, "ambar", true],
 ];
 
+// Vista "Áreas" (arrastar o dedo para a esquerda): uma linha por cômodo com atalhos.
+const ICONE_COMODO = [
+  [/\btv\b|cinema/, Tv, "#e8912d"], [/living/, Sofa, "#e5484d"], [/lavabo|banheiro|\bwc\b/, Bath, "#3fb7c9"],
+  [/brinquedo/, ToyBrick, "#9b6bd6"], [/cozinha|gourmet/, CookingPot, "#e0b43a"], [/despensa/, Refrigerator, "#c47e4a"],
+  [/servico|lavanderia/, WashingMachine, "#2bb3a3"], [/churras/, Flame, "#e8912d"], [/varanda|deck/, Armchair, "#e8912d"],
+  [/piscina|ofuro|hidro/, WavesLadder, "#3b9bd8"], [/garagem/, Warehouse, "#8a8f98"], [/suite|quarto|master/, BedDouble, "#e46aa6"],
+  [/escrit/, Briefcase, "#8a8f98"], [/hall|entrada|porta/, DoorOpen, "#5b8def"], [/extern|jardim|quintal|campo|lago/, Trees, "#3fae5c"],
+  [/sala/, Sofa, "#e5484d"],
+];
+const iconeComodo = (nome) => { const n = norm(nome); const a = ICONE_COMODO.find(([re]) => re.test(n)); return a ? { Icon: a[1], cor: a[2] } : { Icon: Home, cor: "#8a8f98" }; };
+const ehLuzCartao = (x) => x.tipo === "interruptor" && (String(x.id).startsWith("light.") || /luz|ilumin|abajur|\bled\b|lumin|spot|pendente|arandela|lustre/.test(norm(`${x.nome} ${x.id}`)));
+const ehSomCartao = (x) => x.tipo === "alexa" || x.tipo === "tv" || !!x.receiver || !!x.zonasComodo;
+function BolinhaArea({ Icon, cor, aceso, cheio, rot, onClick, preenche }) {
+  return (
+    <button onClick={(ev) => { ev.stopPropagation(); onClick(); }} aria-label={rot} title={rot}
+      style={{ width: 34, height: 34, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer",
+        background: cheio ? cor : aceso ? alfa(cor, 22) : alfa(C.cinzaClaro, 16), color: cheio ? "#fff" : aceso ? cor : C.cinza,
+        boxShadow: aceso && !cheio ? `0 0 0 1px ${alfa(cor, 35)}` : "none", transition: "background .25s, color .25s" }}>
+      <Icon size={17} strokeWidth={2.2} fill={aceso && preenche ? alfa(cor, 40) : "none"} />
+    </button>
+  );
+}
+
 function visualEquip(e) {
   const v = visualPorTipo(e);
   const alvo = norm((e.nome || "") + " " + e.id);
@@ -4373,6 +4396,10 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     } catch { /* sem storage */ }
     return { pavs: [], amb: null };
   });
+  // Vista "Áreas" (uma linha por cômodo) ou a padrão: troca arrastando o dedo na tela.
+  const [vistaAreas, setVistaAreasSt] = useState(() => { try { return localStorage.getItem("controleVista") === "areas"; } catch { return false; } });
+  const setVistaAreas = (v) => { setVistaAreasSt(v); try { localStorage.setItem("controleVista", v ? "areas" : "padrao"); } catch { /* ok */ } };
+  const toqueIni = useRef(null);
   const usoRef = useRef(Date.now());
   const wsRef = useRef(null);
   const pedidosRef = useRef({}); // id -> resolve (pedidos que esperam resposta do HA)
@@ -5163,6 +5190,74 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const aviso = usarProxy ? "Câmera disponível só para a família (conexão direta com a casa)." : !entsVis[c.id] ? "Câmera não encontrada no Home Assistant." : null;
     return { ...c, aviso, url: !usarProxy && tk ? `${baseUrlRef.current}/api/camera_proxy/${c.id}?token=${tk}${c.largura ? `&width=${c.largura}` : ""}` : null };
   });
+  const aoTocarIni = (ev) => {
+    const t = ev.touches[0];
+    // Não troca a vista ao arrastar barrinhas (volume, brilho).
+    toqueIni.current = ev.touches.length === 1 && !ev.target.closest?.("input, [data-sem-gesto]") ? { x: t.clientX, y: t.clientY, t: Date.now() } : null;
+  };
+  const aoTocarFim = (ev) => {
+    const i = toqueIni.current; toqueIni.current = null;
+    if (!i || editando || arrPav || arrAmb || Date.now() - i.t > 700) return;
+    const t = ev.changedTouches[0], dx = t.clientX - i.x, dy = t.clientY - i.y;
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
+    if (dx < 0 && !vistaAreas) setVistaAreas(true);
+    else if (dx > 0 && vistaAreas) setVistaAreas(false);
+  };
+  // Vista "Áreas": título do nível com uma linha, e cada cômodo numa linha com atalhos (ar, som,
+  // fechadura, temperatura e luzes). Tocar na linha abre os cartões do cômodo logo abaixo.
+  const vistaDeAreas = () => listaPav.map((pav) => (
+    <div key={pav.id} style={{ marginBottom: 14 }}>
+      {!pav.semCaixa && (
+        <div className="flex items-center gap-2" style={{ padding: "6px 6px 8px" }}>
+          <Home size={18} style={{ color: C.terra, flexShrink: 0 }} />
+          <span style={{ fontWeight: 800, fontSize: 16.5, color: C.terra, flexShrink: 0 }}>{pav.nome}</span>
+          <span style={{ flex: 1, height: 5, borderRadius: 999, background: alfa(C.cinzaClaro, 35), marginLeft: 8 }} />
+        </div>
+      )}
+      {pav.soltos.length > 0 && <div style={{ padding: "0 2px 8px" }}><GradeEquip itens={pav.soltos} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} /></div>}
+      <div className="flex flex-col" style={{ gap: 8 }}>
+        {pav.comodos.map((c) => {
+          const aberto = abertos.amb === c.id, todos = achatar(c.itens);
+          const { Icon, cor } = iconeComodo(c.nome);
+          const ares = todos.filter((x) => x.tipo === "ar").slice(0, 2);
+          const som = todos.find((x) => ehSomCartao(x) && estaLigado(x)) || todos.find(ehSomCartao);
+          const fech = todos.find((x) => x.tipo === "fechadura" && x.disponivel);
+          const luzes = todos.filter((x) => ehLuzCartao(x) && x.disponivel), luzAcesa = luzes.some(estaLigado);
+          const temp = ares.map((x) => x.attributes?.current_temperature).find((v) => v != null)
+            ?? todos.find((x) => x.tipo === "sensor" && /°c/i.test(x.attributes?.unit_of_measurement || "") && !isNaN(Number(x.state)))?.state;
+          const aceso = contarLigados(c.itens).on > 0;
+          const abrir = () => { if (!aberto) alternarAmb(c.id, pav.id); };
+          const alternarLuzes = () => (luzAcesa ? luzes.filter(estaLigado) : luzes).forEach((x) => enviar("homeassistant", luzAcesa ? "turn_off" : "turn_on", x.id));
+          return (
+            <div key={c.id} data-comodo={c.id} style={{ background: "var(--c-comodo, #fff)", borderRadius: aberto ? 22 : 999, border: `1px solid ${aceso ? alfa(C.ambar, 45) : C.linha}`, boxShadow: C.comodoSombra, transition: "border-color .25s" }}>
+              <div role="button" tabIndex={0} onClick={() => alternarAmb(c.id, pav.id)} onKeyDown={(ev) => { if (ev.key === "Enter") alternarAmb(c.id, pav.id); }}
+                className="flex items-center" style={{ gap: 6, padding: "7px 8px", cursor: "pointer", minHeight: 52 }}>
+                <span aria-hidden="true" style={{ width: 38, height: 38, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(cor, 16), color: cor }}><Icon size={19} strokeWidth={2.2} /></span>
+                <span className="flex-1 min-w-0 truncate" style={{ fontWeight: 700, fontSize: 14.5, color: C.terra, marginLeft: 4 }}>{c.nome}</span>
+                {ares.map((x) => (
+                  <BolinhaArea key={x.dbId} Icon={Snowflake} cor={AZUL_AR} aceso={estaLigado(x)} rot={`${estaLigado(x) ? "Desligar" : "Ligar"} ${x.nome || "ar"}`}
+                    onClick={() => (estaLigado(x) ? desligarAr(x, enviar) : ligarAr(x, enviar))} />
+                ))}
+                {som && <BolinhaArea Icon={visualEquip(som).Icon} cor={C.lago} aceso={estaLigado(som)} rot={`Abrir ${som.nome || "som"}`} onClick={abrir} />}
+                {fech && <BolinhaArea Icon={fech.state === "unlocked" ? LockOpen : Lock} cor={fech.state === "unlocked" ? C.vermelho : LAGO} cheio rot={fech.state === "unlocked" ? "Fechadura aberta" : "Fechadura trancada"} onClick={abrir} />}
+                {temp != null && (
+                  <span className="flex items-center" style={{ gap: 2, flexShrink: 0, fontSize: 12.5, fontWeight: 600, color: C.cinza, padding: "0 2px", fontVariantNumeric: "tabular-nums" }}>
+                    <Thermometer size={14} />{Number(temp).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}°C
+                  </span>
+                )}
+                {luzes.length > 0 && <BolinhaArea Icon={Lightbulb} cor={C.ambar} aceso={luzAcesa} preenche rot={luzAcesa ? `Apagar as luzes de ${c.nome}` : `Acender as luzes de ${c.nome}`} onClick={alternarLuzes} />}
+              </div>
+              {aberto && (
+                <div style={{ borderTop: `1px solid ${C.linha}`, padding: "12px 12px 6px" }}>
+                  <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  ));
   const topoDoCabecalho = () => setTopoPortao(Math.max(0, Math.round(cabRef.current?.getBoundingClientRect().bottom || 0)) + 6);
   return (
     // overflowX "clip" (e não "hidden"): "hidden" impediria o cabeçalho de ficar fixo no alto.
@@ -5257,7 +5352,16 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           </div>
         </header>
 
-        <main className="pt-3" style={{ paddingLeft: 8, paddingRight: 8 }}>
+        <main className="pt-3" style={{ paddingLeft: 8, paddingRight: 8 }} onTouchStart={aoTocarIni} onTouchEnd={aoTocarFim}>
+          {/* Qual vista está na tela (arrastar o dedo troca; tocar também). */}
+          {modo === "usar" && status === "ok" && listaPav.length > 0 && (
+            <div className="flex justify-center" style={{ gap: 6, marginBottom: 8 }}>
+              {[false, true].map((v) => (
+                <button key={String(v)} onClick={() => setVistaAreas(v)} aria-label={v ? "Vista em áreas" : "Vista padrão"}
+                  style={{ width: vistaAreas === v ? 18 : 7, height: 7, borderRadius: 999, border: "none", padding: 0, background: vistaAreas === v ? C.pasto : alfa(C.cinzaClaro, 45), transition: "width .2s" }} />
+              ))}
+            </div>
+          )}
           {status === "carregando" && <div className="text-center py-16" style={{ color: C.cinza }}>Conectando ao Home Assistant…</div>}
           {status === "erro" && (
             <div style={{ background: C.vermelhoClaro, border: `1px solid ${alfa(C.vermelho, 33)}`, borderRadius: 14 }} className="p-4 mt-4">
@@ -5284,7 +5388,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               </div>
             ) : null
           )}
-          {modo === "usar" && status === "ok" && (arrPav
+          {modo === "usar" && status === "ok" && vistaAreas && vistaDeAreas()}
+          {modo === "usar" && status === "ok" && !vistaAreas && (arrPav
             ? [...arrPav.ordem.map((id) => listaPav.find((x) => x.id === id)).filter(Boolean), ...listaPav.filter((x) => !arrPav.ordem.includes(x.id))]
             : listaPav).map((pav) => {
             const naMao = arrPav?.id === pav.id;
@@ -6028,7 +6133,7 @@ function Sheet({ titulo, onFechar, children, topo }) {
   useTravarRolagem();
   const cheio = topo != null;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#0006", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onFechar}>
+    <div data-sem-gesto style={{ position: "fixed", inset: 0, background: "#0006", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onFechar}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: C.bg, width: "100%", maxWidth: 460, borderTopLeftRadius: 22, borderTopRightRadius: 22,
         ...(cheio ? { height: `calc(100dvh - ${topo}px)`, display: "flex", flexDirection: "column", overflow: "hidden" } : { maxHeight: "92dvh", overflowY: "auto" }) }}>
         <div style={{ position: "sticky", top: 0, background: C.bg, padding: "16px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2, flexShrink: 0 }}><div className="font-bold text-lg">{titulo}</div><button onClick={onFechar} style={{ background: C.card, borderRadius: 999, padding: 7, border: `1px solid ${C.linha}` }}><X size={18} /></button></div>
