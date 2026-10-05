@@ -4,7 +4,7 @@ import {
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
   ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Cctv, ShieldCheck, Music, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
-  LampDesk, Sofa, BedDouble, Bath, CookingPot, Refrigerator, WashingMachine, Armchair, Warehouse, Trees, Briefcase,
+  LampDesk, MonitorUp, Sofa, BedDouble, Bath, CookingPot, Refrigerator, WashingMachine, Armchair, Warehouse, Trees, Briefcase,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -2771,7 +2771,7 @@ const achatar = (itens) => itens.flatMap((x) => (x.tipo === "grupoLuzes" ? x.mem
 const contarLigados = (itens) => { const d = achatar(itens).filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
 
 // Cabeçalho de pavimento/cômodo: [⏻ desligar tudo] · nome · ligados/total ⌄ (tocar abre/fecha).
-function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo, musica }) {
+function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo, musica, iconeAmb, atalhos }) {
   const { on, total } = contarLigados(itens);
   const aceso = on > 0;
   const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 52 : 44 };
@@ -2786,10 +2786,12 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
       {total > 0 ? (
         <button onClick={() => aceso && onDesligarTudo(itens)} disabled={!aceso} aria-label={aceso ? `Desligar tudo em ${nome}` : `Nada ligado em ${nome}`}
           style={{ width: tam, height: tam, borderRadius: grande ? 11 : 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none",
-            cursor: aceso ? "pointer" : "default", background: aceso ? alfa(C.ambar, 22) : alfa(C.cinzaClaro, 16), color: aceso ? (grande ? corAceso : C.ambar) : corApagado,
+            cursor: aceso ? "pointer" : "default", background: aceso ? alfa(C.ambar, 22) : iconeAmb ? alfa(iconeAmb.cor, 16) : alfa(C.cinzaClaro, 16), color: aceso ? (grande ? corAceso : C.ambar) : iconeAmb ? iconeAmb.cor : corApagado,
             boxShadow: aceso ? `0 0 0 1px ${alfa(C.ambar, 35)}, 0 6px 18px -6px ${alfa(C.ambar, 75)}` : "none", transition: "background .25s, color .25s, box-shadow .25s" }}>
-          <Power size={grande ? 18 : 15} strokeWidth={2.5} />
+          {iconeAmb ? <iconeAmb.Icon size={16} strokeWidth={2.2} /> : <Power size={grande ? 18 : 15} strokeWidth={2.5} />}
         </button>
+      ) : iconeAmb ? (
+        <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(iconeAmb.cor, 16), color: iconeAmb.cor }}><iconeAmb.Icon size={16} strokeWidth={2.2} /></span>
       ) : grande ? (
         <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: corApagado }}><Layers size={17} /></span>
       ) : null}
@@ -2801,6 +2803,11 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
           </span>
         )}
       </button>
+      {atalhos?.length > 0 && (
+        <div className="flex items-center" style={{ gap: 4, flexShrink: 0 }}>
+          {atalhos.map((a) => <BolinhaArea key={a.key} tam={30} Icon={a.Icon} cor={a.cor} aceso={a.aceso} preenche={a.preenche} rot={a.rot} onClick={a.onClick} />)}
+        </div>
+      )}
       {musica && (
         // Trocar a música sem abrir o cômodo.
         <div className="flex items-center" style={{ gap: 3, flexShrink: 0 }}>
@@ -2876,13 +2883,35 @@ const ICONE_COMODO = [
 const iconeComodo = (nome) => { const n = norm(nome); const a = ICONE_COMODO.find(([re]) => re.test(n)); return a ? { Icon: a[1], cor: a[2] } : { Icon: Home, cor: "#8a8f98" }; };
 const ehLuzCartao = (x) => x.tipo === "interruptor" && (String(x.id).startsWith("light.") || /luz|ilumin|abajur|\bled\b|lumin|spot|pendente|arandela|lustre/.test(norm(`${x.nome} ${x.id}`)));
 const ehSomCartao = (x) => x.tipo === "alexa" || x.tipo === "tv" || !!x.receiver || !!x.zonasComodo;
-function BolinhaArea({ Icon, cor, aceso, cheio, rot, onClick, preenche }) {
+// 3ª vista ("Ícones"): o nome dos quartos sem "Quarto" e um atalho por tipo de aparelho do cômodo.
+const semQuarto = (nome) => String(nome || "").replace(/^quarto\s+/i, "");
+const ehPortao = (x) => /port[aã]o|gate/i.test(`${x.nome} ${x.id}`);
+const ehPiscinaCartao = (x) => x.tipo === "interruptor" && !ehLuzCartao(x) && /borda|cascata|filtro|hidro|aquec/.test(norm(`${x.nome} ${x.id}`));
+const ehCoifa = (x) => x.tipo === "grupoBotoes" && /coifa/.test(norm(`${x.nome} ${x.id}`));
+const ehMidiaLiga = (x) => x.tipo === "alexa" || (x.tipo === "tv" && estadoMidia(x).r.liga);
+const ehTvCartao = (x) => ehMidiaLiga(x) && x.tipo === "tv" && !x.receiver && !x.zonasComodo && visualEquip(x).Icon === Tv;
+const coifaEstado = (e) => { try { return { luz: false, vel: 0, ...JSON.parse(localStorage.getItem("botoesEstado:" + e.dbId) || "{}") }; } catch { return { luz: false, vel: 0 }; } };
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+// Coifa (infravermelho, sem estado no HA): ligar = luz + velocidade 1; desligar = apaga a luz e desce a velocidade até 0.
+async function alternarCoifa(e, enviar) {
+  let st = coifaEstado(e);
+  const seq = st.luz || st.vel > 0 ? [...(st.luz ? [0] : []), ...Array(st.vel).fill(1)] : [0, 2];
+  for (let i = 0; i < seq.length; i++) {
+    const b = e.membros.find((m) => acaoBotao(m).ordem === seq[i]); if (!b) continue;
+    enviar("input_button", "press", b.id);
+    st = proximoBotao(st, seq[i]);
+    try { localStorage.setItem("botoesEstado:" + e.dbId, JSON.stringify(st)); } catch { /* ok */ }
+    window.dispatchEvent(new Event("botoesEstado"));
+    if (i < seq.length - 1) await esperar(400);
+  }
+}
+function BolinhaArea({ Icon, cor, aceso, cheio, rot, onClick, preenche, tam = 34 }) {
   return (
     <button onClick={(ev) => { ev.stopPropagation(); onClick(); }} aria-label={rot} title={rot}
-      style={{ width: 34, height: 34, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer",
+      style={{ width: tam, height: tam, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer",
         background: cheio ? cor : aceso ? alfa(cor, 22) : alfa(C.cinzaClaro, 16), color: cheio ? "#fff" : aceso ? cor : C.cinza,
         boxShadow: aceso && !cheio ? `0 0 0 1px ${alfa(cor, 35)}` : "none", transition: "background .25s, color .25s" }}>
-      <Icon size={17} strokeWidth={2.2} fill={aceso && preenche ? alfa(cor, 40) : "none"} />
+      <Icon size={Math.round(tam / 2)} strokeWidth={2.2} fill={aceso && preenche ? alfa(cor, 40) : "none"} />
     </button>
   );
 }
@@ -3713,11 +3742,13 @@ function proximoBotao(st, ordem) {
 }
 function CartaoGrupoBotoes({ e, enviar }) {
   const chave = "botoesEstado:" + e.dbId;
-  const [st, setSt] = useState(() => { try { return { luz: false, vel: 0, ...JSON.parse(localStorage.getItem(chave) || "{}") }; } catch { return { luz: false, vel: 0 }; } });
+  const [st, setSt] = useState(() => coifaEstado(e));
+  useEffect(() => { const f = () => setSt(coifaEstado(e)); window.addEventListener("botoesEstado", f); return () => window.removeEventListener("botoesEstado", f); }, [chave]); // eslint-disable-line react-hooks/exhaustive-deps
   const apertar = (m) => {
     enviar("input_button", "press", m.id);
     const n = proximoBotao(st, acaoBotao(m).ordem); setSt(n);
     try { localStorage.setItem(chave, JSON.stringify(n)); } catch { /* ok */ }
+    window.dispatchEvent(new Event("botoesEstado"));
   };
   // Aceso: Luz quando a luz está ligada; Velocidade −/+ quando o motor está ligado.
   const aceso = (m) => { const o = acaoBotao(m).ordem; return o === 0 ? st.luz : o === 1 || o === 2 ? st.vel > 0 : false; };
@@ -4397,8 +4428,13 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return { pavs: [], amb: null };
   });
   // Vista "Áreas" (uma linha por cômodo) ou a padrão: troca arrastando o dedo na tela.
-  const [vistaAreas, setVistaAreasSt] = useState(() => { try { return localStorage.getItem("controleVista") === "areas"; } catch { return false; } });
-  const setVistaAreas = (v) => { setVistaAreasSt(v); try { localStorage.setItem("controleVista", v ? "areas" : "padrao"); } catch { /* ok */ } };
+  // 0 = padrão, 1 = áreas (uma linha por cômodo), 2 = ícones (padrão com atalhos por tipo de aparelho).
+  const VISTAS = ["padrao", "areas", "icones"];
+  const [vista, setVistaSt] = useState(() => { try { return Math.max(0, VISTAS.indexOf(localStorage.getItem("controleVista"))); } catch { return 0; } });
+  const setVista = (v) => { setVistaSt(v); try { localStorage.setItem("controleVista", VISTAS[v]); } catch { /* ok */ } };
+  const vistaAreas = vista === 1, vistaIcones = vista === 2;
+  const [, setTicCoifa] = useState(0); // redesenha os atalhos quando a coifa muda
+  useEffect(() => { const f = () => setTicCoifa((t) => t + 1); window.addEventListener("botoesEstado", f); return () => window.removeEventListener("botoesEstado", f); }, []);
   const usoRef = useRef(Date.now());
   const wsRef = useRef(null);
   const pedidosRef = useRef({}); // id -> resolve (pedidos que esperam resposta do HA)
@@ -5192,7 +5228,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Gesto na tela toda do Controle (não só nos cartões): guarda o último ponto no touchmove, porque
   // quando o navegador assume a rolagem o touchend pode não trazer a posição final.
   const gestoRef = useRef(null);
-  gestoRef.current = { pode: modo === "usar" && !editando && !arrPav && !arrAmb, vistaAreas, setVistaAreas };
+  gestoRef.current = { pode: modo === "usar" && !editando && !arrPav && !arrAmb, vista, setVista };
   useEffect(() => {
     let i = null;
     const ini = (ev) => {
@@ -5206,14 +5242,52 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       if (!a || !g.pode || Date.now() - a.t > 900) return;
       const dx = a.ux - a.x, dy = a.uy - a.y;
       if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      if (dx < 0 && !g.vistaAreas) g.setVistaAreas(true);
-      else if (dx > 0 && g.vistaAreas) g.setVistaAreas(false);
+      if (dx < 0 && g.vista < 2) g.setVista(g.vista + 1);
+      else if (dx > 0 && g.vista > 0) g.setVista(g.vista - 1);
     };
     const op = { passive: true };
     document.addEventListener("touchstart", ini, op); document.addEventListener("touchmove", mov, op);
     document.addEventListener("touchend", fim, op); document.addEventListener("touchcancel", fim, op);
     return () => { document.removeEventListener("touchstart", ini, op); document.removeEventListener("touchmove", mov, op); document.removeEventListener("touchend", fim, op); document.removeEventListener("touchcancel", fim, op); };
   }, []);
+  // 3ª vista: um atalho por tipo de aparelho do cômodo. Tocar: algum ligado → desliga os ligados;
+  // nenhum ligado → liga todos (um de cada vez). Som/TV seguem a mesma regra do cartão (dividir etc.).
+  const alternarMidia = (x, ligar) => {
+    if (x.tipo === "alexa") { if (!x.spotify) { abrirSpotify(); return; } if (x.connect) alternarUso(x, ligar, () => ligarAlexa(x, ligar, enviar)); return; }
+    alternarUso(x, ligar, () => { acionarZonas(x, ligar, enviar); if (ligar) x.abrirControle?.(); });
+  };
+  const moverCortina = async (x, abrir) => {
+    const cmd = (m) => enviar("cover", abrir !== ehInvertido(m) ? "open_cover" : "close_cover", m.id);
+    if (x.tipo !== "grupoPersianas") { cmd(x); return; }
+    if (x.mestre) { cmd(x.mestre); return; }
+    const lista = x.membros.filter((m) => m.disponivel);
+    for (let i = 0; i < lista.length; i++) { cmd(lista[i]); if (i < lista.length - 1) await esperar(400); }
+  };
+  const ligaHA = (x, l) => enviar("homeassistant", l ? "turn_on" : "turn_off", x.id);
+  const abertaCortina = (x) => visualPorTipo(x).ativo;
+  const TIPOS_ATALHO = [
+    { k: "luz", rot: "as luzes", Icon: Lightbulb, cor: C.ambar, preenche: true, filtro: ehLuzCartao, aceso: estaLigado, agir: ligaHA },
+    { k: "ar", rot: "o ar", Icon: Snowflake, cor: AZUL_AR, filtro: (x) => x.tipo === "ar", aceso: estaLigado, agir: (x, l) => (l ? ligarAr : desligarAr)(x, enviar), pausa: 600 },
+    { k: "coifa", rot: "a coifa", Icon: AirVent, cor: C.ambar, filtro: ehCoifa, aceso: (x) => { const c = coifaEstado(x); return c.luz || c.vel > 0; }, agir: (x) => alternarCoifa(x, enviar) },
+    { k: "tv", rot: "a TV", Icon: Tv, cor: LAGO, filtro: ehTvCartao, aceso: estaLigado, agir: alternarMidia },
+    { k: "som", rot: "o som", Icon: Speaker, cor: LAGO, filtro: (x) => ehMidiaLiga(x) && !ehTvCartao(x), aceso: estaLigado, agir: alternarMidia },
+    { k: "piscina", rot: "a piscina", Icon: WavesLadder, cor: "#3b9bd8", filtro: ehPiscinaCartao, aceso: estaLigado, agir: ligaHA },
+    { k: "persiana", rot: "as persianas", Icon: Blinds, cor: C.ambar, filtro: (x) => x.tipo === "grupoPersianas" || (x.tipo === "persiana" && !ehPortao(x) && !ehInvertido(x)), aceso: abertaCortina, agir: moverCortina, abrir: true },
+    { k: "flap", rot: "o flap da TV", Icon: MonitorUp, cor: C.ambar, filtro: (x) => x.tipo === "persiana" && ehInvertido(x), aceso: abertaCortina, agir: moverCortina, abrir: true },
+  ];
+  const atalhosDe = (itens) => {
+    const todos = achatar(itens);
+    return TIPOS_ATALHO.map((t) => {
+      const lista = todos.filter(t.filtro); if (!lista.length) return null;
+      const algum = lista.some(t.aceso);
+      const verbo = t.abrir ? (algum ? "Fechar" : "Abrir") : algum ? "Desligar" : "Ligar";
+      return { key: t.k, Icon: t.Icon, cor: t.cor, preenche: t.preenche, aceso: algum, rot: `${verbo} ${t.rot}`,
+        onClick: async () => {
+          const alvo = algum ? lista.filter(t.aceso) : lista.filter((x) => x.disponivel !== false);
+          for (let i = 0; i < alvo.length; i++) { await t.agir(alvo[i], !algum); if (i < alvo.length - 1) await esperar(t.pausa || 300); }
+        } };
+    }).filter(Boolean);
+  };
   // Vista "Áreas": título do nível com uma linha, e cada cômodo numa linha com atalhos (ar, som,
   // fechadura, temperatura e luzes). Tocar na linha abre os cartões do cômodo logo abaixo.
   const vistaDeAreas = () => listaPav.map((pav) => (
@@ -5367,9 +5441,9 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           {/* Qual vista está na tela (arrastar o dedo troca; tocar também). */}
           {modo === "usar" && status === "ok" && listaPav.length > 0 && (
             <div className="flex justify-center" style={{ gap: 6, marginBottom: 8 }}>
-              {[false, true].map((v) => (
-                <button key={String(v)} onClick={() => setVistaAreas(v)} aria-label={v ? "Vista em áreas" : "Vista padrão"}
-                  style={{ width: vistaAreas === v ? 18 : 7, height: 7, borderRadius: 999, border: "none", padding: 0, background: vistaAreas === v ? C.pasto : alfa(C.cinzaClaro, 45), transition: "width .2s" }} />
+              {["Vista padrão", "Vista em áreas", "Vista com ícones"].map((rot, v) => (
+                <button key={v} onClick={() => setVista(v)} aria-label={rot}
+                  style={{ width: vista === v ? 18 : 7, height: 7, borderRadius: 999, border: "none", padding: 0, background: vista === v ? C.pasto : alfa(C.cinzaClaro, 45), transition: "width .2s" }} />
               ))}
             </div>
           )}
@@ -5434,8 +5508,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                     onContextMenu={(ev) => { if (souGestor || usarPessoal) ev.preventDefault(); if (souGestor && !usarPessoal) pegarAmb(); }}
                     onClickCapture={(ev) => { if (ambLongo.current || menuLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}
                     style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: arrAmb ? "none" : "auto" }}>
-                    <CabecalhoNivel nome={c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
-                      itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} musica={musicaDe(c.itens, enviar)} />
+                    {/* Vista com ícones: ícone do cômodo no lugar do ⏻ (mesmo clique), sem "Quarto" no nome,
+                        atalhos por tipo de aparelho e a música só no título do nível. */}
+                    <CabecalhoNivel nome={vistaIcones ? semQuarto(c.nome) : c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
+                      itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} musica={vistaIcones ? null : musicaDe(c.itens, enviar)}
+                      iconeAmb={vistaIcones ? iconeComodo(c.nome) : undefined} atalhos={vistaIcones ? atalhosDe(c.itens) : undefined} />
                   </div>
                   {abertoC && (
                     <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
