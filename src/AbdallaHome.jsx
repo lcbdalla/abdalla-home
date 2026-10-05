@@ -2875,18 +2875,30 @@ const ICONE_POR_NOME = [
 const ICONE_COMODO = [
   [/\btv\b|cinema/, Tv, "#e8912d"], [/living/, Sofa, "#e5484d"], [/lavabo|banheiro|\bwc\b/, Bath, "#3fb7c9"],
   [/brinquedo/, ToyBrick, "#9b6bd6"], [/cozinha|gourmet/, CookingPot, "#e0b43a"], [/despensa/, Refrigerator, "#c47e4a"],
-  [/servico|lavanderia/, WashingMachine, "#2bb3a3"], [/churras/, Flame, "#e8912d"], [/varanda|deck/, Armchair, "#e8912d"],
+  [/servico|lavanderia/, WashingMachine, "#2bb3a3"], [/churras/, Flame, "#e8912d"], [/varanda|deck|sacada/, Armchair, "#e8912d"], [/adega/, Wine, "#a0445a"],
   [/piscina|ofuro|hidro/, WavesLadder, "#3b9bd8"], [/garagem/, Warehouse, "#8a8f98"], [/suite|quarto|master/, BedDouble, "#e46aa6"],
   [/escrit/, Briefcase, "#8a8f98"], [/hall|entrada|porta/, DoorOpen, "#5b8def"], [/extern|jardim|quintal|campo|lago/, Trees, "#3fae5c"],
   [/sala/, Sofa, "#e5484d"],
 ];
 const iconeComodo = (nome) => { const n = norm(nome); const a = ICONE_COMODO.find(([re]) => re.test(n)); return a ? { Icon: a[1], cor: a[2] } : { Icon: Home, cor: "#8a8f98" }; };
-const ehLuzCartao = (x) => x.tipo === "interruptor" && (String(x.id).startsWith("light.") || /luz|ilumin|abajur|\bled\b|lumin|spot|pendente|arandela|lustre/.test(norm(`${x.nome} ${x.id}`)));
+// Tipo do atalho pelo MESMO ícone que o cartão mostra: lâmpada/abajur = luz; borda, cascata,
+// filtro, hidro e aquecedor = piscina. Assim todo cartão com um desses ícones entra no atalho.
+const ICONES_PISCINA = new Set([WavesLadder, IconeCascata, Funnel, Bubbles, Flame]);
+function categoriaAtalho(x) {
+  if (x.tipo === "ar") return "ar";
+  if (ehCoifa(x)) return "coifa";
+  if (x.tipo === "grupoPersianas") return "persiana";
+  if (x.tipo === "persiana") return ehPortao(x) ? null : ehInvertido(x) ? "flap" : "persiana";
+  if (x.tipo === "alexa" || x.tipo === "tv") return !ehMidiaLiga(x) ? null : ehTvCartao(x) ? "tv" : "som";
+  if (x.tipo !== "interruptor") return null;
+  const v = visualEquip(x);
+  return ICONES_PISCINA.has(v.Icon) ? "piscina" : v.luz ? "luz" : null;
+}
+const ehLuzCartao = (x) => categoriaAtalho(x) === "luz";
 const ehSomCartao = (x) => x.tipo === "alexa" || x.tipo === "tv" || !!x.receiver || !!x.zonasComodo;
 // 3ª vista ("Ícones"): o nome dos quartos sem "Quarto" e um atalho por tipo de aparelho do cômodo.
 const semQuarto = (nome) => String(nome || "").replace(/^quarto\s+/i, "");
 const ehPortao = (x) => /port[aã]o|gate/i.test(`${x.nome} ${x.id}`);
-const ehPiscinaCartao = (x) => x.tipo === "interruptor" && !ehLuzCartao(x) && /borda|cascata|filtro|hidro|aquec/.test(norm(`${x.nome} ${x.id}`));
 const ehCoifa = (x) => x.tipo === "grupoBotoes" && /coifa/.test(norm(`${x.nome} ${x.id}`));
 const ehMidiaLiga = (x) => x.tipo === "alexa" || (x.tipo === "tv" && estadoMidia(x).r.liga);
 const ehTvCartao = (x) => ehMidiaLiga(x) && x.tipo === "tv" && !x.receiver && !x.zonasComodo && visualEquip(x).Icon === Tv;
@@ -5266,14 +5278,14 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const ligaHA = (x, l) => enviar("homeassistant", l ? "turn_on" : "turn_off", x.id);
   const abertaCortina = (x) => visualPorTipo(x).ativo;
   const TIPOS_ATALHO = [
-    { k: "luz", rot: "as luzes", Icon: Lightbulb, cor: C.ambar, preenche: true, filtro: ehLuzCartao, aceso: estaLigado, agir: ligaHA },
-    { k: "ar", rot: "o ar", Icon: Snowflake, cor: AZUL_AR, filtro: (x) => x.tipo === "ar", aceso: estaLigado, agir: (x, l) => (l ? ligarAr : desligarAr)(x, enviar), pausa: 600 },
-    { k: "coifa", rot: "a coifa", Icon: AirVent, cor: C.ambar, filtro: ehCoifa, aceso: (x) => { const c = coifaEstado(x); return c.luz || c.vel > 0; }, agir: (x) => alternarCoifa(x, enviar) },
-    { k: "tv", rot: "a TV", Icon: Tv, cor: LAGO, filtro: ehTvCartao, aceso: estaLigado, agir: alternarMidia },
-    { k: "som", rot: "o som", Icon: Speaker, cor: LAGO, filtro: (x) => ehMidiaLiga(x) && !ehTvCartao(x), aceso: estaLigado, agir: alternarMidia },
-    { k: "piscina", rot: "a piscina", Icon: WavesLadder, cor: "#3b9bd8", filtro: ehPiscinaCartao, aceso: estaLigado, agir: ligaHA },
-    { k: "persiana", rot: "as persianas", Icon: Blinds, cor: C.ambar, filtro: (x) => x.tipo === "grupoPersianas" || (x.tipo === "persiana" && !ehPortao(x) && !ehInvertido(x)), aceso: abertaCortina, agir: moverCortina, abrir: true },
-    { k: "flap", rot: "o flap da TV", Icon: MonitorUp, cor: C.ambar, filtro: (x) => x.tipo === "persiana" && ehInvertido(x), aceso: abertaCortina, agir: moverCortina, abrir: true },
+    { k: "luz", rot: "as luzes", Icon: Lightbulb, cor: C.ambar, preenche: true, filtro: (x) => categoriaAtalho(x) === "luz", aceso: estaLigado, agir: ligaHA },
+    { k: "ar", rot: "o ar", Icon: Snowflake, cor: AZUL_AR, filtro: (x) => categoriaAtalho(x) === "ar", aceso: estaLigado, agir: (x, l) => (l ? ligarAr : desligarAr)(x, enviar), pausa: 600 },
+    { k: "coifa", rot: "a coifa", Icon: AirVent, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "coifa", aceso: (x) => { const c = coifaEstado(x); return c.luz || c.vel > 0; }, agir: (x) => alternarCoifa(x, enviar) },
+    { k: "tv", rot: "a TV", Icon: Tv, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "tv", aceso: estaLigado, agir: alternarMidia },
+    { k: "som", rot: "o som", Icon: Speaker, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "som", aceso: estaLigado, agir: alternarMidia },
+    { k: "piscina", rot: "a piscina", Icon: WavesLadder, cor: "#3b9bd8", filtro: (x) => categoriaAtalho(x) === "piscina", aceso: estaLigado, agir: ligaHA },
+    { k: "persiana", rot: "as persianas", Icon: Blinds, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "persiana", aceso: abertaCortina, agir: moverCortina, abrir: true },
+    { k: "flap", rot: "o flap da TV", Icon: MonitorUp, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "flap", aceso: abertaCortina, agir: moverCortina, abrir: true },
   ];
   const atalhosDe = (itens) => {
     const todos = achatar(itens);
