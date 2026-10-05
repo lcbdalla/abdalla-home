@@ -4399,7 +4399,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Vista "Áreas" (uma linha por cômodo) ou a padrão: troca arrastando o dedo na tela.
   const [vistaAreas, setVistaAreasSt] = useState(() => { try { return localStorage.getItem("controleVista") === "areas"; } catch { return false; } });
   const setVistaAreas = (v) => { setVistaAreasSt(v); try { localStorage.setItem("controleVista", v ? "areas" : "padrao"); } catch { /* ok */ } };
-  const toqueIni = useRef(null);
   const usoRef = useRef(Date.now());
   const wsRef = useRef(null);
   const pedidosRef = useRef({}); // id -> resolve (pedidos que esperam resposta do HA)
@@ -5190,19 +5189,31 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const aviso = usarProxy ? "Câmera disponível só para a família (conexão direta com a casa)." : !entsVis[c.id] ? "Câmera não encontrada no Home Assistant." : null;
     return { ...c, aviso, url: !usarProxy && tk ? `${baseUrlRef.current}/api/camera_proxy/${c.id}?token=${tk}${c.largura ? `&width=${c.largura}` : ""}` : null };
   });
-  const aoTocarIni = (ev) => {
-    const t = ev.touches[0];
-    // Não troca a vista ao arrastar barrinhas (volume, brilho).
-    toqueIni.current = ev.touches.length === 1 && !ev.target.closest?.("input, [data-sem-gesto]") ? { x: t.clientX, y: t.clientY, t: Date.now() } : null;
-  };
-  const aoTocarFim = (ev) => {
-    const i = toqueIni.current; toqueIni.current = null;
-    if (!i || editando || arrPav || arrAmb || Date.now() - i.t > 700) return;
-    const t = ev.changedTouches[0], dx = t.clientX - i.x, dy = t.clientY - i.y;
-    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-    if (dx < 0 && !vistaAreas) setVistaAreas(true);
-    else if (dx > 0 && vistaAreas) setVistaAreas(false);
-  };
+  // Gesto na tela toda do Controle (não só nos cartões): guarda o último ponto no touchmove, porque
+  // quando o navegador assume a rolagem o touchend pode não trazer a posição final.
+  const gestoRef = useRef(null);
+  gestoRef.current = { pode: modo === "usar" && !editando && !arrPav && !arrAmb, vistaAreas, setVistaAreas };
+  useEffect(() => {
+    let i = null;
+    const ini = (ev) => {
+      const t = ev.touches[0];
+      // Não troca a vista ao arrastar barrinhas (volume, brilho) nem dentro dos popups.
+      i = ev.touches.length === 1 && !ev.target.closest?.("input, [data-sem-gesto]") ? { x: t.clientX, y: t.clientY, ux: t.clientX, uy: t.clientY, t: Date.now() } : null;
+    };
+    const mov = (ev) => { if (i && ev.touches.length === 1) { i.ux = ev.touches[0].clientX; i.uy = ev.touches[0].clientY; } else i = null; };
+    const fim = () => {
+      const a = i, g = gestoRef.current; i = null;
+      if (!a || !g.pode || Date.now() - a.t > 900) return;
+      const dx = a.ux - a.x, dy = a.uy - a.y;
+      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (dx < 0 && !g.vistaAreas) g.setVistaAreas(true);
+      else if (dx > 0 && g.vistaAreas) g.setVistaAreas(false);
+    };
+    const op = { passive: true };
+    document.addEventListener("touchstart", ini, op); document.addEventListener("touchmove", mov, op);
+    document.addEventListener("touchend", fim, op); document.addEventListener("touchcancel", fim, op);
+    return () => { document.removeEventListener("touchstart", ini, op); document.removeEventListener("touchmove", mov, op); document.removeEventListener("touchend", fim, op); document.removeEventListener("touchcancel", fim, op); };
+  }, []);
   // Vista "Áreas": título do nível com uma linha, e cada cômodo numa linha com atalhos (ar, som,
   // fechadura, temperatura e luzes). Tocar na linha abre os cartões do cômodo logo abaixo.
   const vistaDeAreas = () => listaPav.map((pav) => (
@@ -5352,7 +5363,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           </div>
         </header>
 
-        <main className="pt-3" style={{ paddingLeft: 8, paddingRight: 8 }} onTouchStart={aoTocarIni} onTouchEnd={aoTocarFim}>
+        <main className="pt-3" style={{ paddingLeft: 8, paddingRight: 8 }}>
           {/* Qual vista está na tela (arrastar o dedo troca; tocar também). */}
           {modo === "usar" && status === "ok" && listaPav.length > 0 && (
             <div className="flex justify-center" style={{ gap: 6, marginBottom: 8 }}>
