@@ -5216,7 +5216,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                   { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => { topoDoCabecalho(); setPortaoAberto(true); } },
                   { key: "porta", icon: Lock, cor: C.ambar, txt: "Porta Entrada", on: () => { topoDoCabecalho(); setPortaAberta(true); } },
                   { key: "alarme", icon: ShieldCheck, cor: C.vermelho, txt: "Alarme", on: () => setAlarmeAberto(true) },
-                  { key: "cameras", icon: Cctv, cor: C.lago, txt: "Câmeras", on: () => setCamerasAberto(true) },
+                  // Câmeras só na conexão direta (família): para os outros o botão nem aparece.
+                  ...(!usarProxy ? [{ key: "cameras", icon: Cctv, cor: C.lago, txt: "Câmeras", on: () => setCamerasAberto(true) }] : []),
                 ]),
                 ...(podePessoal && modo === "usar" ? [{ key: "dash", icon: LayoutGrid, cor: C.lago, txt: `Dashboard · ${painel ? painel.nome : "Padrão"}`, on: () => setPaineisAberto(true) }] : []),
                 ...(!eu?.podeMenuControle ? [] : [
