@@ -2894,7 +2894,7 @@ function categoriaAtalho(x) {
   if (x.tipo === "alexa" || x.tipo === "tv") return !ehMidiaLiga(x) ? null : ehTvCartao(x) ? "tv" : "som";
   if (x.tipo !== "interruptor") return null;
   const v = visualEquip(x);
-  return ICONES_PISCINA.has(v.Icon) ? "piscina" : v.luz ? "luz" : null;
+  return v.Icon === IconeChafariz ? "chafariz" : ICONES_PISCINA.has(v.Icon) ? "piscina" : v.luz ? "luz" : null;
 }
 const ehLuzCartao = (x) => categoriaAtalho(x) === "luz";
 const ehSomCartao = (x) => x.tipo === "alexa" || x.tipo === "tv" || !!x.receiver || !!x.zonasComodo;
@@ -5286,6 +5286,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     { k: "tv", rot: "a TV", Icon: Tv, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "tv", aceso: estaLigado, agir: alternarMidia },
     { k: "som", rot: "o som", Icon: Speaker, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "som", aceso: estaLigado, agir: alternarMidia },
     { k: "piscina", rot: "a piscina", Icon: WavesLadder, cor: "#3b9bd8", filtro: (x) => categoriaAtalho(x) === "piscina", aceso: estaLigado, agir: ligaHA },
+    { k: "chafariz", rot: "o chafariz", Icon: IconeChafariz, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "chafariz", aceso: estaLigado, agir: ligaHA },
     { k: "persiana", rot: "as persianas", Icon: Blinds, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "persiana", aceso: abertaCortina, agir: moverCortina, abrir: true },
     { k: "flap", rot: "o flap da TV", Icon: MonitorUp, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "flap", aceso: abertaCortina, agir: moverCortina, abrir: true },
   ];
