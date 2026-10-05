@@ -3,7 +3,7 @@ import {
   ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
-  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, ShieldCheck, Music, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
+  ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Cctv, ShieldCheck, Music, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
   LampDesk,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -1827,6 +1827,60 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
           ))}
         </div>
       </div>
+    </Sheet>
+  );
+}
+
+/* ---- Câmeras (menu ⋮ do Controle) ----
+   Lista todas as câmeras do HA, separadas em Casa Alta (as G5) e Externas. Só abre a imagem ao vivo
+   da câmera em que a pessoa tocar (uma por vez, para não pesar). Só na conexão direta (família). */
+const CAMERAS_FORA = /demo|low_resolution|_package_|unvr|birdseye/i; // baixa resolução, mosaico do Frigate etc.
+// "G5 Turret Ultra 109 High resolution channel" → "Câmera 109"; "Cam07" → "Câmera 07".
+const nomeCamera = (nome) => { const m = String(nome).match(/G5 Turret Ultra (\d+)/i) || String(nome).match(/^cam\s*(\d+)$/i); return m ? `Câmera ${m[1]}` : nome; };
+function CamerasModal({ pedirHA, baseUrl, direto, onFechar }) {
+  const [lista, setLista] = useState(null), [erro, setErro] = useState(""), [aberta, setAberta] = useState(null);
+  const carregar = () => pedirHA({ type: "get_states" }).then((todos) => {
+    setLista((todos || []).filter((x) => String(x.entity_id).startsWith("camera.") && !CAMERAS_FORA.test(x.entity_id))
+      .map((x) => ({ id: x.entity_id, nome: nomeCamera(x.attributes?.friendly_name || x.entity_id), tk: x.attributes?.access_token, fora: ["unavailable", "unknown"].includes(x.state),
+        g5: /g5/i.test(x.entity_id + " " + (x.attributes?.friendly_name || "")) }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true })));
+  }).catch((e) => setErro(e.message));
+  useEffect(() => { if (direto) carregar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // O token da câmera troca de tempos em tempos: com uma aberta, relê a cada 4 min.
+  useEffect(() => { if (!aberta) return; const t = setInterval(carregar, 4 * 60000); return () => clearInterval(t); }, [aberta]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cam = aberta && lista?.find((c) => c.id === aberta);
+  const grupo = (titulo, itens) => itens.length > 0 && (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: C.cinza, textTransform: "uppercase", marginBottom: 6 }}>{titulo}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {itens.map((c) => {
+          const sel = c.id === aberta;
+          return (
+            <button key={c.id} onClick={() => setAberta(sel ? null : c.id)} disabled={c.fora}
+              className="flex items-center gap-2" style={{ minWidth: 0, textAlign: "left", background: sel ? alfa(LAGO, 14) : C.card, border: `1px solid ${sel ? LAGO : C.linha}`, borderRadius: 12, padding: "10px 10px", opacity: c.fora ? 0.5 : 1 }}>
+              <Cctv size={18} style={{ color: sel ? LAGO : C.cinza, flexShrink: 0 }} />
+              <span className="flex-1 min-w-0 truncate" style={{ fontSize: 13.5, fontWeight: 700, color: C.terra }}>{c.nome}</span>
+              {c.fora && <span style={{ fontSize: 11, color: C.cinzaClaro, flexShrink: 0 }}>sem sinal</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+  return (
+    <Sheet titulo="Câmeras" onFechar={onFechar}>
+      {!direto && <div style={{ color: C.cinza, fontSize: 14 }}>As câmeras ficam disponíveis só para a família (conexão direta com a casa).</div>}
+      {direto && erro && <div style={{ color: C.vermelho, fontSize: 13.5 }}>{erro}</div>}
+      {direto && !lista && !erro && <div style={{ color: C.cinza, fontSize: 14 }}>Carregando as câmeras…</div>}
+      {cam && (
+        <div style={{ marginBottom: 12 }}>
+          <CameraAoVivo key={cam.id} cam={{ id: cam.id, nome: cam.nome, url: cam.tk ? `${baseUrl}/api/camera_proxy/${cam.id}?token=${cam.tk}${cam.g5 ? "&width=960" : ""}` : null, aviso: cam.tk ? null : "Câmera sem imagem agora." }} />
+          <button onClick={() => setAberta(null)} style={{ width: "100%", marginTop: 6, color: C.cinza, fontWeight: 700, fontSize: 13.5, padding: 6 }}>Fechar a câmera</button>
+        </div>
+      )}
+      {lista && lista.length === 0 && <div style={{ color: C.cinza, fontSize: 14 }}>Nenhuma câmera encontrada no Home Assistant.</div>}
+      {lista && grupo("Casa Alta", lista.filter((c) => c.g5))}
+      {lista && grupo("Externas", lista.filter((c) => !c.g5))}
     </Sheet>
   );
 }
@@ -4282,6 +4336,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [portaAberta, setPortaAberta] = useState(false); // popup da Porta Entrada
   const [tvAberta, setTvAberta] = useState(null); // TV com o controle remoto aberto
   const [alarmeAberto, setAlarmeAberto] = useState(false);
+  const [camerasAberto, setCamerasAberto] = useState(false);
   const cabRef = useRef(null), [topoPortao, setTopoPortao] = useState(null);
   const gruposRef = useRef({}); // id do cartão de grupo -> ids reais dos aparelhos dentro dele
   const [tema, setTema] = useState(() => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
@@ -5094,6 +5149,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         <DialogHost />
         {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} topo={topoPortao}
           cameras={camerasDe(PORTAO_CAMERAS)} />}
+        {camerasAberto && <CamerasModal pedirHA={pedirHA} baseUrl={baseUrlRef.current} direto={!usarProxy} onFechar={() => setCamerasAberto(false)} />}
         {alarmeAberto && <AlarmeModal ents={entsVis} enviar={enviar} souAdmin={eu?.papel === "admin"} onFechar={() => setAlarmeAberto(false)} />}
         {/* Alarme disparado: faixa vermelha no alto, com o lugar que disparou; toca para abrir. */}
         {ALARMES.map((cfg) => { const al = lerAlarme(cfg, entsVis); if (al.estado !== "triggered") return null; return (
@@ -5160,6 +5216,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                   { key: "portao", icon: DoorOpen, cor: C.ambar, txt: "Portão", on: () => { topoDoCabecalho(); setPortaoAberto(true); } },
                   { key: "porta", icon: Lock, cor: C.ambar, txt: "Porta Entrada", on: () => { topoDoCabecalho(); setPortaAberta(true); } },
                   { key: "alarme", icon: ShieldCheck, cor: C.vermelho, txt: "Alarme", on: () => setAlarmeAberto(true) },
+                  { key: "cameras", icon: Cctv, cor: C.lago, txt: "Câmeras", on: () => setCamerasAberto(true) },
                 ]),
                 ...(podePessoal && modo === "usar" ? [{ key: "dash", icon: LayoutGrid, cor: C.lago, txt: `Dashboard · ${painel ? painel.nome : "Padrão"}`, on: () => setPaineisAberto(true) }] : []),
                 ...(!eu?.podeMenuControle ? [] : [
