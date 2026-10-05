@@ -5809,6 +5809,16 @@ function ConcluirModal({ task, produtos, showToast, onFechar, onConfirmar }) {
 }
 
 /* ============================= MODAL: INFO ============================= */
+// Avisos automáticos da propriedade (mostrados em "Sobre a propriedade"). Ao criar um aviso novo,
+// acrescentar aqui também. situacao: "ativo" ou "em montagem".
+const AVISOS_AUTOMATICOS = [
+  { titulo: "Bateria da fechadura da Porta da Frente", quando: "Bateria em 35% ou menos.",
+    faz: "Aviso no Controle (1 vez por dia em cada celular) e tarefa para a Ana Carolina comprar 4 pilhas AA.", situacao: "ativo" },
+  { titulo: "Caixa d'água", quando: "Nível abaixo de 55%.",
+    faz: "Aviso no Controle e mensagem no WhatsApp dos administradores com acesso ao Controle.", situacao: "em montagem" },
+  { titulo: "Alarme disparado (Casa principal e Casa Baixa)", quando: "Quando uma das centrais dispara.",
+    faz: "Faixa vermelha no app com a zona que disparou; notificação que toca no celular (app Home Assistant) e WhatsApp dos administradores.", situacao: "em montagem" },
+];
 function InfoModal({ onFechar }) {
   const areaPrincipal = 61217.65, deck = 501.66, total = areaPrincipal + deck;
   const Linha = ({ l, v }) => (<div className="flex justify-between py-2" style={{ borderTop: `1px solid ${C.bg}` }}><span style={{ color: C.cinza }}>{l}</span><span className="font-bold">{v}</span></div>);
@@ -5820,6 +5830,17 @@ function InfoModal({ onFechar }) {
       <Linha l="Perímetro principal" v="1.208,82 m" />
       <Linha l="Localização" v="Tocantins, BR" />
       <div style={{ color: C.cinzaClaro, fontSize: 12 }} className="mt-3 flex items-center gap-1"><Info size={12} /> Área total = área principal + deck do lago.</div>
+      <div className="font-bold mt-5 mb-2" style={{ fontSize: 15 }}>Avisos automáticos</div>
+      {AVISOS_AUTOMATICOS.map((a) => (
+        <div key={a.titulo} style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
+          <div className="flex items-center gap-2">
+            <span className="flex-1 font-bold" style={{ fontSize: 14 }}>{a.titulo}</span>
+            <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, borderRadius: 999, padding: "2px 8px", background: a.situacao === "ativo" ? C.pastoClaro : C.ambarClaro, color: a.situacao === "ativo" ? C.pastoEsc : C.ambarTexto }}>{a.situacao === "ativo" ? "Ativo" : "Em montagem"}</span>
+          </div>
+          <div style={{ fontSize: 13, color: C.cinza, marginTop: 4 }}><b>Quando:</b> {a.quando}</div>
+          <div style={{ fontSize: 13, color: C.cinza, marginTop: 2 }}><b>O que acontece:</b> {a.faz}</div>
+        </div>
+      ))}
     </Sheet>
   );
 }
