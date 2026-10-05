@@ -1634,9 +1634,9 @@ const MESA_IDS = [MESA_TV.plug, ...MESA_TV.canais.flatMap((c) => [c.fader, c.on]
 // Bateria da fechadura Yale da Porta da Frente: em 35% ou menos o app avisa (popup, 1x por dia em
 // cada aparelho) e cria uma tarefa para a Ana Carolina comprar as pilhas (só se não houver uma aberta).
 // Acima de 60% (pilhas trocadas) o aviso "zera" para a próxima vez.
-// Caixa d'água (sensor Zigbee de nível, em %): abaixo de 55% avisa (1 vez por dia em cada
-// celular); só volta a avisar depois de passar de 60% (para não repetir com o nível oscilando).
-// O próprio sensor liga a bomba perto de 50% (min_set), então o aviso chega antes.
+// Caixa d'água (sensor Zigbee de nível, em %): abaixo de 55% abre uma "ocorrência" (tabela
+// avisos_ocorrencia) e cada pessoa vê o popup até ELA fechar (avisos_dispensa, por usuário).
+// Ocorrência nova só depois de o nível passar de 60% e cair de novo.
 const CAIXA_AGUA = { sensor: "sensor.0xa4c13818adff06db_liquid_level_percent", limite: 55, recupera: 60 };
 const BATERIA_PORTA = {
   sensor: "sensor.fechadura_porta_frente_battery", limite: 35, recupera: 60, responsavel: "ana carolina",
@@ -4814,14 +4814,22 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const nivelPorta = bat != null && bat !== "" && !isNaN(Number(bat)) ? Number(bat) : null; // "unknown"/"unavailable" = sem leitura
   const agua = entsVis[CAIXA_AGUA.sensor]?.state;
   const nivelAgua = agua != null && agua !== "" && !isNaN(Number(agua)) ? Number(agua) : null; // sem leitura = não avisa
+  const ocorrenciaAgua = useRef(null); // id da ocorrência que está sendo mostrada
+  const faixaAgua = nivelAgua == null ? null : nivelAgua < CAIXA_AGUA.limite ? "baixa" : nivelAgua > CAIXA_AGUA.recupera ? "ok" : "meio";
   useEffect(() => {
-    if (nivelAgua == null) return;
-    const chave = "caixaAguaAvisoDia";
-    if (nivelAgua > CAIXA_AGUA.recupera) { try { localStorage.removeItem(chave); } catch { /* ok */ } return; }
-    if (nivelAgua >= CAIXA_AGUA.limite) return;
-    let dia = null; try { dia = localStorage.getItem(chave); } catch { /* ok */ }
-    if (dia !== hojeISO()) { setAvisoAgua(nivelAgua); try { localStorage.setItem(chave, hojeISO()); } catch { /* ok */ } }
-  }, [nivelAgua]);
+    if (faixaAgua === "ok") { supabase.rpc("fechar_ocorrencia", { p_tipo: "caixa_agua" }); setAvisoAgua(null); return; }
+    if (faixaAgua !== "baixa" || !eu?.id) return;
+    (async () => {
+      const { data: id, error } = await supabase.rpc("abrir_ocorrencia", { p_tipo: "caixa_agua" });
+      if (error || !id) return; // sem a tabela (SQL não rodado): não avisa
+      const { data: vi } = await supabase.from("avisos_dispensa").select("ocorrencia").eq("ocorrencia", id).eq("user_id", eu.id).maybeSingle();
+      if (!vi) { ocorrenciaAgua.current = id; setAvisoAgua(nivelAgua); }
+    })();
+  }, [faixaAgua]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fecharAvisoAgua = () => {
+    const id = ocorrenciaAgua.current; setAvisoAgua(null);
+    if (id && eu?.id) supabase.from("avisos_dispensa").insert({ ocorrencia: id, user_id: eu.id }).then(() => {});
+  };
   const tarefaPilhas = useRef(false);
   useEffect(() => {
     if (nivelPorta == null) return;
@@ -5106,13 +5114,13 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             }} />
         )}
         {avisoAgua != null && (
-          <Sheet titulo="Caixa d'água baixa" onFechar={() => setAvisoAgua(null)}>
+          <Sheet titulo="Caixa d'água baixa" onFechar={fecharAvisoAgua}>
             <div className="text-center" style={{ padding: "4px 0 10px" }}>
               <div style={{ width: 64, height: 64, borderRadius: 999, background: alfa(LAGO, 16), color: LAGO, display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Droplets size={30} /></div>
               <div className="font-bold" style={{ fontSize: 18, marginTop: 10 }}>Caixa d'água em {avisoAgua}%</div>
-              <div style={{ color: C.cinza, fontSize: 14.5, marginTop: 6 }}>O nível está abaixo de {CAIXA_AGUA.limite}%. A bomba deve ligar sozinha perto de 50%; se não subir, confira a bomba.</div>
+              <div style={{ color: C.cinza, fontSize: 14.5, marginTop: 6 }}>O nível está abaixo de {CAIXA_AGUA.limite}%.</div>
             </div>
-            <button onClick={() => setAvisoAgua(null)} style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>Entendi</button>
+            <button onClick={fecharAvisoAgua} style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>Entendi</button>
           </Sheet>
         )}
         {avisoBateria != null && (
@@ -5840,7 +5848,7 @@ const AVISOS_AUTOMATICOS = [
   { titulo: "Bateria da fechadura da Porta da Frente", quando: "Bateria em 35% ou menos.",
     faz: "Aviso no Controle (1 vez por dia em cada celular) e tarefa para a Ana Carolina comprar 4 pilhas AA.", situacao: "ativo" },
   { titulo: "Caixa d'água", quando: "Nível abaixo de 55%.",
-    faz: "Aviso no Controle (1 vez por dia em cada celular; volta a avisar depois de passar de 60%). WhatsApp dos administradores com Controle: em montagem.", situacao: "ativo" },
+    faz: "Popup no Controle para cada pessoa, até ela fechar (fechar não fecha o dos outros). Só avisa de novo depois de a caixa passar de 60% e baixar outra vez. WhatsApp dos administradores com Controle: em montagem.", situacao: "ativo" },
   { titulo: "Alarme disparado (Casa principal e Casa Baixa)", quando: "Quando uma das centrais dispara.",
     faz: "Faixa vermelha no app com a zona que disparou; notificação que toca no celular (app Home Assistant) e WhatsApp dos administradores.", situacao: "em montagem" },
 ];
