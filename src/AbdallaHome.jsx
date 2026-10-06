@@ -1834,7 +1834,10 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
 /* ---- Câmeras (menu ⋮ do Controle) ----
    Lista todas as câmeras do HA, separadas em Casa Alta (as G5) e Externas. Só abre a imagem ao vivo
    da câmera em que a pessoa tocar (uma por vez, para não pesar). Só na conexão direta (família). */
-const CAMERAS_FORA = /demo|low_resolution|_package_|unvr|birdseye/i; // baixa resolução, mosaico do Frigate etc.
+// Fora da lista: baixa resolução, mosaico do Frigate etc. Do DVR Intelbras saem o MainStream órfão do
+// canal 9 e os canais 10–16 (a foto pelo DVR estoura o tempo; as mesmas câmeras ligadas direto,
+// intelbras_chNN, respondem bem).
+const CAMERAS_FORA = /demo|low_resolution|_package_|unvr|birdseye|mhdx_1116_mediaprofile_channel(?:9_mainstream|1[0-6]_)/i;
 // Nome e ordem das câmeras da Casa Alta (número da G5 → nome), nesta ordem na tela.
 const CAMERAS_CASA_ALTA = [
   [101, "Despensa"], [115, "Living"], [102, "Varanda"], [120, "Churrasqueira"], [103, "Área de Serviço 1"], [118, "Área de Serviço 2"],
@@ -1844,13 +1847,18 @@ const CAMERAS_CASA_ALTA = [
 ];
 const numeroG5 = (nome) => { const m = String(nome).match(/G5 Turret Ultra (\d+)/i); return m ? Number(m[1]) : null; };
 // "G5 Turret Ultra 109 High resolution channel" → nome da lista (ou "Câmera 109"); "Cam07" → "Câmera 07".
-const nomeCamera = (nome) => { const g = numeroG5(nome), dono = CAMERAS_CASA_ALTA.find(([n]) => n === g); if (dono) return dono[1]; const m = String(nome).match(/G5 Turret Ultra (\d+)/i) || String(nome).match(/^cam\s*(\d+)$/i); return m ? `Câmera ${m[1]}` : nome; };
-function CamerasModal({ pedirHA, baseUrl, direto, onFechar }) {
+const nomeCamera = (nome, id = "") => {
+  const g = numeroG5(nome), dono = CAMERAS_CASA_ALTA.find(([n]) => n === g); if (dono) return dono[1];
+  const canal = String(id).match(/mhdx_1116_mediaprofile_channel(\d+)|intelbras_ch(\d+)_/i); // DVR Intelbras
+  if (canal) return `Canal ${canal[1] || canal[2]}`;
+  const m = String(nome).match(/G5 Turret Ultra (\d+)/i) || String(nome).match(/^cam\s*(\d+)$/i); return m ? `Câmera ${m[1]}` : nome;
+};
+function CamerasModal({ pedirHA, assinarHA, baseUrl, direto, onFechar }) {
   const [lista, setLista] = useState(null), [erro, setErro] = useState(""), [aberta, setAberta] = useState(null);
   const [live, setLive] = useState(false); // vídeo ao vivo (HLS) em vez das fotos a 3 por segundo
   const carregar = () => pedirHA({ type: "get_states" }).then((todos) => {
     setLista((todos || []).filter((x) => String(x.entity_id).startsWith("camera.") && !CAMERAS_FORA.test(x.entity_id))
-      .map((x) => ({ id: x.entity_id, nome: nomeCamera(x.attributes?.friendly_name || x.entity_id), ordem: (() => { const i = CAMERAS_CASA_ALTA.findIndex(([n]) => n === numeroG5(x.attributes?.friendly_name || "")); return i < 0 ? 999 : i; })(), tk: x.attributes?.access_token, fora: ["unavailable", "unknown"].includes(x.state),
+      .map((x) => ({ id: x.entity_id, nome: nomeCamera(x.attributes?.friendly_name || x.entity_id, x.entity_id), ordem: (() => { const i = CAMERAS_CASA_ALTA.findIndex(([n]) => n === numeroG5(x.attributes?.friendly_name || "")); return i < 0 ? 999 : i; })(), tk: x.attributes?.access_token, fora: ["unavailable", "unknown"].includes(x.state),
         g5: /g5/i.test(x.entity_id + " " + (x.attributes?.friendly_name || "")) }))
       .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, "pt-BR", { numeric: true })));
   }).catch((e) => setErro(e.message));
@@ -1885,8 +1893,8 @@ function CamerasModal({ pedirHA, baseUrl, direto, onFechar }) {
         // Imagem ao vivo parada no alto enquanto a lista rola por baixo.
         <div style={{ position: "sticky", top: 56, zIndex: 1, background: C.bg, paddingBottom: 8, marginBottom: 4 }}>
           {live
-            ? <CameraLive key={cam.id} cam={cam} pedirHA={pedirHA} baseUrl={baseUrl} />
-            : <CameraAoVivo key={cam.id} cam={{ id: cam.id, nome: cam.nome, url: cam.tk ? `${baseUrl}/api/camera_proxy/${cam.id}?token=${cam.tk}${cam.g5 ? "&width=960" : ""}` : null, aviso: cam.tk ? null : "Câmera sem imagem agora." }} ms={333} />}
+            ? <CameraLive key={cam.id} cam={cam} pedirHA={pedirHA} assinarHA={assinarHA} baseUrl={baseUrl} />
+            : <CameraAoVivo key={cam.id} cam={{ id: cam.id, nome: cam.nome, url: cam.tk ? `${baseUrl}/api/camera_proxy/${cam.id}?token=${cam.tk}&width=${cam.g5 ? 960 : 640}` : null, aviso: cam.tk ? null : "Câmera sem imagem agora." }} ms={333} />}
           <div className="flex items-center gap-2" style={{ marginTop: 6 }}>
             <div className="flex" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 999, padding: 3 }}>
               {[[false, "3 fps"], [true, "Live"]].map(([v, t]) => (
@@ -2111,7 +2119,7 @@ function PortaModal({ ent, enviar, onFechar, cameras = [], topo }) {
 // A foto seguinte só troca quando terminou de carregar (sem piscar); para quando o popup fecha
 // ou o app vai para segundo plano. O token da câmera muda a cada ~5 min e a URL acompanha.
 // No modo rápido (3 fps no popup Câmeras) pede uma foto a cada ~333 ms, com até 2 a caminho ao mesmo
-// tempo; mostra sempre a mais nova que chegar. Foto que não chega em 10 s é abandonada (o DVR às
+// tempo; mostra sempre a mais nova que chegar. Foto que não chega em 15 s é abandonada (o DVR às
 // vezes não responde e a câmera ficava presa em "Carregando").
 const CAMERA_MS = 1000;
 function CameraAoVivo({ cam, topo, ms = CAMERA_MS }) {
@@ -2133,7 +2141,7 @@ function CameraAoVivo({ cam, topo, ms = CAMERA_MS }) {
         if (t0 < ultima) return;
         ultima = t0; erros = 0; setFalhou(false); setSrc(img.src);
       };
-      const desiste = setTimeout(() => { img.src = ""; acabou(false); }, 10000);
+      const desiste = setTimeout(() => { img.src = ""; acabou(false); }, 15000);
       voando++;
       img.onload = () => acabou(true);
       img.onerror = () => acabou(false);
@@ -2165,28 +2173,66 @@ function CameraAoVivo({ cam, topo, ms = CAMERA_MS }) {
   );
 }
 
-// Vídeo ao vivo de verdade: pede ao HA um endereço HLS (websocket camera/stream) e toca num <video>.
-// Só no celular que toca HLS sozinho (Android/iPhone); sem isso, avisa para usar o 3 fps.
+// Vídeo ao vivo de verdade. 1º tenta WebRTC pelo go2rtc do HA (abre em 1–3 s); se não chegar
+// imagem em 8 s (ex.: fora de casa sem TURN) ou der erro, cai para HLS (camera/stream), que leva
+// 12–17 s para ficar pronto nas câmeras do DVR. HLS só no celular que toca HLS sozinho.
 // ponytail: sem hls.js; se algum navegador precisar, adicionar o hls.js só para ele.
-function CameraLive({ cam, pedirHA, baseUrl }) {
-  const ref = useRef(null);
-  const [erro, setErro] = useState(""), [tocando, setTocando] = useState(false);
+function CameraLive({ cam, pedirHA, assinarHA, baseUrl }) {
+  const ref = useRef(null), tocandoRef = useRef(false);
+  const [erro, setErro] = useState(""), [tocando, setTocando] = useState(false), [lento, setLento] = useState(false);
   useEffect(() => {
-    const v = ref.current; let vivo = true;
-    if (!v.canPlayType("application/vnd.apple.mpegurl")) { setErro("Este aparelho não abre o Live. Use o 3 fps."); return; }
-    // Ligar o vídeo de uma câmera parada pode levar bem mais que 12 s no HA: espera até 40 s.
-    pedirHA({ type: "camera/stream", entity_id: cam.id, format: "hls" }, 40000)
-      .then((r) => { if (!vivo) return; v.src = baseUrl + r.url; v.play().catch(() => {}); })
-      .catch(() => { if (vivo) setErro("Esta câmera não tem vídeo ao vivo agora. Use o 3 fps."); });
-    return () => { vivo = false; v.removeAttribute("src"); v.load(); };
+    const v = ref.current; let vivo = true, pc = null, cancelar = null, timer = null;
+    const limparRTC = () => { clearTimeout(timer); cancelar?.(); cancelar = null; try { pc?.close(); } catch { /* ok */ } pc = null; };
+    const hls = () => {
+      if (!vivo || tocandoRef.current) return;
+      limparRTC(); v.srcObject = null; setLento(true);
+      if (!v.canPlayType("application/vnd.apple.mpegurl")) { setErro("Este aparelho não abre o Live. Use o 3 fps."); return; }
+      pedirHA({ type: "camera/stream", entity_id: cam.id, format: "hls" }, 40000)
+        .then((r) => { if (!vivo) return; v.src = baseUrl + r.url; v.play().catch(() => {}); })
+        .catch(() => { if (vivo) setErro("Esta câmera não tem vídeo ao vivo agora. Use o 3 fps."); });
+    };
+    (async () => {
+      try {
+        if (!window.RTCPeerConnection || !assinarHA) throw new Error("sem WebRTC");
+        const cfg = await pedirHA({ type: "camera/webrtc/get_client_config", entity_id: cam.id }).catch(() => ({}));
+        if (!vivo) return;
+        pc = new RTCPeerConnection(cfg?.configuration || {});
+        if (cfg?.dataChannel) pc.createDataChannel(cfg.dataChannel);
+        pc.addTransceiver("video", { direction: "recvonly" });
+        pc.addTransceiver("audio", { direction: "recvonly" });
+        pc.ontrack = (ev) => { if (ev.streams[0] && v.srcObject !== ev.streams[0]) { v.srcObject = ev.streams[0]; v.play().catch(() => {}); } };
+        let sessao = null, remoto = false;
+        const meus = [], deles = [];
+        const mandar = (c) => pedirHA({ type: "camera/webrtc/candidate", entity_id: cam.id, session_id: sessao, candidate: c }).catch(() => {});
+        pc.onicecandidate = (ev) => { if (!ev.candidate) return; const c = ev.candidate.toJSON(); if (sessao) mandar(c); else meus.push(c); };
+        const oferta = await pc.createOffer();
+        await pc.setLocalDescription(oferta);
+        if (!vivo) return;
+        cancelar = assinarHA({ type: "camera/webrtc/offer", entity_id: cam.id, offer: oferta.sdp }, async (e) => {
+          if (!vivo || !pc) return;
+          if (e?.type === "session") { sessao = e.session_id; meus.splice(0).forEach(mandar); }
+          else if (e?.type === "answer") {
+            await pc.setRemoteDescription({ type: "answer", sdp: e.answer }).catch(hls);
+            remoto = true; deles.splice(0).forEach((c) => pc?.addIceCandidate(c).catch(() => {}));
+          } else if (e?.type === "candidate") {
+            const c = typeof e.candidate === "string" ? { candidate: e.candidate, sdpMLineIndex: 0 } : e.candidate;
+            if (remoto) pc.addIceCandidate(c).catch(() => {}); else deles.push(c);
+          } else if (e?.type === "error") hls();
+        });
+        if (!cancelar) throw new Error("sem conexão");
+        timer = setTimeout(hls, 8000);
+      } catch { hls(); }
+    })();
+    return () => { vivo = false; limparRTC(); v.srcObject = null; v.removeAttribute("src"); v.load(); };
   }, [cam.id]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "16 / 9", width: "100%" }}>
-      <video ref={ref} muted playsInline autoPlay onPlaying={() => setTocando(true)} onError={() => setErro("Não deu para abrir o vídeo ao vivo. Use o 3 fps.")}
+      <video ref={ref} muted playsInline autoPlay onPlaying={() => { tocandoRef.current = true; setTocando(true); }}
+        onError={() => setErro("Não deu para abrir o vídeo ao vivo. Use o 3 fps.")}
         style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
       {!tocando && (
         <div className="flex items-center justify-center" style={{ position: "absolute", inset: 0, color: "#ffffffaa", fontSize: 13.5, padding: 16, textAlign: "center" }}>
-          {erro || "Abrindo o vídeo ao vivo… (pode levar alguns segundos)"}
+          {erro || (lento ? "Conectando… esta câmera leva uns 15 segundos para abrir." : "Abrindo o vídeo ao vivo…")}
         </div>
       )}
       <span style={{ position: "absolute", left: 10, top: 10, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -4495,6 +4541,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const usoRef = useRef(Date.now());
   const wsRef = useRef(null);
   const pedidosRef = useRef({}); // id -> resolve (pedidos que esperam resposta do HA)
+  const assinaturasRef = useRef({}); // id -> função que recebe os eventos de uma assinatura
   const comandosRef = useRef({}); // id do comando -> entity_id (para desfazer a previsão se o HA recusar)
   const baseUrlRef = useRef(""); // endereço do HA (para as capas: /api/media_player_proxy/...)
   const idRef = useRef(1);
@@ -4685,6 +4732,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           send({ type: "subscribe_events", event_type: "state_changed" });
           return;
         }
+        if (m.type === "event" && assinaturasRef.current[m.id]) { assinaturasRef.current[m.id](m.event); return; }
         if (m.type === "result") {
           if (pedidosRef.current[m.id]) { const resp = pedidosRef.current[m.id]; delete pedidosRef.current[m.id]; resp(m); return; }
           const tipo = pend[m.id]; delete pend[m.id];
@@ -5112,6 +5160,19 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return { id, tipo: "tv", nome: v?.attributes?.friendly_name || id, state: st, attributes: v?.attributes || {}, disponivel: st != null && !["unavailable", "unknown"].includes(st), deOutro: zonasDeOutros.has(id) };
   });
   // Pergunta algo ao HA e espera a resposta (só na conexão direta da família).
+  // Assinatura no HA (vários eventos com o mesmo id, ex.: WebRTC da câmera). Devolve a função de cancelar.
+  const assinarHA = (msg, onEvento) => {
+    const ws = wsRef.current;
+    if (usarProxy || !ws || ws.readyState !== 1) return null;
+    const id = idRef.current++;
+    assinaturasRef.current[id] = onEvento;
+    pedidosRef.current[id] = (m) => { if (m.success === false) { delete assinaturasRef.current[id]; onEvento({ type: "error", message: m.error?.message }); } };
+    ws.send(JSON.stringify({ id, ...msg }));
+    return () => {
+      delete assinaturasRef.current[id]; delete pedidosRef.current[id];
+      try { if (ws.readyState === 1) ws.send(JSON.stringify({ id: idRef.current++, type: "unsubscribe_events", subscription: id })); } catch { /* ok */ }
+    };
+  };
   const pedirHA = (msg, espera = 12000) => new Promise((resolve, reject) => {
     const ws = wsRef.current;
     if (usarProxy || !ws || ws.readyState !== 1) { reject(new Error("Sem conexão direta com a casa.")); return; }
@@ -5411,7 +5472,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         <DialogHost />
         {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} topo={topoPortao}
           cameras={camerasDe(PORTAO_CAMERAS)} />}
-        {camerasAberto && <CamerasModal pedirHA={pedirHA} baseUrl={baseUrlRef.current} direto={!usarProxy} onFechar={() => setCamerasAberto(false)} />}
+        {camerasAberto && <CamerasModal pedirHA={pedirHA} assinarHA={assinarHA} baseUrl={baseUrlRef.current} direto={!usarProxy} onFechar={() => setCamerasAberto(false)} />}
         {alarmeAberto && <AlarmeModal ents={entsVis} enviar={enviar} souAdmin={eu?.papel === "admin"} onFechar={() => setAlarmeAberto(false)} />}
         {/* Alarme disparado: faixa vermelha no alto, com o lugar que disparou; toca para abrir. */}
         {ALARMES.map((cfg) => { const al = lerAlarme(cfg, entsVis); if (al.estado !== "triggered") return null; return (
