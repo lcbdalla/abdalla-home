@@ -5279,16 +5279,16 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   };
   const ligaHA = (x, l) => enviar("homeassistant", l ? "turn_on" : "turn_off", x.id);
   const abertaCortina = (x) => visualPorTipo(x).ativo;
-  const TIPOS_ATALHO = [
+  const TIPOS_ATALHO = [ // ordem na tela: luz, ar, persiana, flap e o resto
     { k: "luz", rot: "as luzes", Icon: Lightbulb, cor: C.ambar, preenche: true, filtro: (x) => categoriaAtalho(x) === "luz", aceso: estaLigado, agir: ligaHA },
     { k: "ar", rot: "o ar", Icon: Snowflake, cor: AZUL_AR, filtro: (x) => categoriaAtalho(x) === "ar", aceso: estaLigado, agir: (x, l) => (l ? ligarAr : desligarAr)(x, enviar), pausa: 600 },
-    { k: "coifa", rot: "a coifa", Icon: AirVent, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "coifa", aceso: (x) => { const c = coifaEstado(x); return c.luz || c.vel > 0; }, agir: (x) => alternarCoifa(x, enviar) },
-    { k: "tv", rot: "a TV", Icon: Tv, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "tv", aceso: estaLigado, agir: alternarMidia },
-    { k: "som", rot: "o som", Icon: Speaker, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "som", aceso: estaLigado, agir: alternarMidia },
-    { k: "piscina", rot: "a piscina", Icon: WavesLadder, cor: "#3b9bd8", filtro: (x) => categoriaAtalho(x) === "piscina", aceso: estaLigado, agir: ligaHA },
-    { k: "chafariz", rot: "o chafariz", Icon: IconeChafariz, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "chafariz", aceso: estaLigado, agir: ligaHA },
     { k: "persiana", rot: "as persianas", Icon: Blinds, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "persiana", aceso: abertaCortina, agir: moverCortina, abrir: true },
     { k: "flap", rot: "o flap da TV", Icon: MonitorUp, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "flap", aceso: abertaCortina, agir: moverCortina, abrir: true },
+    { k: "tv", rot: "a TV", Icon: Tv, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "tv", aceso: estaLigado, agir: alternarMidia },
+    { k: "som", rot: "o som", Icon: Speaker, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "som", aceso: estaLigado, agir: alternarMidia },
+    { k: "coifa", rot: "a coifa", Icon: AirVent, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "coifa", aceso: (x) => { const c = coifaEstado(x); return c.luz || c.vel > 0; }, agir: (x) => alternarCoifa(x, enviar) },
+    { k: "piscina", rot: "a piscina", Icon: WavesLadder, cor: "#3b9bd8", filtro: (x) => categoriaAtalho(x) === "piscina", aceso: estaLigado, agir: ligaHA },
+    { k: "chafariz", rot: "o chafariz", Icon: IconeChafariz, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "chafariz", aceso: estaLigado, agir: ligaHA },
   ];
   const atalhosDe = (itens) => {
     const todos = achatar(itens);
