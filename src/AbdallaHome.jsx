@@ -5279,7 +5279,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   };
   const ligaHA = (x, l) => enviar("homeassistant", l ? "turn_on" : "turn_off", x.id);
   const abertaCortina = (x) => visualPorTipo(x).ativo;
-  const TIPOS_ATALHO = [ // ordem na tela: luz, ar, persiana, flap e o resto
+  // Ordem da DIREITA para a esquerda: luz (mais à direita), ar, persiana, flap e o resto.
+  const TIPOS_ATALHO = [
     { k: "luz", rot: "as luzes", Icon: Lightbulb, cor: C.ambar, preenche: true, filtro: (x) => categoriaAtalho(x) === "luz", aceso: estaLigado, agir: ligaHA },
     { k: "ar", rot: "o ar", Icon: Snowflake, cor: AZUL_AR, filtro: (x) => categoriaAtalho(x) === "ar", aceso: estaLigado, agir: (x, l) => (l ? ligarAr : desligarAr)(x, enviar), pausa: 600 },
     { k: "persiana", rot: "as persianas", Icon: Blinds, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "persiana", aceso: abertaCortina, agir: moverCortina, abrir: true },
@@ -5301,7 +5302,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           const alvo = algum ? lista.filter(t.aceso) : lista.filter((x) => x.disponivel !== false);
           for (let i = 0; i < alvo.length; i++) { await t.agir(alvo[i], !algum); if (i < alvo.length - 1) await esperar(t.pausa || 300); }
         } };
-    }).filter(Boolean);
+    }).filter(Boolean).reverse(); // a luz fica na ponta direita
   };
   // Vista "Áreas": título do nível com uma linha, e cada cômodo numa linha com atalhos (ar, som,
   // fechadura, temperatura e luzes). Tocar na linha abre os cartões do cômodo logo abaixo.
