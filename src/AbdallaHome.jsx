@@ -2174,7 +2174,8 @@ function CameraLive({ cam, pedirHA, baseUrl }) {
   useEffect(() => {
     const v = ref.current; let vivo = true;
     if (!v.canPlayType("application/vnd.apple.mpegurl")) { setErro("Este aparelho não abre o Live. Use o 3 fps."); return; }
-    pedirHA({ type: "camera/stream", entity_id: cam.id, format: "hls" })
+    // Ligar o vídeo de uma câmera parada pode levar bem mais que 12 s no HA: espera até 40 s.
+    pedirHA({ type: "camera/stream", entity_id: cam.id, format: "hls" }, 40000)
       .then((r) => { if (!vivo) return; v.src = baseUrl + r.url; v.play().catch(() => {}); })
       .catch(() => { if (vivo) setErro("Esta câmera não tem vídeo ao vivo agora. Use o 3 fps."); });
     return () => { vivo = false; v.removeAttribute("src"); v.load(); };
@@ -5111,13 +5112,13 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return { id, tipo: "tv", nome: v?.attributes?.friendly_name || id, state: st, attributes: v?.attributes || {}, disponivel: st != null && !["unavailable", "unknown"].includes(st), deOutro: zonasDeOutros.has(id) };
   });
   // Pergunta algo ao HA e espera a resposta (só na conexão direta da família).
-  const pedirHA = (msg) => new Promise((resolve, reject) => {
+  const pedirHA = (msg, espera = 12000) => new Promise((resolve, reject) => {
     const ws = wsRef.current;
     if (usarProxy || !ws || ws.readyState !== 1) { reject(new Error("Sem conexão direta com a casa.")); return; }
     const id = idRef.current++;
     pedidosRef.current[id] = (m) => (m.success === false ? reject(new Error(m.error?.message || "erro do Home Assistant")) : resolve(m.result));
     ws.send(JSON.stringify({ id, ...msg }));
-    setTimeout(() => { if (pedidosRef.current[id]) { delete pedidosRef.current[id]; reject(new Error("O Home Assistant demorou para responder.")); } }, 12000);
+    setTimeout(() => { if (pedidosRef.current[id]) { delete pedidosRef.current[id]; reject(new Error("O Home Assistant demorou para responder.")); } }, espera);
   });
   const mkEquip = (row) => {
     if (row.tipo === "alexa") {
