@@ -1847,7 +1847,7 @@ const numeroG5 = (nome) => { const m = String(nome).match(/G5 Turret Ultra (\d+)
 const nomeCamera = (nome) => { const g = numeroG5(nome), dono = CAMERAS_CASA_ALTA.find(([n]) => n === g); if (dono) return dono[1]; const m = String(nome).match(/G5 Turret Ultra (\d+)/i) || String(nome).match(/^cam\s*(\d+)$/i); return m ? `Câmera ${m[1]}` : nome; };
 function CamerasModal({ pedirHA, baseUrl, direto, onFechar }) {
   const [lista, setLista] = useState(null), [erro, setErro] = useState(""), [aberta, setAberta] = useState(null);
-  const [rapido, setRapido] = useState(false); // 12 fps (internet boa); padrão 1 fps
+  const [live, setLive] = useState(false); // vídeo ao vivo (HLS) em vez das fotos a 3 por segundo
   const carregar = () => pedirHA({ type: "get_states" }).then((todos) => {
     setLista((todos || []).filter((x) => String(x.entity_id).startsWith("camera.") && !CAMERAS_FORA.test(x.entity_id))
       .map((x) => ({ id: x.entity_id, nome: nomeCamera(x.attributes?.friendly_name || x.entity_id), ordem: (() => { const i = CAMERAS_CASA_ALTA.findIndex(([n]) => n === numeroG5(x.attributes?.friendly_name || "")); return i < 0 ? 999 : i; })(), tk: x.attributes?.access_token, fora: ["unavailable", "unknown"].includes(x.state),
@@ -1884,11 +1884,13 @@ function CamerasModal({ pedirHA, baseUrl, direto, onFechar }) {
       {cam && (
         // Imagem ao vivo parada no alto enquanto a lista rola por baixo.
         <div style={{ position: "sticky", top: 56, zIndex: 1, background: C.bg, paddingBottom: 8, marginBottom: 4 }}>
-          <CameraAoVivo key={cam.id} cam={{ id: cam.id, nome: cam.nome, url: cam.tk ? `${baseUrl}/api/camera_proxy/${cam.id}?token=${cam.tk}${cam.g5 ? "&width=960" : ""}` : null, aviso: cam.tk ? null : "Câmera sem imagem agora." }} ms={rapido ? 83 : CAMERA_MS} />
+          {live
+            ? <CameraLive key={cam.id} cam={cam} pedirHA={pedirHA} baseUrl={baseUrl} />
+            : <CameraAoVivo key={cam.id} cam={{ id: cam.id, nome: cam.nome, url: cam.tk ? `${baseUrl}/api/camera_proxy/${cam.id}?token=${cam.tk}${cam.g5 ? "&width=960" : ""}` : null, aviso: cam.tk ? null : "Câmera sem imagem agora." }} ms={333} />}
           <div className="flex items-center gap-2" style={{ marginTop: 6 }}>
             <div className="flex" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 999, padding: 3 }}>
-              {[[false, "1 fps"], [true, "12 fps"]].map(([v, t]) => (
-                <button key={t} onClick={() => setRapido(v)} style={{ borderRadius: 999, padding: "5px 12px", fontSize: 13, fontWeight: 700, background: rapido === v ? LAGO : "transparent", color: rapido === v ? "#fff" : C.cinza }}>{t}</button>
+              {[[false, "3 fps"], [true, "Live"]].map(([v, t]) => (
+                <button key={t} onClick={() => setLive(v)} style={{ borderRadius: 999, padding: "5px 12px", fontSize: 13, fontWeight: 700, background: live === v ? LAGO : "transparent", color: live === v ? "#fff" : C.cinza }}>{t}</button>
               ))}
             </div>
             <button onClick={() => setAberta(null)} className="flex-1" style={{ color: C.cinza, fontWeight: 700, fontSize: 13.5, padding: 6 }}>Fechar a câmera</button>
@@ -2108,8 +2110,9 @@ function PortaModal({ ent, enviar, onFechar, cameras = [], topo }) {
 // Câmera "ao vivo" leve para o celular: uma foto nova da câmera a cada ~1 s (camera_proxy).
 // A foto seguinte só troca quando terminou de carregar (sem piscar); para quando o popup fecha
 // ou o app vai para segundo plano. O token da câmera muda a cada ~5 min e a URL acompanha.
-// No modo rápido (12 fps) pede uma foto a cada ~83 ms, com até 3 a caminho ao mesmo tempo (cada
-// foto da câmera leva uns 100–300 ms); mostra sempre a mais nova que chegar.
+// No modo rápido (3 fps no popup Câmeras) pede uma foto a cada ~333 ms, com até 2 a caminho ao mesmo
+// tempo; mostra sempre a mais nova que chegar. Foto que não chega em 10 s é abandonada (o DVR às
+// vezes não responde e a câmera ficava presa em "Carregando").
 const CAMERA_MS = 1000;
 function CameraAoVivo({ cam, topo, ms = CAMERA_MS }) {
   const [src, setSrc] = useState(null);
@@ -2119,12 +2122,21 @@ function CameraAoVivo({ cam, topo, ms = CAMERA_MS }) {
   useEffect(() => {
     if (!cam.url) return;
     let vivo = true, timer = null, erros = 0, voando = 0, ultima = 0;
-    const max = ms < CAMERA_MS ? 3 : 1;
+    const max = ms < CAMERA_MS ? 2 : 1;
     const pedir = () => {
       const img = new Image(), t0 = Date.now();
+      let fim = false;
+      const acabou = (ok) => {
+        if (fim) return; fim = true; voando--; clearTimeout(desiste);
+        if (!vivo) return;
+        if (!ok) { erros++; if (erros >= 3) setFalhou(true); return; }
+        if (t0 < ultima) return;
+        ultima = t0; erros = 0; setFalhou(false); setSrc(img.src);
+      };
+      const desiste = setTimeout(() => { img.src = ""; acabou(false); }, 10000);
       voando++;
-      img.onload = () => { voando--; if (!vivo || t0 < ultima) return; ultima = t0; erros = 0; setFalhou(false); setSrc(img.src); };
-      img.onerror = () => { voando--; if (!vivo) return; erros++; if (erros >= 3) setFalhou(true); };
+      img.onload = () => acabou(true);
+      img.onerror = () => acabou(false);
       img.src = `${urlRef.current}&t=${t0}`;
     };
     const tique = () => {
@@ -2148,6 +2160,36 @@ function CameraAoVivo({ cam, topo, ms = CAMERA_MS }) {
         : <div className="flex items-center justify-center" style={{ width: "100%", height: "100%", color: "#ffffffaa", fontSize: 13.5, padding: 16, textAlign: "center" }}>{cam.aviso || (falhou ? "Câmera sem imagem agora." : "Carregando a câmera…")}</div>}
       <span style={{ position: "absolute", left: 10, top: 10, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
         {ok && <span className="ah-pisca" style={{ width: 7, height: 7, borderRadius: 999, background: "#e5484d" }} />}{cam.nome}
+      </span>
+    </div>
+  );
+}
+
+// Vídeo ao vivo de verdade: pede ao HA um endereço HLS (websocket camera/stream) e toca num <video>.
+// Só no celular que toca HLS sozinho (Android/iPhone); sem isso, avisa para usar o 3 fps.
+// ponytail: sem hls.js; se algum navegador precisar, adicionar o hls.js só para ele.
+function CameraLive({ cam, pedirHA, baseUrl }) {
+  const ref = useRef(null);
+  const [erro, setErro] = useState(""), [tocando, setTocando] = useState(false);
+  useEffect(() => {
+    const v = ref.current; let vivo = true;
+    if (!v.canPlayType("application/vnd.apple.mpegurl")) { setErro("Este aparelho não abre o Live. Use o 3 fps."); return; }
+    pedirHA({ type: "camera/stream", entity_id: cam.id, format: "hls" })
+      .then((r) => { if (!vivo) return; v.src = baseUrl + r.url; v.play().catch(() => {}); })
+      .catch(() => { if (vivo) setErro("Esta câmera não tem vídeo ao vivo agora. Use o 3 fps."); });
+    return () => { vivo = false; v.removeAttribute("src"); v.load(); };
+  }, [cam.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "16 / 9", width: "100%" }}>
+      <video ref={ref} muted playsInline autoPlay onPlaying={() => setTocando(true)} onError={() => setErro("Não deu para abrir o vídeo ao vivo. Use o 3 fps.")}
+        style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+      {!tocando && (
+        <div className="flex items-center justify-center" style={{ position: "absolute", inset: 0, color: "#ffffffaa", fontSize: 13.5, padding: 16, textAlign: "center" }}>
+          {erro || "Abrindo o vídeo ao vivo… (pode levar alguns segundos)"}
+        </div>
+      )}
+      <span style={{ position: "absolute", left: 10, top: 10, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        {tocando && <span className="ah-pisca" style={{ width: 7, height: 7, borderRadius: 999, background: "#e5484d" }} />}{cam.nome} · Live
       </span>
     </div>
   );
