@@ -2786,12 +2786,12 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
       {total > 0 ? (
         <button onClick={() => aceso && onDesligarTudo(itens)} disabled={!aceso} aria-label={aceso ? `Desligar tudo em ${nome}` : `Nada ligado em ${nome}`}
           style={{ width: tam, height: tam, borderRadius: grande ? 11 : 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none",
-            cursor: aceso ? "pointer" : "default", background: aceso ? alfa(C.ambar, 22) : iconeAmb ? alfa(iconeAmb.cor, 16) : alfa(C.cinzaClaro, 16), color: aceso ? (grande ? corAceso : C.ambar) : iconeAmb ? iconeAmb.cor : corApagado,
+            cursor: aceso ? "pointer" : "default", background: aceso ? alfa(C.ambar, 22) : alfa(C.cinzaClaro, 16), color: aceso ? (grande ? corAceso : C.ambar) : iconeAmb ? C.terra : corApagado,
             boxShadow: aceso ? `0 0 0 1px ${alfa(C.ambar, 35)}, 0 6px 18px -6px ${alfa(C.ambar, 75)}` : "none", transition: "background .25s, color .25s, box-shadow .25s" }}>
           {iconeAmb ? <iconeAmb.Icon size={16} strokeWidth={2.2} /> : <Power size={grande ? 18 : 15} strokeWidth={2.5} />}
         </button>
       ) : iconeAmb ? (
-        <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(iconeAmb.cor, 16), color: iconeAmb.cor }}><iconeAmb.Icon size={16} strokeWidth={2.2} /></span>
+        <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: C.terra }}><iconeAmb.Icon size={16} strokeWidth={2.2} /></span>
       ) : grande ? (
         <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: corApagado }}><Layers size={17} /></span>
       ) : null}
@@ -5332,7 +5332,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             <div key={c.id} data-comodo={c.id} style={{ background: "var(--c-comodo, #fff)", borderRadius: aberto ? 22 : 999, border: `1px solid ${aceso ? alfa(C.ambar, 45) : C.linha}`, boxShadow: C.comodoSombra, transition: "border-color .25s" }}>
               <div role="button" tabIndex={0} onClick={() => alternarAmb(c.id, pav.id)} onKeyDown={(ev) => { if (ev.key === "Enter") alternarAmb(c.id, pav.id); }}
                 className="flex items-center" style={{ gap: 6, padding: "7px 8px", cursor: "pointer", minHeight: 52 }}>
-                <span aria-hidden="true" style={{ width: 38, height: 38, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(cor, 16), color: cor }}><Icon size={19} strokeWidth={2.2} /></span>
+                <span aria-hidden="true" style={{ width: 38, height: 38, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: aceso ? alfa(cor, 16) : alfa(C.cinzaClaro, 16), color: aceso ? cor : C.terra, transition: "background .25s, color .25s" }}><Icon size={19} strokeWidth={2.2} /></span>
                 <span className="flex-1 min-w-0 truncate" style={{ fontWeight: 700, fontSize: 14.5, color: C.terra, marginLeft: 4 }}>{c.nome}</span>
                 {ares.map((x) => (
                   <BolinhaArea key={x.dbId} Icon={Snowflake} cor={AZUL_AR} aceso={estaLigado(x)} rot={`${estaLigado(x) ? "Desligar" : "Ligar"} ${x.nome || "ar"}`}
