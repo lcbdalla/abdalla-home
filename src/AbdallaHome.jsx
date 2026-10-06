@@ -4214,6 +4214,144 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, ar
 }
 // Liga cada pessoa do app ao Spotify dela que está no Home Assistant (quando o nome não bate
 // sozinho, ex.: "calinoandrade", "Priscila Neri"). Fica gravado no perfil (perfis.spotify_entity).
+/* ---- Programações (Configuração): por horário ou por sensor ----
+   Cada programação vira uma automação do Home Assistant (feita pela função controle-proxy), então
+   roda mesmo com o app fechado. Aqui só se monta a descrição simples: quando + o que fazer. */
+const DIAS_SEMANA = [["sun", "Dom"], ["mon", "Seg"], ["tue", "Ter"], ["wed", "Qua"], ["thu", "Qui"], ["fri", "Sex"], ["sat", "Sáb"]];
+const ACOES_PROG = { interruptor: [["ligar", "Ligar"], ["desligar", "Desligar"]], ar: [["ligar", "Ligar (22° frio)"], ["desligar", "Desligar"]], persiana: [["abrir", "Abrir"], ["fechar", "Fechar"]] };
+const numBR = (v) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+function descreverQuando(g) {
+  if (!g) return "";
+  if (g.tipo === "horario") return `${g.dias?.length && g.dias.length < 7 ? DIAS_SEMANA.filter(([k]) => g.dias.includes(k)).map(([, t]) => t).join(", ") : "Todos os dias"} às ${g.hora}`;
+  return `Quando ${g.nome_sensor || g.entity_id} ${g.comparacao === "abaixo" ? "ficar abaixo de" : "passar de"} ${numBR(g.valor)}${g.unidade ? " " + g.unidade : ""}`;
+}
+const descreverAcoes = (acoes) => (acoes || []).map((a) => `${(ACOES_PROG[a.tipo] || []).find(([k]) => k === a.acao)?.[1]?.replace(/ \(.*\)/, "") || a.acao} ${a.nome || a.entity_id}`).join(" · ");
+async function chamarProgramacao(body) {
+  const { data, error } = await supabase.functions.invoke(PROXY_FN, { body: { acao: "programacao", ...body } });
+  if (!error && !data?.error) return data;
+  let msg = data?.error;
+  if (!msg && error?.context) { try { msg = (await error.context.json())?.error; } catch { /* sem corpo */ } }
+  throw new Error(msg || "Atualize a função controle-proxy no Supabase para usar as programações.");
+}
+function Programacoes({ equipamentos, ambientes, ents, pedirHA }) {
+  const [aberto, setAberto] = useState(false), [lista, setLista] = useState(null), [erro, setErro] = useState("");
+  const [form, setForm] = useState(null), [salvando, setSalvando] = useState(false);
+  const [sensores, setSensores] = useState(null), [busca, setBusca] = useState("");
+  const aparelhos = equipamentos.filter((q) => ACOES_PROG[q.tipo]).map((q) => ({
+    id: q.entity_id, tipo: q.tipo, nome: q.nome || ents[q.entity_id]?.attributes?.friendly_name || q.entity_id,
+    amb: ambientes.find((a) => a.id === q.ambiente_id)?.nome || "Outros" }));
+  const ambsComAparelho = [...new Set(aparelhos.map((x) => x.amb))];
+  const carregar = () => chamarProgramacao({ op: "listar" }).then((d) => { setLista((d.lista || []).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))); setErro(""); }).catch((e) => { setLista([]); setErro(e.message); });
+  useEffect(() => { if (aberto && !lista) carregar(); }, [aberto]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sensores com número (luminosidade, temperatura, umidade…), lidos direto do HA ao escolher "Sensor".
+  const carregarSensores = () => { if (sensores) return; pedirHA({ type: "get_states" }).then((todos) => setSensores((todos || [])
+    .filter((x) => String(x.entity_id).startsWith("sensor.") && x.state !== "" && !isNaN(Number(x.state)))
+    .map((x) => ({ id: x.entity_id, nome: x.attributes?.friendly_name || x.entity_id, valor: x.state, unidade: x.attributes?.unit_of_measurement || "" }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")))).catch(() => setSensores([])); };
+  const novo = () => setForm({ nome: "", gatilho: { tipo: "horario", hora: "19:00", dias: [] }, acoes: [] });
+  const editar = (x) => { setForm(JSON.parse(JSON.stringify(x.spec))); if (x.spec?.gatilho?.tipo === "sensor") carregarSensores(); };
+  const mudarG = (patch) => setForm((f) => ({ ...f, gatilho: { ...f.gatilho, ...patch } }));
+  const mudarA = (i, patch) => setForm((f) => ({ ...f, acoes: f.acoes.map((a, j) => (j === i ? { ...a, ...patch } : a)) }));
+  const salvar = async () => {
+    setSalvando(true); setErro("");
+    try {
+      const acoes = form.acoes.filter((a) => a.entity_id).map((a) => { const ap = aparelhos.find((x) => x.id === a.entity_id); return { ...a, nome: ap?.nome, tipo: ap?.tipo, inverter: ehInvertido({ nome: ap?.nome, id: a.entity_id }) }; });
+      await chamarProgramacao({ op: "salvar", spec: { ...form, acoes } });
+      setForm(null); await carregar();
+    } catch (e) { setErro(e.message); }
+    setSalvando(false);
+  };
+  const apagar = async (x) => {
+    if (!(await Dialog.confirm({ titulo: "Apagar programação", mensagem: `Apagar "${x.nome.replace(/^App · /, "")}"?`, okLabel: "Apagar", perigo: true }))) return;
+    chamarProgramacao({ op: "apagar", id: x.id }).then(carregar).catch((e) => setErro(e.message));
+  };
+  const ativar = (x) => { setLista((l) => l.map((y) => (y.id === x.id ? { ...y, ativo: !x.ativo } : y))); chamarProgramacao({ op: "ativar", entity_id: x.entity_id, ativo: !x.ativo }).catch((e) => { setErro(e.message); carregar(); }); };
+  const campo = { border: `1px solid ${C.linha}`, borderRadius: 9, padding: "8px 10px", fontSize: 14, background: C.card, color: C.terra, width: "100%", boxSizing: "border-box" };
+  const pilula = (ativo) => ({ borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: 700, background: ativo ? C.pasto : C.bg, color: ativo ? "#fff" : C.cinza, border: `1px solid ${ativo ? C.pasto : C.linha}` });
+  const g = form?.gatilho;
+  const sensorEscolhido = g?.tipo === "sensor" && (sensores || []).find((x) => x.id === g.entity_id);
+  const sensoresVis = (sensores || []).filter((x) => !busca || norm(x.nome + " " + x.id).includes(norm(busca)) || x.id === g?.entity_id).slice(0, 80);
+  return (
+    <div className="mb-4" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, padding: 12 }}>
+      <button onClick={() => setAberto((v) => !v)} aria-expanded={aberto} className="flex items-center gap-2" style={{ width: "100%", textAlign: "left" }}>
+        <Clock size={16} style={{ color: C.pasto }} /><span className="flex-1 font-bold" style={{ fontSize: 15 }}>Programações</span>
+        <ChevronDown size={18} style={{ color: C.cinza, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+      </button>
+      {aberto && erro && <div style={{ color: C.vermelho, fontSize: 13, margin: "8px 0" }}>{erro}</div>}
+      {aberto && !form && (<>
+        <div style={{ color: C.cinza, fontSize: 12.5, margin: "6px 0 8px" }}>Por horário (ex.: toda segunda às 19h ligar um ar) ou por sensor (ex.: luz passar de 60.000 lx fechar as persianas). Rodam no Home Assistant, mesmo com o app fechado.</div>
+        {!lista ? <div style={{ color: C.cinza, fontSize: 13 }}>Carregando…</div> : lista.length === 0 ? <div style={{ color: C.cinza, fontSize: 13 }}>Nenhuma programação ainda.</div> : lista.map((x) => (
+          <div key={x.id} className="flex items-center gap-2" style={{ borderTop: `1px solid ${C.linha}`, padding: "8px 0" }}>
+            <div className="flex-1 min-w-0">
+              <div style={{ fontSize: 14, fontWeight: 700, color: x.ativo ? C.terra : C.cinza }}>{x.spec?.nome || x.nome.replace(/^App · /, "")}</div>
+              <div style={{ fontSize: 12.5, color: C.cinza }}>{descreverQuando(x.spec?.gatilho)}</div>
+              <div style={{ fontSize: 12.5, color: C.cinza }}>{descreverAcoes(x.spec?.acoes)}</div>
+            </div>
+            <PillToggle on={x.ativo} cor={C.pasto} pequeno onClick={() => ativar(x)} />
+            {x.spec && <button onClick={() => editar(x)} aria-label="Editar" style={{ padding: 6, color: C.cinza }}><Pencil size={16} /></button>}
+            <button onClick={() => apagar(x)} aria-label="Apagar" style={{ padding: 6, color: C.vermelho }}><Trash2 size={16} /></button>
+          </div>
+        ))}
+        <button onClick={novo} className="flex items-center justify-center gap-2" style={{ width: "100%", marginTop: 8, background: C.pasto, color: "#fff", borderRadius: 10, padding: 10, fontWeight: 700, fontSize: 14 }}><Plus size={16} /> Nova programação</button>
+      </>)}
+      {aberto && form && (
+        <div className="flex flex-col" style={{ gap: 10, marginTop: 10 }}>
+          <input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Nome (ex.: Ar do Living às segundas)" style={campo} />
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.cinza }}>Quando</div>
+          <div className="flex gap-2">
+            <button onClick={() => mudarG({ tipo: "horario", hora: g.hora || "19:00", dias: g.dias || [] })} style={pilula(g.tipo === "horario")}>Horário</button>
+            <button onClick={() => { mudarG({ tipo: "sensor", comparacao: g.comparacao || "acima" }); carregarSensores(); }} style={pilula(g.tipo === "sensor")}>Sensor</button>
+          </div>
+          {g.tipo === "horario" && (<>
+            <input type="time" value={g.hora} onChange={(e) => mudarG({ hora: e.target.value })} style={{ ...campo, width: 140 }} />
+            <div className="flex flex-wrap gap-1">
+              {DIAS_SEMANA.map(([k, t]) => { const on = (g.dias || []).includes(k); return (
+                <button key={k} onClick={() => mudarG({ dias: on ? g.dias.filter((d) => d !== k) : [...(g.dias || []), k] })} style={{ ...pilula(on), padding: "6px 10px" }}>{t}</button>
+              ); })}
+            </div>
+            <div style={{ fontSize: 12, color: C.cinza }}>{g.dias?.length ? "" : "Nenhum dia marcado = todos os dias."}</div>
+          </>)}
+          {g.tipo === "sensor" && (<>
+            {!sensores ? <div style={{ color: C.cinza, fontSize: 13 }}>Carregando os sensores…</div> : (<>
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar sensor (ex.: lux, temperatura)" style={campo} />
+              <select value={g.entity_id || ""} onChange={(e) => { const x = sensores.find((y) => y.id === e.target.value); mudarG({ entity_id: e.target.value, nome_sensor: x?.nome, unidade: x?.unidade }); }} style={campo}>
+                <option value="">Escolha o sensor…</option>
+                {sensoresVis.map((x) => <option key={x.id} value={x.id}>{x.nome} ({numBR(x.valor)} {x.unidade})</option>)}
+              </select>
+            </>)}
+            <div className="flex items-center gap-2">
+              <select value={g.comparacao || "acima"} onChange={(e) => mudarG({ comparacao: e.target.value })} style={{ ...campo, width: "auto" }}>
+                <option value="acima">passar de</option><option value="abaixo">ficar abaixo de</option>
+              </select>
+              <input type="number" inputMode="decimal" value={g.valor ?? ""} onChange={(e) => mudarG({ valor: e.target.value === "" ? "" : Number(e.target.value) })} placeholder="60000" style={{ ...campo, width: 120 }} />
+              <span style={{ fontSize: 13, color: C.cinza }}>{sensorEscolhido?.unidade || g.unidade || ""}</span>
+            </div>
+            <div style={{ fontSize: 12, color: C.cinza }}>Dispara na hora em que o valor cruza o limite (não repete enquanto continuar acima).</div>
+          </>)}
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.cinza }}>O que fazer</div>
+          {form.acoes.map((a, i) => { const ap = aparelhos.find((x) => x.id === a.entity_id); return (
+            <div key={i} className="flex items-center gap-2">
+              <select value={a.entity_id} onChange={(e) => { const t = aparelhos.find((x) => x.id === e.target.value)?.tipo; mudarA(i, { entity_id: e.target.value, acao: ACOES_PROG[t]?.[0][0] }); }} style={{ ...campo, flex: 1, minWidth: 0 }}>
+                <option value="">Aparelho…</option>
+                {ambsComAparelho.map((amb) => <optgroup key={amb} label={amb}>{aparelhos.filter((x) => x.amb === amb).map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</optgroup>)}
+              </select>
+              {ap && <select value={a.acao} onChange={(e) => mudarA(i, { acao: e.target.value })} style={{ ...campo, width: "auto", flexShrink: 0 }}>
+                {ACOES_PROG[ap.tipo].map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+              </select>}
+              <button onClick={() => setForm((f) => ({ ...f, acoes: f.acoes.filter((_, j) => j !== i) }))} aria-label="Tirar" style={{ padding: 6, color: C.cinza, flexShrink: 0 }}><X size={16} /></button>
+            </div>
+          ); })}
+          <button onClick={() => setForm((f) => ({ ...f, acoes: [...f.acoes, { entity_id: "", acao: "" }] }))} className="flex items-center gap-2" style={{ color: C.pasto, fontWeight: 700, fontSize: 14, padding: "4px 0" }}><Plus size={16} /> Adicionar aparelho</button>
+          <div className="flex gap-2" style={{ marginTop: 4 }}>
+            <button onClick={() => { setForm(null); setErro(""); }} style={{ flex: 1, borderRadius: 10, padding: 10, fontWeight: 700, background: C.bg, color: C.terra, border: `1px solid ${C.linha}` }}>Cancelar</button>
+            <button onClick={salvar} disabled={salvando} style={{ flex: 1, borderRadius: 10, padding: 10, fontWeight: 700, background: C.pasto, color: "#fff", opacity: salvando ? 0.6 : 1 }}>{salvando ? "Salvando…" : "Salvar"}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SpotifyPessoas({ ents }) {
   const [pessoas, setPessoas] = useState(null), [erro, setErro] = useState("");
   const [aberto, setAberto] = useState(false); // começa recolhido; toca no título para configurar
@@ -5480,7 +5618,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           )}
 
           {modo === "gerenciar" && souGestor && (
-            <><SpotifyPessoas ents={ents} /><GerenciarView pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} areas={areas} cbs={cbs} /></>
+            <><SpotifyPessoas ents={ents} /><Programacoes equipamentos={equipamentos} ambientes={ambientes} ents={ents} pedirHA={pedirHA} /><GerenciarView pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} areas={areas} cbs={cbs} /></>
           )}
 
           {modo === "usar" && status === "ok" && listaPav.length === 0 && (

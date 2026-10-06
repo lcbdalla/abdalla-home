@@ -145,6 +145,91 @@ Deno.serve(async (req) => {
     for (const id of ["switch.plug_mesa_de_som_behring", "number.channel_1_fader", "switch.channel_1_on", "number.channel_4_fader", "switch.channel_4_on", "number.main_fader", "switch.main_on"]) cadastrados.add(id);
   }
 
+  // 2b) Programações (Configuração, só o gestor): viram automações de verdade no Home Assistant
+  //     (id "abdalla_app_…"), então rodam mesmo com o app fechado. O app manda uma descrição
+  //     simples; a automação é montada AQUI, só com aparelhos cadastrados e comandos permitidos.
+  if (body?.acao === "programacao") {
+    if (p.pode_gerir_controle !== true) return json({ error: "Só quem configura o Controle pode mexer nas programações." }, 403);
+    const ha = async (caminho: string, metodo = "GET", corpo?: unknown) => {
+      const r = await fetch(base + caminho, { method: metodo, headers: cabecalho, body: corpo === undefined ? undefined : JSON.stringify(corpo) });
+      if (r.status === 401 || r.status === 403) throw new Error("O token do Home Assistant precisa ser de um usuário administrador para criar programações.");
+      if (!r.ok) throw new Error(`O Home Assistant recusou (${r.status}): ${(await r.text()).slice(0, 200)}`);
+      return r.headers.get("content-type")?.includes("json") ? r.json() : null;
+    };
+    const ID = /^abdalla_app_[a-z0-9]{6,32}$/;
+    try {
+      if (body.op === "listar") {
+        const estados: any[] = await ha("/api/states");
+        const minhas = estados.filter((x) => String(x.entity_id).startsWith("automation.") && ID.test(String(x.attributes?.id || "")));
+        const lista = await Promise.all(minhas.map(async (x) => {
+          const c = await ha(`/api/config/automation/config/${x.attributes.id}`).catch(() => null);
+          return { id: x.attributes.id, entity_id: x.entity_id, ativo: x.state === "on", ultima: x.attributes?.last_triggered || null, spec: c?.variables?.app_spec || null, nome: x.attributes?.friendly_name || "" };
+        }));
+        return json({ lista });
+      }
+      if (body.op === "apagar") {
+        if (!ID.test(String(body.id || ""))) return json({ error: "Programação inválida." }, 400);
+        await ha(`/api/config/automation/config/${body.id}`, "DELETE");
+        return json({ ok: true });
+      }
+      if (body.op === "ativar") {
+        const estados: any[] = await ha("/api/states");
+        const alvo = estados.find((x) => x.entity_id === body.entity_id && ID.test(String(x.attributes?.id || "")));
+        if (!alvo) return json({ error: "Programação não encontrada." }, 404);
+        await ha(`/api/services/automation/${body.ativo ? "turn_on" : "turn_off"}`, "POST", { entity_id: alvo.entity_id });
+        return json({ ok: true });
+      }
+      if (body.op === "salvar") {
+        const s = body.spec || {};
+        const id = s.id && ID.test(s.id) ? s.id : "abdalla_app_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+        const nome = String(s.nome || "").trim().slice(0, 80);
+        if (!nome) return json({ error: "Dê um nome à programação." }, 400);
+        const g = s.gatilho || {};
+        const DIAS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+        let triggers: unknown[], conditions: unknown[] = [];
+        if (g.tipo === "horario") {
+          if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(g.hora || ""))) return json({ error: "Horário inválido." }, 400);
+          triggers = [{ trigger: "time", at: `${g.hora}:00` }];
+          const dias = (Array.isArray(g.dias) ? g.dias : []).filter((d: string) => DIAS.includes(d));
+          if (dias.length && dias.length < 7) conditions = [{ condition: "time", weekday: dias }];
+        } else if (g.tipo === "sensor") {
+          const valor = Number(g.valor);
+          if (!/^sensor\.[a-z0-9_]+$/.test(String(g.entity_id || "")) || !Number.isFinite(valor)) return json({ error: "Escolha o sensor e o valor." }, 400);
+          triggers = [{ trigger: "numeric_state", entity_id: g.entity_id, [g.comparacao === "abaixo" ? "below" : "above"]: valor }];
+        } else return json({ error: "Escolha quando a programação acontece." }, 400);
+        const acoes = Array.isArray(s.acoes) ? s.acoes : [];
+        if (!acoes.length) return json({ error: "Escolha pelo menos um aparelho." }, 400);
+        const actions: unknown[] = [];
+        for (const a of acoes) {
+          const e = String(a?.entity_id || "");
+          if (!ENTIDADE.test(e) || !cadastrados.has(e)) return json({ error: `Aparelho não cadastrado: ${e}` }, 400);
+          const dom = e.split(".")[0];
+          if (dom === "cover" && ["abrir", "fechar"].includes(a.acao)) {
+            const abrir = (a.acao === "abrir") !== (a.inverter === true); // flap: comando físico invertido
+            actions.push({ action: abrir ? "cover.open_cover" : "cover.close_cover", target: { entity_id: e } });
+          } else if (dom === "climate" && a.acao === "ligar") {
+            actions.push({ action: "climate.set_temperature", target: { entity_id: e }, data: { temperature: 22, hvac_mode: "cool" } });
+          } else if (dom === "climate" && a.acao === "desligar") {
+            actions.push({ action: "climate.turn_off", target: { entity_id: e } });
+          } else if (["light", "switch", "fan", "input_boolean"].includes(dom) && ["ligar", "desligar"].includes(a.acao)) {
+            actions.push({ action: a.acao === "ligar" ? "homeassistant.turn_on" : "homeassistant.turn_off", target: { entity_id: e } });
+          } else return json({ error: `Comando não permitido para ${e}.` }, 400);
+          actions.push({ delay: { milliseconds: 400 } }); // um de cada vez, como o app faz
+        }
+        actions.pop();
+        const spec = { ...s, id, nome };
+        await ha(`/api/config/automation/config/${id}`, "POST", {
+          id, alias: `App · ${nome}`, description: "Criada pelo app Abdalla Home (Configuração > Programações). Edite pelo app.",
+          mode: "single", triggers, conditions, actions, variables: { app_spec: spec },
+        });
+        return json({ ok: true, id });
+      }
+      return json({ error: "Pedido inválido." }, 400);
+    } catch (e) {
+      return json({ error: (e as Error).message }, 502);
+    }
+  }
+
   // 3) Alarme com a senha guardada no servidor (tabela alarme_senha): arma/desarma sem a senha
   //    passar pelo celular. SÓ administrador: quem tem apenas o menu ⋮ precisa digitar a senha
   //    (vai pelo "servico" abaixo, com o código que a pessoa sabe).
