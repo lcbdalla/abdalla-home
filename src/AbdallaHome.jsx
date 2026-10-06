@@ -2960,7 +2960,7 @@ const ICONE_POR_NOME = [
   [/hidro/, Bubbles, "lago"], [/aquec/, Flame, "ambar"], [/coifa/, AirVent, "lago"], [/chafariz/, IconeChafariz, "lago"], [/abajur/, LampDesk, "ambar", true],
 ];
 
-// Vista "Áreas" (arrastar o dedo para a esquerda): uma linha por cômodo com atalhos.
+// Ícone de cada cômodo (no lugar do ⏻ do título).
 const ICONE_COMODO = [
   [/\btv\b|cinema/, Tv, "#e8912d"], [/living/, Sofa, "#e5484d"], [/lavabo|banheiro|\bwc\b/, Bath, "#3fb7c9"],
   [/brinquedo/, ToyBrick, "#9b6bd6"], [/cozinha|gourmet/, CookingPot, "#e0b43a"], [/despensa/, Refrigerator, "#c47e4a"],
@@ -2985,9 +2985,7 @@ function categoriaAtalho(x) {
   const v = visualEquip(x);
   return v.Icon === IconeChafariz ? "chafariz" : ICONES_PISCINA.has(v.Icon) ? "piscina" : v.luz ? "luz" : null;
 }
-const ehLuzCartao = (x) => categoriaAtalho(x) === "luz";
-const ehSomCartao = (x) => x.tipo === "alexa" || x.tipo === "tv" || !!x.receiver || !!x.zonasComodo;
-// 3ª vista ("Ícones"): o nome dos quartos sem "Quarto" e um atalho por tipo de aparelho do cômodo.
+// Título do cômodo: o nome dos quartos sem "Quarto" e um atalho por tipo de aparelho do cômodo.
 const semQuarto = (nome) => String(nome || "").replace(/^quarto\s+/i, "");
 const ehPortao = (x) => /port[aã]o|gate/i.test(`${x.nome} ${x.id}`);
 const ehCoifa = (x) => x.tipo === "grupoBotoes" && /coifa/.test(norm(`${x.nome} ${x.id}`));
@@ -4530,12 +4528,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     } catch { /* sem storage */ }
     return { pavs: [], amb: null };
   });
-  // Vista "Áreas" (uma linha por cômodo) ou a padrão: troca arrastando o dedo na tela.
-  // 0 = padrão, 1 = áreas (uma linha por cômodo), 2 = ícones (padrão com atalhos por tipo de aparelho).
-  const VISTAS = ["padrao", "areas", "icones"];
-  const [vista, setVistaSt] = useState(() => { try { return Math.max(0, VISTAS.indexOf(localStorage.getItem("controleVista"))); } catch { return 0; } });
-  const setVista = (v) => { setVistaSt(v); try { localStorage.setItem("controleVista", VISTAS[v]); } catch { /* ok */ } };
-  const vistaAreas = vista === 1, vistaIcones = vista === 2;
   const [, setTicCoifa] = useState(0); // redesenha os atalhos quando a coifa muda
   useEffect(() => { const f = () => setTicCoifa((t) => t + 1); window.addEventListener("botoesEstado", f); return () => window.removeEventListener("botoesEstado", f); }, []);
   const usoRef = useRef(Date.now());
@@ -5343,32 +5335,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const aviso = usarProxy ? "Câmera disponível só para a família (conexão direta com a casa)." : !entsVis[c.id] ? "Câmera não encontrada no Home Assistant." : null;
     return { ...c, aviso, url: !usarProxy && tk ? `${baseUrlRef.current}/api/camera_proxy/${c.id}?token=${tk}${c.largura ? `&width=${c.largura}` : ""}` : null };
   });
-  // Gesto na tela toda do Controle (não só nos cartões): guarda o último ponto no touchmove, porque
-  // quando o navegador assume a rolagem o touchend pode não trazer a posição final.
-  const gestoRef = useRef(null);
-  gestoRef.current = { pode: modo === "usar" && !editando && !arrPav && !arrAmb, vista, setVista };
-  useEffect(() => {
-    let i = null;
-    const ini = (ev) => {
-      const t = ev.touches[0];
-      // Não troca a vista ao arrastar barrinhas (volume, brilho) nem dentro dos popups.
-      i = ev.touches.length === 1 && !ev.target.closest?.("input, [data-sem-gesto]") ? { x: t.clientX, y: t.clientY, ux: t.clientX, uy: t.clientY, t: Date.now() } : null;
-    };
-    const mov = (ev) => { if (i && ev.touches.length === 1) { i.ux = ev.touches[0].clientX; i.uy = ev.touches[0].clientY; } else i = null; };
-    const fim = () => {
-      const a = i, g = gestoRef.current; i = null;
-      if (!a || !g.pode || Date.now() - a.t > 900) return;
-      const dx = a.ux - a.x, dy = a.uy - a.y;
-      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      if (dx < 0 && g.vista < 2) g.setVista(g.vista + 1);
-      else if (dx > 0 && g.vista > 0) g.setVista(g.vista - 1);
-    };
-    const op = { passive: true };
-    document.addEventListener("touchstart", ini, op); document.addEventListener("touchmove", mov, op);
-    document.addEventListener("touchend", fim, op); document.addEventListener("touchcancel", fim, op);
-    return () => { document.removeEventListener("touchstart", ini, op); document.removeEventListener("touchmove", mov, op); document.removeEventListener("touchend", fim, op); document.removeEventListener("touchcancel", fim, op); };
-  }, []);
-  // 3ª vista: um atalho por tipo de aparelho do cômodo. Tocar: algum ligado → desliga os ligados;
+  // Um atalho por tipo de aparelho do cômodo. Tocar: algum ligado → desliga os ligados;
   // nenhum ligado → liga todos (um de cada vez). Som/TV seguem a mesma regra do cartão (dividir etc.).
   const alternarMidia = (x, ligar) => {
     if (x.tipo === "alexa") { if (!x.spotify) { abrirSpotify(); return; } if (x.connect) alternarUso(x, ligar, () => ligarAlexa(x, ligar, enviar)); return; }
@@ -5408,61 +5375,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         } };
     }).filter(Boolean).reverse(); // a luz fica na ponta direita
   };
-  // Vista "Áreas": título do nível com uma linha, e cada cômodo numa linha com atalhos (ar, som,
-  // fechadura, temperatura e luzes). Tocar na linha abre os cartões do cômodo logo abaixo.
-  const vistaDeAreas = () => listaPav.map((pav) => (
-    <div key={pav.id} style={{ marginBottom: 14 }}>
-      {!pav.semCaixa && (
-        <div className="flex items-center gap-2" style={{ padding: "6px 6px 8px" }}>
-          <Home size={18} style={{ color: C.terra, flexShrink: 0 }} />
-          <span style={{ fontWeight: 800, fontSize: 16.5, color: C.terra, flexShrink: 0 }}>{pav.nome}</span>
-          <span style={{ flex: 1, height: 5, borderRadius: 999, background: alfa(C.cinzaClaro, 35), marginLeft: 8 }} />
-        </div>
-      )}
-      {pav.soltos.length > 0 && <div style={{ padding: "0 2px 8px" }}><GradeEquip itens={pav.soltos} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} /></div>}
-      <div className="flex flex-col" style={{ gap: 8 }}>
-        {pav.comodos.map((c) => {
-          const aberto = abertos.amb === c.id, todos = achatar(c.itens);
-          const { Icon, cor } = iconeComodo(c.nome);
-          const ares = todos.filter((x) => categoriaAtalho(x) === "ar").slice(0, 2);
-          const som = todos.find((x) => ehSomCartao(x) && estaLigado(x)) || todos.find(ehSomCartao);
-          const fech = todos.find((x) => x.tipo === "fechadura" && x.disponivel);
-          const luzes = todos.filter((x) => ehLuzCartao(x) && x.disponivel), luzAcesa = luzes.some(estaLigado);
-          const temp = ares.map((x) => x.attributes?.current_temperature).find((v) => v != null)
-            ?? todos.find((x) => x.tipo === "sensor" && /°c/i.test(x.attributes?.unit_of_measurement || "") && !isNaN(Number(x.state)))?.state;
-          const aceso = contarLigados(c.itens).on > 0;
-          const abrir = () => { if (!aberto) alternarAmb(c.id, pav.id); };
-          const alternarLuzes = () => (luzAcesa ? luzes.filter(estaLigado) : luzes).forEach((x) => enviar("homeassistant", luzAcesa ? "turn_off" : "turn_on", x.id));
-          return (
-            <div key={c.id} data-comodo={c.id} style={{ background: "var(--c-comodo, #fff)", borderRadius: aberto ? 22 : 999, border: `1px solid ${aceso ? alfa(C.ambar, 45) : C.linha}`, boxShadow: C.comodoSombra, transition: "border-color .25s" }}>
-              <div role="button" tabIndex={0} onClick={() => alternarAmb(c.id, pav.id)} onKeyDown={(ev) => { if (ev.key === "Enter") alternarAmb(c.id, pav.id); }}
-                className="flex items-center" style={{ gap: 6, padding: "7px 8px", cursor: "pointer", minHeight: 52 }}>
-                <span aria-hidden="true" style={{ width: 38, height: 38, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: aceso ? alfa(cor, 16) : alfa(C.cinzaClaro, 16), color: aceso ? cor : C.terra, transition: "background .25s, color .25s" }}><Icon size={19} strokeWidth={2.2} /></span>
-                <span className="flex-1 min-w-0 truncate" style={{ fontWeight: 700, fontSize: 14.5, color: C.terra, marginLeft: 4 }}>{c.nome}</span>
-                {ares.map((x) => (
-                  <BolinhaArea key={x.dbId} Icon={Snowflake} cor={AZUL_AR} aceso={estaLigado(x)} rot={`${estaLigado(x) ? "Desligar" : "Ligar"} ${x.nome || "ar"}`}
-                    onClick={() => (estaLigado(x) ? desligarAr(x, enviar) : ligarAr(x, enviar))} />
-                ))}
-                {som && <BolinhaArea Icon={visualEquip(som).Icon} cor={C.lago} aceso={estaLigado(som)} rot={`Abrir ${som.nome || "som"}`} onClick={abrir} />}
-                {fech && <BolinhaArea Icon={fech.state === "unlocked" ? LockOpen : Lock} cor={fech.state === "unlocked" ? C.vermelho : LAGO} cheio rot={fech.state === "unlocked" ? "Fechadura aberta" : "Fechadura trancada"} onClick={abrir} />}
-                {temp != null && (
-                  <span className="flex items-center" style={{ gap: 2, flexShrink: 0, fontSize: 12.5, fontWeight: 600, color: C.cinza, padding: "0 2px", fontVariantNumeric: "tabular-nums" }}>
-                    <Thermometer size={14} />{Number(temp).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}°C
-                  </span>
-                )}
-                {luzes.length > 0 && <BolinhaArea Icon={Lightbulb} cor={C.ambar} aceso={luzAcesa} preenche rot={luzAcesa ? `Apagar as luzes de ${c.nome}` : `Acender as luzes de ${c.nome}`} onClick={alternarLuzes} />}
-              </div>
-              {aberto && (
-                <div style={{ borderTop: `1px solid ${C.linha}`, padding: "12px 12px 6px" }}>
-                  <GradeEquip itens={c.itens} enviar={enviar} expandidos={expandidos} toggleExpand={toggleExpand} />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  ));
   const topoDoCabecalho = () => setTopoPortao(Math.max(0, Math.round(cabRef.current?.getBoundingClientRect().bottom || 0)) + 6);
   return (
     // overflowX "clip" (e não "hidden"): "hidden" impediria o cabeçalho de ficar fixo no alto.
@@ -5558,15 +5470,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         </header>
 
         <main className="pt-3" style={{ paddingLeft: 8, paddingRight: 8 }}>
-          {/* Qual vista está na tela (arrastar o dedo troca; tocar também). */}
-          {modo === "usar" && status === "ok" && listaPav.length > 0 && (
-            <div className="flex justify-center" style={{ gap: 6, marginBottom: 8 }}>
-              {["Vista padrão", "Vista em áreas", "Vista com ícones"].map((rot, v) => (
-                <button key={v} onClick={() => setVista(v)} aria-label={rot}
-                  style={{ width: vista === v ? 18 : 7, height: 7, borderRadius: 999, border: "none", padding: 0, background: vista === v ? C.pasto : alfa(C.cinzaClaro, 45), transition: "width .2s" }} />
-              ))}
-            </div>
-          )}
           {status === "carregando" && <div className="text-center py-16" style={{ color: C.cinza }}>Conectando ao Home Assistant…</div>}
           {status === "erro" && (
             <div style={{ background: C.vermelhoClaro, border: `1px solid ${alfa(C.vermelho, 33)}`, borderRadius: 14 }} className="p-4 mt-4">
@@ -5593,8 +5496,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               </div>
             ) : null
           )}
-          {modo === "usar" && status === "ok" && vistaAreas && vistaDeAreas()}
-          {modo === "usar" && status === "ok" && !vistaAreas && (arrPav
+          {modo === "usar" && status === "ok" && (arrPav
             ? [...arrPav.ordem.map((id) => listaPav.find((x) => x.id === id)).filter(Boolean), ...listaPav.filter((x) => !arrPav.ordem.includes(x.id))]
             : listaPav).map((pav) => {
             const naMao = arrPav?.id === pav.id;
@@ -5628,11 +5530,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                     onContextMenu={(ev) => { if (souGestor || usarPessoal) ev.preventDefault(); if (souGestor && !usarPessoal) pegarAmb(); }}
                     onClickCapture={(ev) => { if (ambLongo.current || menuLongo.current) { ev.stopPropagation(); ev.preventDefault(); } }}
                     style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: arrAmb ? "none" : "auto" }}>
-                    {/* Vista com ícones: ícone do cômodo no lugar do ⏻ (mesmo clique), sem "Quarto" no nome,
-                        atalhos por tipo de aparelho e a música só no título do nível. */}
-                    <CabecalhoNivel nome={vistaIcones ? semQuarto(c.nome) : c.nome} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
-                      itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)} musica={vistaIcones ? null : musicaDe(c.itens, enviar)}
-                      iconeAmb={vistaIcones ? iconeComodo(c.nome) : undefined} atalhos={vistaIcones ? atalhosDe(c.itens) : undefined} />
+                    {/* Ícone do cômodo no lugar do ⏻ (mesmo clique), sem "Quarto" no nome, atalhos por tipo
+                        de aparelho; a música fica só no título do nível. */}
+                    <CabecalhoNivel nome={semQuarto(c.nome)} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
+                      itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)}
+                      iconeAmb={iconeComodo(c.nome)} atalhos={atalhosDe(c.itens)} />
                   </div>
                   {abertoC && (
                     <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
