@@ -2115,6 +2115,62 @@ function PortaModal({ ent, enviar, onFechar, cameras = [], topo }) {
   );
 }
 
+// Pinçar para dar zoom (até 5x) na imagem da câmera; com zoom, um dedo arrasta; dois toques
+// rápidos voltam ao normal. Sem zoom, um dedo continua rolando a tela.
+function ZoomPinca({ children }) {
+  const ref = useRef(null), alvo = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    let z = { s: 1, x: 0, y: 0 }, ini = null, ultimoToque = 0;
+    const aplicar = () => { alvo.current.style.transform = `translate(${z.x}px, ${z.y}px) scale(${z.s})`; el.style.touchAction = z.s > 1 ? "none" : "pan-y"; };
+    const limitar = () => {
+      const mx = (el.clientWidth * (z.s - 1)) / 2, my = (el.clientHeight * (z.s - 1)) / 2;
+      z.x = Math.max(-mx, Math.min(mx, z.x)); z.y = Math.max(-my, Math.min(my, z.y));
+    };
+    // Ponto do toque em relação ao centro da imagem.
+    const rel = (x, y) => { const r = el.getBoundingClientRect(); return { x: x - r.left - r.width / 2, y: y - r.top - r.height / 2 }; };
+    const doisDedos = (t) => ({ d: Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY), m: rel((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2) });
+    const umDedo = (t) => ({ p: rel(t.clientX, t.clientY), x: z.x, y: z.y });
+    const inicio = (ev) => {
+      if (ev.touches.length === 2) { ev.preventDefault(); ini = { ...doisDedos(ev.touches), s: z.s, x: z.x, y: z.y }; return; }
+      if (ev.touches.length !== 1) return;
+      const agora = Date.now();
+      if (agora - ultimoToque < 300 && z.s > 1) { z = { s: 1, x: 0, y: 0 }; aplicar(); ini = null; ultimoToque = 0; return; }
+      ultimoToque = agora;
+      ini = z.s > 1 ? umDedo(ev.touches[0]) : null;
+    };
+    const mover = (ev) => {
+      if (!ini) return;
+      if (ev.touches.length === 2 && ini.d) {
+        ev.preventDefault();
+        const { d, m } = doisDedos(ev.touches);
+        const s2 = Math.max(1, Math.min(5, ini.s * (d / ini.d)));
+        // O ponto entre os dedos fica parado na imagem enquanto o zoom muda.
+        z = { s: s2, x: m.x - (s2 / ini.s) * (ini.m.x - ini.x), y: m.y - (s2 / ini.s) * (ini.m.y - ini.y) };
+        limitar(); aplicar();
+      } else if (ev.touches.length === 1 && ini.p) {
+        ev.preventDefault();
+        const p2 = rel(ev.touches[0].clientX, ev.touches[0].clientY);
+        z.x = ini.x + p2.x - ini.p.x; z.y = ini.y + p2.y - ini.p.y;
+        limitar(); aplicar();
+      }
+    };
+    const fim = (ev) => {
+      if (z.s < 1.05) { z = { s: 1, x: 0, y: 0 }; aplicar(); }
+      ini = ev.touches.length === 1 && z.s > 1 ? umDedo(ev.touches[0]) : null; // tirou um dos dois dedos: segue arrastando
+    };
+    const op = { passive: false };
+    el.addEventListener("touchstart", inicio, op); el.addEventListener("touchmove", mover, op);
+    el.addEventListener("touchend", fim); el.addEventListener("touchcancel", fim);
+    return () => { el.removeEventListener("touchstart", inicio, op); el.removeEventListener("touchmove", mover, op); el.removeEventListener("touchend", fim); el.removeEventListener("touchcancel", fim); };
+  }, []);
+  return (
+    <div ref={ref} style={{ width: "100%", height: "100%", overflow: "hidden", touchAction: "pan-y" }}>
+      <div ref={alvo} style={{ width: "100%", height: "100%", transformOrigin: "center center", willChange: "transform" }}>{children}</div>
+    </div>
+  );
+}
+
 // Câmera "ao vivo" leve para o celular: uma foto nova da câmera a cada ~1 s (camera_proxy).
 // A foto seguinte só troca quando terminou de carregar (sem piscar); para quando o popup fecha
 // ou o app vai para segundo plano. O token da câmera muda a cada ~5 min e a URL acompanha.
@@ -2164,7 +2220,7 @@ function CameraAoVivo({ cam, topo, ms = CAMERA_MS }) {
     <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "16 / 9", alignSelf: "center",
       width: `min(100%, calc(${topo != null ? `(100dvh - ${topo}px - 300px)` : "(92dvh - 280px)"} / 2 * 16 / 9))` }}>
       {ok
-        ? <img src={src} alt={cam.nome} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        ? <ZoomPinca><img src={src} alt={cam.nome} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></ZoomPinca>
         : <div className="flex items-center justify-center" style={{ width: "100%", height: "100%", color: "#ffffffaa", fontSize: 13.5, padding: 16, textAlign: "center" }}>{cam.aviso || (falhou ? "Câmera sem imagem agora." : "Carregando a câmera…")}</div>}
       <span style={{ position: "absolute", left: 10, top: 10, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
         {ok && <span className="ah-pisca" style={{ width: 7, height: 7, borderRadius: 999, background: "#e5484d" }} />}{cam.nome}
@@ -2227,9 +2283,11 @@ function CameraLive({ cam, pedirHA, assinarHA, baseUrl }) {
   }, [cam.id]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "16 / 9", width: "100%" }}>
-      <video ref={ref} muted playsInline autoPlay onPlaying={() => { tocandoRef.current = true; setTocando(true); }}
-        onError={() => setErro("Não deu para abrir o vídeo ao vivo. Use o 3 fps.")}
-        style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+      <ZoomPinca>
+        <video ref={ref} muted playsInline autoPlay onPlaying={() => { tocandoRef.current = true; setTocando(true); }}
+          onError={() => setErro("Não deu para abrir o vídeo ao vivo. Use o 3 fps.")}
+          style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+      </ZoomPinca>
       {!tocando && (
         <div className="flex items-center justify-center" style={{ position: "absolute", inset: 0, color: "#ffffffaa", fontSize: 13.5, padding: 16, textAlign: "center" }}>
           {erro || (lento ? "Conectando… esta câmera leva uns 15 segundos para abrir." : "Abrindo o vídeo ao vivo…")}
