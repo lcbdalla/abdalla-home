@@ -16,13 +16,10 @@ document.addEventListener('click', (e) => {
   if (b && !b.disabled) { try { navigator.vibrate?.(10) } catch { /* sem vibração */ } }
 }, true)
 
-// Tela "estreita" (celular com zoom de tela ou fonte grande): o app é montado como se tivesse 360 px
-// de largura e reduzido para caber, em vez de apertar e quebrar os cartões.
-// ponytail: CSS zoom no #root; arrastar cartões com zoom < 1 pode desalinhar um pouco o cartão na mão.
-const LARGURA_MIN = 360
-const caber = () => { const r = document.getElementById('root'); if (r) r.style.zoom = window.innerWidth < LARGURA_MIN ? String(window.innerWidth / LARGURA_MIN) : '' }
-caber()
-window.addEventListener('resize', caber)
+// Tela "estreita" (celular com zoom de tela ou fonte grande): o app é montado com 360 px de largura
+// e o próprio navegador reduz para caber, em vez de apertar e quebrar os cartões. Pelo viewport (e não
+// por CSS zoom) para os popups, a rolagem e o arrastar continuarem com as medidas certas.
+if (window.innerWidth < 360) document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=360')
 
 // Registra o service worker (necessário para "Instalar app"); só no site publicado.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

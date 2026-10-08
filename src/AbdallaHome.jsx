@@ -2441,23 +2441,23 @@ function ArteTempo({ Icon, size = 72 }) {
 // Botão do cabeçalho: ícone do céu + temperatura da estação.
 function BotaoTempo() {
   const cl = useClima();
-  const [aberto, setAberto] = useState(false);
+  const [aberto, setAberto] = useState(null); // null = fechado; número = onde o popup começa (logo abaixo do cabeçalho)
   if (!cl || !cl.s.temp) return null;
   const cond = condicaoTempo(cl);
   return (
     <>
-      <button onClick={() => setAberto(true)} title={`${cond.texto} · toque para ver o tempo`} aria-label={`Tempo: ${cond.texto}, ${fmtC(cl.s.temp, 0)} graus`}
+      <button onClick={(ev) => setAberto(Math.round(ev.currentTarget.closest("header")?.getBoundingClientRect().bottom || 0) + 6)} title={`${cond.texto} · toque para ver o tempo`} aria-label={`Tempo: ${cond.texto}, ${fmtC(cl.s.temp, 0)} graus`}
         className="flex items-center" style={{ background: "#ffffff22", borderRadius: 10, padding: "6px 10px", gap: 6, color: "#fff", fontWeight: 800, fontSize: 15, fontVariantNumeric: "tabular-nums" }}>
         <cond.Icon size={19} /> {fmtC(cl.s.temp, 0)}°
       </button>
-      {aberto && <TempoModal cl={cl} cond={cond} onFechar={() => setAberto(false)} />}
+      {aberto != null && <TempoModal cl={cl} cond={cond} topo={aberto} onFechar={() => setAberto(null)} />}
     </>
   );
 }
 
 const nivelUV = (uv) => (uv == null ? null : uv < 3 ? ["Baixo", "#3aa35b"] : uv < 6 ? ["Moderado", "#d8a32a"] : uv < 8 ? ["Alto", "#e2732f"] : uv < 11 ? ["Muito alto", "#d4483b"] : ["Extremo", "#8b4bc4"]);
 
-function TempoModal({ cl, cond, onFechar }) {
+function TempoModal({ cl, cond, topo, onFechar }) {
   const s = cl.s;
   const graus = numC(s.direcao);
   const uv = numC(s.uv), nUV = nivelUV(uv);
@@ -2479,7 +2479,7 @@ function TempoModal({ cl, cond, onFechar }) {
   const Grande = ({ v, u }) => (<div style={{ fontSize: 22, fontWeight: 800, color: C.terra, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{v}<span style={{ fontSize: 13, fontWeight: 700, color: C.cinza, marginLeft: 3 }}>{u}</span></div>);
   const Linha = ({ r, v }) => (<div className="flex items-center justify-between" style={{ fontSize: 13.5, padding: "3px 0" }}><span style={{ color: C.cinza }}>{r}</span><b style={{ color: C.terra, fontVariantNumeric: "tabular-nums" }}>{v}</b></div>);
   return (
-    <Sheet titulo="Tempo no rancho" onFechar={onFechar}>
+    <Sheet titulo="Tempo no rancho" onFechar={onFechar} topo={topo}>
       {/* Destaque: céu, temperatura e sensação, com fundo na cor do tempo. */}
       <div style={{ background: FUNDOS_TEMPO[cond.fundo], color: "#fff", borderRadius: 20, padding: "16px 18px", marginBottom: 10, boxShadow: "0 14px 30px -18px rgba(0,0,0,.6)" }}>
         <div className="flex items-center gap-3">
@@ -6443,7 +6443,7 @@ function Sheet({ titulo, onFechar, children, topo }) {
       <div onClick={(e) => e.stopPropagation()} style={{ background: C.bg, width: "100%", maxWidth: 460, borderTopLeftRadius: 22, borderTopRightRadius: 22,
         ...(cheio ? { height: `calc(100dvh - ${topo}px)`, display: "flex", flexDirection: "column", overflow: "hidden" } : { maxHeight: "92dvh", overflowY: "auto" }) }}>
         <div style={{ position: "sticky", top: 0, background: C.bg, padding: "16px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2, flexShrink: 0 }}><div className="font-bold text-lg">{titulo}</div><button onClick={onFechar} style={{ background: C.card, borderRadius: 999, padding: 7, border: `1px solid ${C.linha}` }}><X size={18} /></button></div>
-        <div className="px-4 pb-6" style={cheio ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : undefined}>{children}</div>
+        <div className="px-4 pb-6" style={cheio ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflowY: "auto" } : undefined}>{children}</div>
       </div>
     </div>
   );
