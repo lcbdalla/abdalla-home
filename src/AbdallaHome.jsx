@@ -2929,9 +2929,7 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
   const corNome = grande ? "var(--c-nivelTexto)" : C.terra, corSub = grande ? "var(--c-nivelSub)" : C.cinza;
   const corAceso = grande ? "var(--c-nivelAceso)" : C.ambarTexto, corApagado = grande ? "var(--c-nivelSub)" : C.cinzaClaro;
   return (
-    // Com atalhos: se o nome não couber inteiro na linha (tela estreita ou letra grande no celular),
-    // os atalhos e o contador descem para uma 2ª linha em vez de cortar o nome.
-    <div className="flex items-center" style={{ gap: grande ? 9 : 10, ...(atalhos?.length ? { flexWrap: "wrap", rowGap: 4 } : {}) }}>
+    <div className="flex items-center" style={{ gap: grande ? 9 : 10 }}>
       {total > 0 ? (
         <button onClick={() => aceso && onDesligarTudo(itens)} disabled={!aceso} aria-label={aceso ? `Desligar tudo em ${nome}` : `Nada ligado em ${nome}`}
           style={{ width: tam, height: tam, borderRadius: grande ? 11 : 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none",
@@ -2944,7 +2942,7 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
       ) : grande ? (
         <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: corApagado }}><Layers size={17} /></span>
       ) : null}
-      <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex flex-col justify-center text-left" style={atalhos?.length ? { ...toque, flex: "1 1 auto" } : toque}>
+      <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex flex-col justify-center text-left" style={toque}>
         <span className="truncate" style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: corNome, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2 }}>{nome}</span>
         {sub && (
           <span className="truncate" style={{ fontSize: 12, color: corSub, marginTop: 2 }}>
@@ -2953,7 +2951,7 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
         )}
       </button>
       {atalhos?.length > 0 && (
-        <div className="flex items-center" style={{ gap: 4, flexShrink: 0, marginLeft: "auto" }}>
+        <div className="flex items-center" style={{ gap: 4, flexShrink: 0 }}>
           {atalhos.map((a) => <BolinhaArea key={a.key} tam={30} Icon={a.Icon} cor={a.cor} aceso={a.aceso} preenche={a.preenche} rot={a.rot} onClick={a.onClick} />)}
         </div>
       )}

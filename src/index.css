@@ -43,6 +43,13 @@
   --c-cartaoOff: #111713; /* cartão desligado: um pouco mais claro que o preto do cômodo */
 }
 
+/* Letra do celular aumentada não muda o tamanho do texto do app (o layout fica igual em todos). */
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 /* Reset minimo. O layout/cores do app vem de estilos inline (paleta acima). */
 html,
 body,
