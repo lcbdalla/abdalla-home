@@ -42,8 +42,8 @@ const ehMeuSpotify = (s: any, nome: string) => String(s?.entity_id || "").starts
 // Aparelhos que vêm junto com um cadastrado: o cartão "TV Sala" (Chromecast da TV) comanda a
 // Android TV, o controle remoto dela e o receiver Denon (volume da sala).
 const VINCULADOS: Record<string, string[]> = {
-  "media_player.tv_sala": ["media_player.smarttv_4k_ffm", "remote.smarttv_4k_ffm", "media_player.denon_avr_s770h"],
-  "media_player.smarttv_4k_ffm": ["remote.smarttv_4k_ffm", "media_player.denon_avr_s770h"],
+  "media_player.tv_sala": ["media_player.smarttv_4k_ffm", "remote.smarttv_4k_ffm", "media_player.denon_avr_s770h", "remote.broadlink_sala_tv"],
+  "media_player.smarttv_4k_ffm": ["remote.smarttv_4k_ffm", "media_player.denon_avr_s770h", "remote.broadlink_sala_tv"],
   "lock.fechadura_porta_frente": ["sensor.fechadura_porta_frente_battery"],
 };
 
@@ -288,6 +288,10 @@ Deno.serve(async (req) => {
     }
 
     const dados = (body.data && typeof body.data === "object" && !Array.isArray(body.data)) ? { ...body.data } : {};
+    // Broadlink da sala: pelo app, só o infravermelho de ligar a TV (a Hisense fica fora da rede desligada).
+    if (entity === "remote.broadlink_sala_tv" && !(service === "send_command" && dados.device === "liga_tv" && dados.command === "tv_on")) {
+      return json({ error: "Comando não permitido para este aparelho." }, 403);
+    }
     for (const k of ["entity_id", "device_id", "area_id", "floor_id", "label_id", "target"]) delete dados[k]; // alvo travado
     const r = await fetch(`${base}/api/services/${domain}/${service}`, {
       method: "POST",

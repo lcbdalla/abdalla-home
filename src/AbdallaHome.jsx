@@ -1810,7 +1810,16 @@ function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
    O cartão "TV Sala" (Chromecast da TV) comanda a Android TV de verdade: liga/desliga por ela e
    os botões vão pelo remote.send_command (teclas Android). Volume e mudo vão para o receiver Denon,
    por onde sai o som da sala. As mesmas ligações ficam liberadas no intermediário (controle-proxy). */
-const TV_SALA = { nome: "TV Sala", tv: "media_player.smarttv_4k_ffm", remote: "remote.smarttv_4k_ffm", som: "media_player.denon_avr_s770h" };
+// A Hisense corta a rede no standby (fica "unavailable"): para LIGAR vai o infravermelho do Broadlink
+// da sala (comando aprendido pelo técnico); para desligar, pela rede. Ligada = smarttv_4k_ffm "on".
+const TV_SALA = { nome: "TV Sala", tv: "media_player.smarttv_4k_ffm", remote: "remote.smarttv_4k_ffm", som: "media_player.denon_avr_s770h",
+  ir: { entity: "remote.broadlink_sala_tv", device: "liga_tv", command: "tv_on" } };
+// Liga a TV: pelo IR quando existe (o IR costuma ser liga/desliga, então só se ela estiver desligada).
+function ligarTv(cfg, ent, enviar) {
+  if (tvLigada(ent)) return;
+  if (cfg.ir) enviar("remote", "send_command", cfg.ir.entity, { device: cfg.ir.device, command: cfg.ir.command });
+  else enviar("media_player", "turn_on", cfg.tv);
+}
 const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA };
 const TVS_COM_CONTROLE = [TV_SALA];
 const tvLigada = (v) => !!v && !["off", "standby", "unavailable", "unknown"].includes(v.state);
@@ -1855,7 +1864,7 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
           {/* Mesmo botão liga e desliga: com a TV desligada ele liga (e o controle fica aberto). */}
           {tvLigada(ent)
             ? <BotaoAcao icon={Power} label="Desligar" cor={C.vermelho} onClick={() => { enviar("media_player", "turn_off", cfg.tv); onFechar(); }} />
-            : <BotaoAcao icon={Power} label="Ligar" cor={C.pasto} disabled={ind} onClick={() => { toque(); enviar("media_player", "turn_on", cfg.tv); }} />}
+            : <BotaoAcao icon={Power} label="Ligar" cor={C.pasto} disabled={ind && !cfg.ir} onClick={() => { toque(); ligarTv(cfg, ent, enviar); }} />}
           <BotaoAcao icon={Undo2} label="Voltar" cor={C.cinza} onClick={() => tecla("BACK")} />
           <BotaoAcao icon={Home} label="Início" cor={C.cinza} onClick={() => tecla("HOME")} />
         </div>
@@ -2769,6 +2778,7 @@ function acionarReceiver(e, ligar, enviar) {
 }
 function acionarZonas(e, ligar, enviar) {
   if (e.receiver) return acionarReceiver(e, ligar, enviar);
+  if (e.controleTv && ligar) return ligarTv(e.controleTv, e, enviar);
   const ids = e.zonasComodo || [e.id];
   if (!ligar) {
     // Desliga também as zonas sincronizadas (ligadas tocando a mesma fonte deste cartão), menos as
@@ -5485,7 +5495,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     }
     const tvc = TV_CONTROLE[row.entity_id];
     const live = entsVis[tvc ? tvc.tv : row.entity_id];
-    const state = live?.state;
+    const state = tvc?.ir && (!live || ["unavailable", "unknown"].includes(live.state)) ? "off" : live?.state; // TV sem rede = desligada
     return {
       // Visitante: fechadura e portão aparecem só para ver (o intermediário também barra).
       dbId: row.id, id: tvc ? tvc.tv : row.entity_id,
