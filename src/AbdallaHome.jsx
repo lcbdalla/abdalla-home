@@ -1882,7 +1882,10 @@ function ligarTv(cfg, ent, enviar) {
 }
 // TV Varanda (Samsung): teclas com nome Samsung; o modelo bloqueia abrir apps direto (sem atalhos);
 // sem receiver, o volume é o da própria TV (− / +). Liga pela rede (turn_on).
+// Liga pelo IR do Broadlink da Churrasqueira (o Wake-on-LAN não chega: o HA fica em outra rede);
+// desliga pela rede.
 const TV_VARANDA = { nome: "TV Varanda", tv: "media_player.tv_varanda", remote: "remote.tv_varanda", semApps: true, playPausaMedia: true,
+  ir: { entity: "remote.broadlink_churrasqueira", device: "tv_power", command: "tv_powero_on" },
   teclas: { BACK: "KEY_RETURN", HOME: "KEY_HOME", DPAD_UP: "KEY_UP", DPAD_DOWN: "KEY_DOWN", DPAD_LEFT: "KEY_LEFT", DPAD_RIGHT: "KEY_RIGHT", DPAD_CENTER: "KEY_ENTER",
     MEDIA_REWIND: "KEY_REWIND", MEDIA_FAST_FORWARD: "KEY_FF", VOLUME_UP: "KEY_VOLUP", VOLUME_DOWN: "KEY_VOLDOWN" } };
 const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA, "media_player.tv_varanda": TV_VARANDA };

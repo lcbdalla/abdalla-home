@@ -41,11 +41,17 @@ const ehMeuSpotify = (s: any, nome: string) => String(s?.entity_id || "").starts
   && (mesmaPessoa(nome, s?.attributes?.friendly_name || "") || mesmaPessoa(nome, String(s.entity_id).slice("media_player.spotify_".length)));
 // Aparelhos que vêm junto com um cadastrado: o cartão "TV Sala" (Chromecast da TV) comanda a
 // Android TV, o controle remoto dela e o receiver Denon (volume da sala).
+// Infravermelho de LIGAR as TVs (elas saem da rede desligadas). Broadlink que só veio junto com a TV
+// (não cadastrado como aparelho) aceita só este comando pelo app.
+const IR_LIGA_TV: Record<string, [string, string]> = {
+  "remote.broadlink_sala_tv": ["liga_tv", "tv_on"],
+  "remote.broadlink_churrasqueira": ["tv_power", "tv_powero_on"],
+};
 const VINCULADOS: Record<string, string[]> = {
   "media_player.tv_sala": ["media_player.smarttv_4k_ffm", "remote.smarttv_4k_ffm", "media_player.denon_avr_s770h", "remote.broadlink_sala_tv"],
   "media_player.smarttv_4k_ffm": ["remote.smarttv_4k_ffm", "media_player.denon_avr_s770h", "remote.broadlink_sala_tv"],
   "lock.fechadura_porta_frente": ["sensor.fechadura_porta_frente_battery"],
-  "media_player.tv_varanda": ["remote.tv_varanda"],
+  "media_player.tv_varanda": ["remote.tv_varanda", "remote.broadlink_churrasqueira"],
 };
 
 Deno.serve(async (req) => {
@@ -289,8 +295,9 @@ Deno.serve(async (req) => {
     }
 
     const dados = (body.data && typeof body.data === "object" && !Array.isArray(body.data)) ? { ...body.data } : {};
-    // Broadlink da sala: pelo app, só o infravermelho de ligar a TV (a Hisense fica fora da rede desligada).
-    if (entity === "remote.broadlink_sala_tv" && !(service === "send_command" && dados.device === "liga_tv" && dados.command === "tv_on")) {
+    // Broadlink que veio junto com uma TV: pelo app, só o infravermelho de ligar essa TV.
+    const ir = IR_LIGA_TV[entity];
+    if (ir && !lista.some((q: { entity_id: string }) => q.entity_id === entity) && !(service === "send_command" && dados.device === ir[0] && dados.command === ir[1])) {
       return json({ error: "Comando não permitido para este aparelho." }, 403);
     }
     for (const k of ["entity_id", "device_id", "area_id", "floor_id", "label_id", "target"]) delete dados[k]; // alvo travado
