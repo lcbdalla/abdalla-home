@@ -1867,10 +1867,18 @@ function BotaoAcao({ icon: Icon, label, cor, onClick, disabled }) {
 const TV_SALA = { nome: "TV Sala", tv: "media_player.smarttv_4k_ffm", remote: "remote.smarttv_4k_ffm", som: "media_player.denon_avr_s770h",
   ir: { entity: "remote.broadlink_sala_tv", device: "liga_tv", command: "tv_on" } };
 // Liga a TV: pelo IR quando existe (o IR costuma ser liga/desliga, então só se ela estiver desligada).
+// Pela rede (Samsung): o 1º pedido às vezes só acorda a placa de rede; repete a cada 4 s (até 4 vezes)
+// enquanto o HA não mostrar a TV ligada.
+const _estadoHA = { atual: {} }; // estados reais do HA (o Controle atualiza)
 function ligarTv(cfg, ent, enviar) {
   if (tvLigada(ent)) return;
-  if (cfg.ir) enviar("remote", "send_command", cfg.ir.entity, { device: cfg.ir.device, command: cfg.ir.command });
-  else enviar("media_player", "turn_on", cfg.tv);
+  if (cfg.ir) { enviar("remote", "send_command", cfg.ir.entity, { device: cfg.ir.device, command: cfg.ir.command }); return; }
+  const tentar = (n) => {
+    if (n > 0 && tvLigada(_estadoHA.atual[cfg.tv])) return;
+    enviar("media_player", "turn_on", cfg.tv);
+    if (n < 3) setTimeout(() => tentar(n + 1), 4000);
+  };
+  tentar(0);
 }
 // TV Varanda (Samsung): teclas com nome Samsung; o modelo bloqueia abrir apps direto (sem atalhos);
 // sem receiver, o volume é o da própria TV (− / +). Liga pela rede (turn_on).
@@ -5391,7 +5399,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   // Com o Spotify parado, o HA só aceita "escolher o aparelho"; tocar/play_media só depois que o
   // Spotify conecta nele. Então: escolhe o aparelho, espera o estado mostrar a conexão e segue.
   // Estado real do HA (sem a previsão do toque): para esperar o ar ligar de verdade.
-  const entsReaisRef = useRef(ents); entsReaisRef.current = ents;
+  const entsReaisRef = useRef(ents); entsReaisRef.current = ents; _estadoHA.atual = ents;
   const quandoLigado = (id, fn) => {
     const t0 = Date.now();
     const ver = () => { const st = entsReaisRef.current[id]?.state; if (st && !["off", "unavailable", "unknown"].includes(st)) { fn(); return; } if (Date.now() - t0 < 25000) setTimeout(ver, 1000); };
@@ -5666,7 +5674,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const chaveLimpar = usoParaLimpar.join();
   useEffect(() => {
     if (!chaveLimpar) return;
-    const t = setTimeout(() => { chaveLimpar.split(",").forEach((k) => supabase.from("controle_uso").delete().eq("chave", k)); carregarConfig(); }, 20000); // espera: o aparelho pode estar ligando
+    const t = setTimeout(() => { chaveLimpar.split(",").forEach((k) => supabase.from("controle_uso").delete().eq("chave", k)); carregarConfig(); }, 60000); // espera: o aparelho pode estar ligando (TV pela rede leva até ~30 s)
     return () => clearTimeout(t);
   }, [chaveLimpar]); // eslint-disable-line react-hooks/exhaustive-deps
   // O que está escondido neste painel (para mostrar de novo).
