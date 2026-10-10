@@ -1847,6 +1847,7 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
   );
   const linha = { display: "flex", gap: 8, flexShrink: 0 };
   const som = entSom ? { ...entSom, id: cfg.som, disponivel: !["unavailable", "unknown"].includes(entSom.state) } : null;
+  const denonLigado = !!som && !["off", "standby", "unavailable", "unknown"].includes(som.state);
   return (
     <Sheet titulo={`Controle · ${cfg.nome}`} onFechar={onFechar} topo={topo}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, ...(grande ? { flex: 1, minHeight: 0, justifyContent: "space-evenly" } : {}) }}>
@@ -1864,8 +1865,29 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
           {seta("DPAD_RIGHT", ChevronRight, "Para a direita")}
           <div /> {seta("DPAD_DOWN", ChevronDown, "Para baixo")} <div />
         </div>
-        {/* Volume do receiver: arrasta e solta; o alto-falante liga/desliga o mudo. */}
-        {som && (
+        {/* Volume: com o receiver Denon ligado, barra nele (arrasta e solta). Com ele desligado o som sai
+            pela própria TV, que só aceita subir/descer de um em um: botões − / + no controle da TV. */}
+        {!denonLigado && !ind && (() => {
+          const volTv = typeof ent?.attributes?.volume_level === "number" ? Math.round(ent.attributes.volume_level * 100) : null;
+          const mudoTv = ent?.attributes?.is_volume_muted === true;
+          const bt = (Icone, rot, fn, cor = LAGO) => (
+            <button onClick={() => { toque(); fn(); }} aria-label={rot}
+              style={{ width: 46, height: 46, borderRadius: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", background: alfa(cor, 16), color: cor }}>
+              <Icone size={24} strokeWidth={2.4} />
+            </button>
+          );
+          return (
+            <div className="flex items-center gap-2" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: "6px 12px", flexShrink: 0 }}>
+              {bt(mudoTv ? VolumeX : Volume2, mudoTv ? "Tirar do mudo" : "Deixar no mudo", () => enviar("media_player", "volume_mute", cfg.tv, { is_volume_muted: !mudoTv }), mudoTv ? C.cinzaClaro : LAGO)}
+              <div className="flex-1 text-center" style={{ fontSize: 14, fontWeight: 700, color: C.terra }}>
+                Volume da TV{volTv != null && <span style={{ color: C.cinza, fontWeight: 600 }}> · {mudoTv ? "mudo" : `${volTv}%`}</span>}
+              </div>
+              {bt(Minus, "Abaixar o volume", () => tecla("VOLUME_DOWN"))}
+              {bt(Plus, "Aumentar o volume", () => tecla("VOLUME_UP"))}
+            </div>
+          );
+        })()}
+        {som && denonLigado && (
           <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: "4px 12px", flexShrink: 0 }}>
             <BarraVolume e={som} enviar={enviar} onSoltar={(v) => { toque(); enviar("media_player", "volume_set", cfg.som, { volume_level: Math.min(TV_VOL_MAX, v) }); }} />
           </div>
