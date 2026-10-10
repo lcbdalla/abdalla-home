@@ -3309,14 +3309,16 @@ function ligarAr(e, enviar) {
   }
 }
 // Ares que às vezes não desligam de primeira (Living, K7 da Churrasqueira e Varanda): ao desligar
-// pelo app, desliga → 1 s → liga → 1 s → desliga de novo.
-const AR_DESLIGA_DUPLO = new Set(["climate.ac_living_ac", "climate.midea_ac_150633095934489", "climate.midea_ac_150633095631273"]);
+// pelo app, desliga → espera → liga → espera → desliga de novo. A espera (ms) é de cada ar: o do
+// Living demora mais para obedecer, então espera 2,5 s entre os comandos.
+const AR_DESLIGA_DUPLO = new Map([["climate.ac_living_ac", 2500], ["climate.midea_ac_150633095934489", 1000], ["climate.midea_ac_150633095631273", 1000]]);
 function desligarAr(e, enviar) {
   novoToqueAr(e.id);
   enviar("climate", "turn_off", e.id);
-  if (!AR_DESLIGA_DUPLO.has(e.id)) return;
-  _arTimers[e.id].push(setTimeout(() => enviar("climate", "turn_on", e.id), 1000));
-  _arTimers[e.id].push(setTimeout(() => enviar("climate", "turn_off", e.id), 2000));
+  const espera = AR_DESLIGA_DUPLO.get(e.id);
+  if (!espera) return;
+  _arTimers[e.id].push(setTimeout(() => enviar("climate", "turn_on", e.id), espera));
+  _arTimers[e.id].push(setTimeout(() => enviar("climate", "turn_off", e.id), espera * 2));
 }
 function CtrlAr({ e, enviar }) {
   const ind = !e.disponivel; const a = e.attributes || {};
