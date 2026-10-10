@@ -177,7 +177,7 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, spotifyEntity: r.spotify_entity || null, podeGerirEquipe: r.pode_gerir_equipe !== false, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, spotifyEntity: r.spotify_entity || null, ambientesControle: Array.isArray(r.ambientes_controle) ? r.ambientes_controle : null, podeGerirEquipe: r.pode_gerir_equipe !== false, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -1125,6 +1125,7 @@ ${link}?instalar=1`;
   return "https://wa.me/" + (fone ? (fone.length <= 11 ? "55" + fone : fone) : "") + "?text=" + encodeURIComponent(msg);
 }
 function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
+  const [ambientesDe, setAmbientesDe] = useState(null); // pessoa com a lista de cômodos liberados aberta
   const [novo, setNovo] = useState(false);
   const [visitante, setVisitante] = useState(false);
   const [senhaPara, setSenhaPara] = useState(null); // pessoa recebendo senha nova
@@ -1240,6 +1241,15 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                   <Toggle on={u.podeGerarVisitante === true} onToggle={() => editar(u.id, "pode_gerar_visitante", !(u.podeGerarVisitante === true))} />
                 </div>
               )}
+              {u.podeControle && u.papel !== "admin" && u.papel !== "visitante" && (
+                <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
+                  <DoorOpen size={13} style={{ color: C.cinzaClaro }} />
+                  <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Ambientes que pode controlar</div>
+                  <button onClick={() => setAmbientesDe(u)} style={{ fontSize: 13, fontWeight: 700, color: C.pasto, padding: "4px 2px" }}>
+                    {u.ambientesControle ? `${u.ambientesControle.length} ${u.ambientesControle.length === 1 ? "ambiente" : "ambientes"}` : "Todos"} ›
+                  </button>
+                </div>
+              )}
               {u.podeControle && (
                 <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
                   <LayoutGrid size={13} style={{ color: C.cinzaClaro }} />
@@ -1267,8 +1277,56 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
       })}
       {novo && <NovaPessoaSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setNovo(false)} />}
       {visitante && <VisitanteSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setVisitante(false)} />}
+      {ambientesDe && <AmbientesPessoaSheet u={ambientesDe} showToast={showToast} onSalvo={() => { setAmbientesDe(null); onRecarregar(); }} onFechar={() => setAmbientesDe(null)} />}
       {senhaPara && <NovaSenhaSheet u={senhaPara} email={emails[senhaPara.id]} showToast={showToast} onFechar={() => setSenhaPara(null)} />}
     </div>
+  );
+}
+
+// Quais cômodos uma pessoa (colaborador etc.) pode usar no Controle. Todos marcados = sem limite.
+function AmbientesPessoaSheet({ u, showToast, onSalvo, onFechar }) {
+  const [pavs, setPavs] = useState(null), [ambs, setAmbs] = useState([]), [sel, setSel] = useState(null), [salvando, setSalvando] = useState(false);
+  useEffect(() => {
+    Promise.all([supabase.from("pavimentos").select("id, nome, ordem").order("ordem"), supabase.from("ambientes").select("id, nome, ordem, pavimento_id").order("ordem")])
+      .then(([p, a]) => {
+        const lista = a.data || [];
+        setPavs(p.data || []); setAmbs(lista);
+        setSel(new Set(u.ambientesControle || lista.map((x) => x.id)));
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const alternar = (id) => setSel((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const salvar = async () => {
+    if (!sel.size) { showToast("Marque pelo menos um ambiente (ou desligue \"Pode controlar a casa\")."); return; }
+    setSalvando(true);
+    const valor = ambs.every((a) => sel.has(a.id)) ? null : [...sel];
+    const { error } = await supabase.from("perfis").update({ ambientes_controle: valor }).eq("id", u.id);
+    setSalvando(false);
+    if (error) { showToast(/ambientes_controle/.test(error.message) ? "Falta rodar o SQL colaborador-ambientes.sql no Supabase." : "Erro ao salvar: " + error.message); return; }
+    showToast("Ambientes salvos"); onSalvo();
+  };
+  const grupos = [...(pavs || []), { id: null, nome: "Outros" }].map((p) => ({ ...p, itens: ambs.filter((a) => (a.pavimento_id || null) === p.id) })).filter((g) => g.itens.length);
+  return (
+    <Sheet titulo={`Ambientes · ${u.nome}`} onFechar={onFechar}>
+      {!sel ? <div style={{ color: C.cinza, fontSize: 14 }}>Carregando…</div> : (<>
+        <div style={{ color: C.cinza, fontSize: 13, marginBottom: 8 }}>Marque os ambientes que {u.nome.split(" ")[0]} pode ver e controlar.</div>
+        <div className="flex gap-2" style={{ marginBottom: 8 }}>
+          <button onClick={() => setSel(new Set(ambs.map((a) => a.id)))} style={{ fontSize: 13, fontWeight: 700, color: C.pasto }}>Marcar todos</button>
+          <button onClick={() => setSel(new Set())} style={{ fontSize: 13, fontWeight: 700, color: C.cinza, marginLeft: 12 }}>Desmarcar todos</button>
+        </div>
+        {grupos.map((g) => (
+          <div key={g.id || "outros"} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: C.cinza, textTransform: "uppercase", marginBottom: 4 }}>{g.nome}</div>
+            {g.itens.map((a) => (
+              <label key={a.id} className="flex items-center gap-3" style={{ padding: "9px 4px", borderTop: `1px solid ${C.linha}`, fontSize: 15, cursor: "pointer" }}>
+                <input type="checkbox" checked={sel.has(a.id)} onChange={() => alternar(a.id)} style={{ width: 20, height: 20, accentColor: C.pasto }} />
+                <span className="flex-1">{a.nome}</span>
+              </label>
+            ))}
+          </div>
+        ))}
+        <button onClick={salvar} disabled={salvando} style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16, marginTop: 6, opacity: salvando ? 0.6 : 1 }}>{salvando ? "Salvando…" : "Salvar"}</button>
+      </>)}
+    </Sheet>
   );
 }
 
@@ -5482,7 +5540,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const listaPavBase = [...pavimentos, semPav].map((p) => ({
     id: p.id, nome: p.nome, ordem: p.ordem,
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
-    comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
+    comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false) && (eu?.papel === "admin" || !eu?.ambientesControle || eu.ambientesControle.includes(a.id))).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
       itens: marcarUso(comGrupos(somPrimeiro(comFontePadrao(agruparBotoes(agruparLuzes(agruparPersianas(juntarZonasDoComodo(equipamentosVis.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), a.id), a.id), p.nome)))),
     })).filter((c) => c.itens.length > 0),

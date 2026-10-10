@@ -129,6 +129,11 @@ Deno.serve(async (req) => {
     const liberados = new Set((ambs || []).map((a: { id: string }) => a.id));
     lista = lista.filter((q: { ambiente_id: string }) => liberados.has(q.ambiente_id));
   }
+  // Pessoa com só alguns cômodos liberados (Equipe > "Ambientes que pode controlar").
+  if (p.papel !== "admin" && Array.isArray(p.ambientes_controle)) {
+    const meus = new Set(p.ambientes_controle);
+    lista = lista.filter((q: { ambiente_id: string }) => meus.has(q.ambiente_id));
+  }
   const cadastrados = new Set(lista.map((q: { entity_id: string }) => q.entity_id));
   const podeAlarme = p.papel === "admin" || p.pode_menu_controle === true;
   cadastrados.add("sensor.0xa4c13818adff06db_liquid_level_percent"); // nível da caixa d'água (só leitura, para o aviso)
