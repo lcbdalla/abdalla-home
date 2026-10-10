@@ -45,6 +45,7 @@ const VINCULADOS: Record<string, string[]> = {
   "media_player.tv_sala": ["media_player.smarttv_4k_ffm", "remote.smarttv_4k_ffm", "media_player.denon_avr_s770h", "remote.broadlink_sala_tv"],
   "media_player.smarttv_4k_ffm": ["remote.smarttv_4k_ffm", "media_player.denon_avr_s770h", "remote.broadlink_sala_tv"],
   "lock.fechadura_porta_frente": ["sensor.fechadura_porta_frente_battery"],
+  "media_player.tv_varanda": ["remote.tv_varanda"],
 };
 
 Deno.serve(async (req) => {

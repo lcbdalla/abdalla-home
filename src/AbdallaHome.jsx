@@ -1872,8 +1872,13 @@ function ligarTv(cfg, ent, enviar) {
   if (cfg.ir) enviar("remote", "send_command", cfg.ir.entity, { device: cfg.ir.device, command: cfg.ir.command });
   else enviar("media_player", "turn_on", cfg.tv);
 }
-const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA };
-const TVS_COM_CONTROLE = [TV_SALA];
+// TV Varanda (Samsung): teclas com nome Samsung; o modelo bloqueia abrir apps direto (sem atalhos);
+// sem receiver, o volume é o da própria TV (− / +). Liga pela rede (turn_on).
+const TV_VARANDA = { nome: "TV Varanda", tv: "media_player.tv_varanda", remote: "remote.tv_varanda", semApps: true, playPausaMedia: true,
+  teclas: { BACK: "KEY_RETURN", HOME: "KEY_HOME", DPAD_UP: "KEY_UP", DPAD_DOWN: "KEY_DOWN", DPAD_LEFT: "KEY_LEFT", DPAD_RIGHT: "KEY_RIGHT", DPAD_CENTER: "KEY_ENTER",
+    MEDIA_REWIND: "KEY_REWIND", MEDIA_FAST_FORWARD: "KEY_FF", VOLUME_UP: "KEY_VOLUP", VOLUME_DOWN: "KEY_VOLDOWN" } };
+const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA, "media_player.tv_varanda": TV_VARANDA };
+const TVS_COM_CONTROLE = [TV_SALA, TV_VARANDA];
 const tvLigada = (v) => !!v && !["off", "standby", "unavailable", "unknown"].includes(v.state);
 // Desenho de controle remoto (o lucide não tem): mesmo estilo de traço dos outros ícones.
 function IconeControleRemoto({ size = 24, strokeWidth = 2, ...props }) {
@@ -1898,7 +1903,10 @@ const TV_VOL_MAX = 0.8; // ajuste se quiser liberar mais
 function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
   const ind = !ent || ["unavailable", "unknown"].includes(ent.state);
   const toque = () => { try { navigator.vibrate?.(12); } catch { /* ok */ } };
-  const tecla = (k) => enviar("remote", "send_command", cfg.remote, { command: k });
+  const tecla = (k) => {
+    if (k === "MEDIA_PLAY_PAUSE" && cfg.playPausaMedia) { enviar("media_player", "media_play_pause", cfg.tv); return; }
+    enviar("remote", "send_command", cfg.remote, { command: cfg.teclas?.[k] || k });
+  };
   const app = (id) => enviar("media_player", "play_media", cfg.tv, { media_content_type: "app", media_content_id: id });
   const grande = topo != null;
   const seta = (k, Icone, rot) => (
@@ -1961,7 +1969,7 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
           <BotaoAcao icon={Play} label="Play / Pausa" cor={LAGO} onClick={() => tecla("MEDIA_PLAY_PAUSE")} />
           <BotaoAcao icon={FastForward} label="Avançar" cor={C.cinza} onClick={() => tecla("MEDIA_FAST_FORWARD")} />
         </div>
-        <div style={linha}>
+        {!cfg.semApps && <div style={linha}>
           {TV_APPS.map((a) => (
             <button key={a.nome} onClick={() => app(a.id)} disabled={ind} aria-label={`Abrir ${a.nome}`}
               style={{ flex: 1, minWidth: 0, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "8px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", opacity: ind ? 0.5 : 1 }}>
@@ -1969,7 +1977,7 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
               <span className="truncate" style={{ fontSize: 12, fontWeight: 700, color: C.terra, maxWidth: "100%" }}>{a.nome}</span>
             </button>
           ))}
-        </div>
+        </div>}
       </div>
     </Sheet>
   );
@@ -5550,7 +5558,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     }
     const tvc = TV_CONTROLE[row.entity_id];
     const live = entsVis[tvc ? tvc.tv : row.entity_id];
-    const state = tvc?.ir && (!live || ["unavailable", "unknown"].includes(live.state)) ? "off" : live?.state; // TV sem rede = desligada
+    const state = tvc && (!live || ["unavailable", "unknown"].includes(live.state)) ? "off" : live?.state; // TV sem rede = desligada
     return {
       // Visitante: fechadura e portão aparecem só para ver (o intermediário também barra).
       dbId: row.id, id: tvc ? tvc.tv : row.entity_id,
