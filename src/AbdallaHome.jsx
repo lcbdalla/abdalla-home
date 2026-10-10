@@ -1852,7 +1852,10 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
     <Sheet titulo={`Controle · ${cfg.nome}`} onFechar={onFechar} topo={topo}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, ...(grande ? { flex: 1, minHeight: 0, justifyContent: "space-evenly" } : {}) }}>
         <div style={linha}>
-          <BotaoAcao icon={Power} label="Desligar" cor={C.vermelho} disabled={ind} onClick={() => { enviar("media_player", "turn_off", cfg.tv); onFechar(); }} />
+          {/* Mesmo botão liga e desliga: com a TV desligada ele liga (e o controle fica aberto). */}
+          {tvLigada(ent)
+            ? <BotaoAcao icon={Power} label="Desligar" cor={C.vermelho} onClick={() => { enviar("media_player", "turn_off", cfg.tv); onFechar(); }} />
+            : <BotaoAcao icon={Power} label="Ligar" cor={C.pasto} disabled={ind} onClick={() => { toque(); enviar("media_player", "turn_on", cfg.tv); }} />}
           <BotaoAcao icon={Undo2} label="Voltar" cor={C.cinza} onClick={() => tecla("BACK")} />
           <BotaoAcao icon={Home} label="Início" cor={C.cinza} onClick={() => tecla("HOME")} />
         </div>
