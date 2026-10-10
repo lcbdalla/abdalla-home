@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
   if (!cfg?.base_url || !cfg?.token) return json({ error: "O controle da casa ainda não foi configurado." }, 500);
   const base = String(cfg.base_url).replace(/\/+$/, "");
   const cabecalho = { Authorization: "Bearer " + cfg.token, "Content-Type": "application/json" };
-  const { data: eqs } = await admin.from("controle_equipamentos").select("entity_id, ambiente_id");
+  const { data: eqs } = await admin.from("controle_equipamentos").select("id, entity_id, ambiente_id");
   let lista = eqs || [];
   if (p.papel === "visitante") {
     // Visitante: só os cômodos com "Visitantes podem usar" ligado.
@@ -129,10 +129,10 @@ Deno.serve(async (req) => {
     const liberados = new Set((ambs || []).map((a: { id: string }) => a.id));
     lista = lista.filter((q: { ambiente_id: string }) => liberados.has(q.ambiente_id));
   }
-  // Pessoa com só alguns cômodos liberados (Equipe > "Ambientes que pode controlar").
-  if (p.papel !== "admin" && Array.isArray(p.ambientes_controle)) {
-    const meus = new Set(p.ambientes_controle);
-    lista = lista.filter((q: { ambiente_id: string }) => meus.has(q.ambiente_id));
+  // Pessoa com só alguns cômodos e/ou aparelhos liberados (Equipe > "O que pode controlar").
+  if (p.papel !== "admin" && (Array.isArray(p.ambientes_controle) || Array.isArray(p.equipamentos_controle))) {
+    const ambs = new Set(p.ambientes_controle || []), aps = new Set(p.equipamentos_controle || []);
+    lista = lista.filter((q: { id: string; ambiente_id: string }) => ambs.has(q.ambiente_id) || aps.has(q.id));
   }
   const cadastrados = new Set(lista.map((q: { entity_id: string }) => q.entity_id));
   const podeAlarme = p.papel === "admin" || p.pode_menu_controle === true;

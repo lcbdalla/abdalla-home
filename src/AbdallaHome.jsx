@@ -174,10 +174,16 @@ function ocorrenciasNoPeriodo(t, inicioISO, fimISO) {
   return n;
 }
 
+// Pessoa (não admin) com só alguns cômodos e/ou aparelhos liberados. Sem escolha nenhuma = tudo.
+const podeUsarEquip = (eu, q) => eu?.papel === "admin" || (!eu?.ambientesControle && !eu?.equipamentosControle)
+  || (eu.ambientesControle || []).includes(q.ambiente_id) || (eu.equipamentosControle || []).includes(q.id);
+// Nomes dos aparelhos vindos do HA (preenchido pelo Controle), para a Equipe mostrar nomes legíveis.
+const NOMES_HA = {};
+
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, spotifyEntity: r.spotify_entity || null, ambientesControle: Array.isArray(r.ambientes_controle) ? r.ambientes_controle : null, podeGerirEquipe: r.pode_gerir_equipe !== false, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, spotifyEntity: r.spotify_entity || null, ambientesControle: Array.isArray(r.ambientes_controle) ? r.ambientes_controle : null, equipamentosControle: Array.isArray(r.equipamentos_controle) ? r.equipamentos_controle : null, podeGerirEquipe: r.pode_gerir_equipe !== false, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -1244,9 +1250,12 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
               {u.podeControle && u.papel !== "admin" && u.papel !== "visitante" && (
                 <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
                   <DoorOpen size={13} style={{ color: C.cinzaClaro }} />
-                  <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>Ambientes que pode controlar</div>
+                  <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>O que pode controlar</div>
                   <button onClick={() => setAmbientesDe(u)} style={{ fontSize: 13, fontWeight: 700, color: C.pasto, padding: "4px 2px" }}>
-                    {u.ambientesControle ? `${u.ambientesControle.length} ${u.ambientesControle.length === 1 ? "ambiente" : "ambientes"}` : "Todos"} ›
+                    {!u.ambientesControle && !u.equipamentosControle ? "Tudo" : [
+                      u.ambientesControle?.length ? `${u.ambientesControle.length} ${u.ambientesControle.length === 1 ? "ambiente" : "ambientes"}` : "",
+                      u.equipamentosControle?.length ? `${u.equipamentosControle.length} ${u.equipamentosControle.length === 1 ? "aparelho" : "aparelhos"}` : "",
+                    ].filter(Boolean).join(" + ") || "Nada"} ›
                   </button>
                 </div>
               )}
@@ -1283,45 +1292,88 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   );
 }
 
-// Quais cômodos uma pessoa (colaborador etc.) pode usar no Controle. Todos marcados = sem limite.
+// O que uma pessoa (colaborador etc.) pode usar no Controle: cômodos inteiros e/ou só alguns aparelhos.
+// Cômodo marcado = tudo dele (inclusive aparelhos cadastrados depois). Tudo marcado = sem limite.
+const nomeEquipLegivel = (q) => q.nome || NOMES_HA[q.entity_id] || String(q.entity_id).replace(/^[a-z_]+\./, "").replace(/_/g, " ");
 function AmbientesPessoaSheet({ u, showToast, onSalvo, onFechar }) {
-  const [pavs, setPavs] = useState(null), [ambs, setAmbs] = useState([]), [sel, setSel] = useState(null), [salvando, setSalvando] = useState(false);
+  const [pavs, setPavs] = useState(null), [ambs, setAmbs] = useState([]), [eqs, setEqs] = useState([]);
+  const [selA, setSelA] = useState(null), [selE, setSelE] = useState(new Set()), [abertos, setAbertos] = useState(new Set()), [salvando, setSalvando] = useState(false);
   useEffect(() => {
-    Promise.all([supabase.from("pavimentos").select("id, nome, ordem").order("ordem"), supabase.from("ambientes").select("id, nome, ordem, pavimento_id").order("ordem")])
-      .then(([p, a]) => {
-        const lista = a.data || [];
-        setPavs(p.data || []); setAmbs(lista);
-        setSel(new Set(u.ambientesControle || lista.map((x) => x.id)));
-      });
+    Promise.all([
+      supabase.from("pavimentos").select("id, nome, ordem").order("ordem"),
+      supabase.from("ambientes").select("id, nome, ordem, pavimento_id").order("ordem"),
+      supabase.from("controle_equipamentos").select("id, nome, entity_id, ambiente_id, ordem").order("ordem"),
+    ]).then(([p, a, e]) => {
+      const lista = a.data || [];
+      setPavs(p.data || []); setAmbs(lista); setEqs(e.data || []);
+      const livre = !u.ambientesControle && !u.equipamentosControle;
+      setSelA(new Set(livre ? lista.map((x) => x.id) : u.ambientesControle || []));
+      setSelE(new Set(livre ? [] : u.equipamentosControle || []));
+      // Abre os cômodos que têm só alguns aparelhos marcados.
+      setAbertos(new Set((e.data || []).filter((q) => (u.equipamentosControle || []).includes(q.id)).map((q) => q.ambiente_id)));
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const alternar = (id) => setSel((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const doAmb = (id) => eqs.filter((q) => q.ambiente_id === id);
+  const alternarAmb = (id) => {
+    const tinha = selA.has(id);
+    setSelA((s0) => { const n = new Set(s0); if (tinha) n.delete(id); else n.add(id); return n; });
+    setSelE((s0) => { const n = new Set(s0); doAmb(id).forEach((q) => n.delete(q.id)); return n; }); // o cômodo inteiro manda
+  };
+  const alternarEq = (q) => {
+    if (selA.has(q.ambiente_id)) { // tirar um aparelho de um cômodo inteiro: vira "só estes aparelhos"
+      setSelA((s0) => { const n = new Set(s0); n.delete(q.ambiente_id); return n; });
+      setSelE((s0) => { const n = new Set(s0); doAmb(q.ambiente_id).forEach((x) => { if (x.id !== q.id) n.add(x.id); }); return n; });
+      return;
+    }
+    setSelE((s0) => { const n = new Set(s0); if (n.has(q.id)) n.delete(q.id); else n.add(q.id); return n; });
+  };
+  const abrir = (id) => setAbertos((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const marcarTudo = (on) => { setSelA(new Set(on ? ambs.map((a) => a.id) : [])); setSelE(new Set()); };
   const salvar = async () => {
-    if (!sel.size) { showToast("Marque pelo menos um ambiente (ou desligue \"Pode controlar a casa\")."); return; }
+    if (!selA.size && !selE.size) { showToast("Marque pelo menos um ambiente ou aparelho (ou desligue \"Pode controlar a casa\")."); return; }
     setSalvando(true);
-    const valor = ambs.every((a) => sel.has(a.id)) ? null : [...sel];
-    const { error } = await supabase.from("perfis").update({ ambientes_controle: valor }).eq("id", u.id);
+    const tudo = ambs.every((a) => selA.has(a.id));
+    const valor = tudo ? { ambientes_controle: null, equipamentos_controle: null } : { ambientes_controle: [...selA], equipamentos_controle: selE.size ? [...selE] : null };
+    const { error } = await supabase.from("perfis").update(valor).eq("id", u.id);
     setSalvando(false);
-    if (error) { showToast(/ambientes_controle/.test(error.message) ? "Falta rodar o SQL colaborador-ambientes.sql no Supabase." : "Erro ao salvar: " + error.message); return; }
-    showToast("Ambientes salvos"); onSalvo();
+    if (error) { showToast(/_controle/.test(error.message) ? "Falta rodar o SQL colaborador-equipamentos.sql no Supabase." : "Erro ao salvar: " + error.message); return; }
+    showToast("Salvo"); onSalvo();
   };
   const grupos = [...(pavs || []), { id: null, nome: "Outros" }].map((p) => ({ ...p, itens: ambs.filter((a) => (a.pavimento_id || null) === p.id) })).filter((g) => g.itens.length);
+  const caixa = { width: 20, height: 20, accentColor: C.pasto, flexShrink: 0 };
   return (
-    <Sheet titulo={`Ambientes · ${u.nome}`} onFechar={onFechar}>
-      {!sel ? <div style={{ color: C.cinza, fontSize: 14 }}>Carregando…</div> : (<>
-        <div style={{ color: C.cinza, fontSize: 13, marginBottom: 8 }}>Marque os ambientes que {u.nome.split(" ")[0]} pode ver e controlar.</div>
+    <Sheet titulo={`O que ${u.nome.split(" ")[0]} pode controlar`} onFechar={onFechar}>
+      {!selA ? <div style={{ color: C.cinza, fontSize: 14 }}>Carregando…</div> : (<>
+        <div style={{ color: C.cinza, fontSize: 13, marginBottom: 8 }}>Marque o ambiente inteiro ou toque na setinha para escolher só alguns aparelhos dele.</div>
         <div className="flex gap-2" style={{ marginBottom: 8 }}>
-          <button onClick={() => setSel(new Set(ambs.map((a) => a.id)))} style={{ fontSize: 13, fontWeight: 700, color: C.pasto }}>Marcar todos</button>
-          <button onClick={() => setSel(new Set())} style={{ fontSize: 13, fontWeight: 700, color: C.cinza, marginLeft: 12 }}>Desmarcar todos</button>
+          <button onClick={() => marcarTudo(true)} style={{ fontSize: 13, fontWeight: 700, color: C.pasto }}>Marcar tudo</button>
+          <button onClick={() => marcarTudo(false)} style={{ fontSize: 13, fontWeight: 700, color: C.cinza, marginLeft: 12 }}>Desmarcar tudo</button>
         </div>
         {grupos.map((g) => (
           <div key={g.id || "outros"} style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 12.5, fontWeight: 800, color: C.cinza, textTransform: "uppercase", marginBottom: 4 }}>{g.nome}</div>
-            {g.itens.map((a) => (
-              <label key={a.id} className="flex items-center gap-3" style={{ padding: "9px 4px", borderTop: `1px solid ${C.linha}`, fontSize: 15, cursor: "pointer" }}>
-                <input type="checkbox" checked={sel.has(a.id)} onChange={() => alternar(a.id)} style={{ width: 20, height: 20, accentColor: C.pasto }} />
-                <span className="flex-1">{a.nome}</span>
-              </label>
-            ))}
+            {g.itens.map((a) => {
+              const lista = doAmb(a.id), inteiro = selA.has(a.id), alguns = !inteiro && lista.filter((q) => selE.has(q.id)).length;
+              const aberto = abertos.has(a.id);
+              return (
+                <div key={a.id} style={{ borderTop: `1px solid ${C.linha}` }}>
+                  <div className="flex items-center gap-3" style={{ padding: "9px 4px" }}>
+                    <input type="checkbox" checked={inteiro} ref={(el) => { if (el) el.indeterminate = !!alguns; }} onChange={() => alternarAmb(a.id)} style={caixa} aria-label={`Ambiente ${a.nome} inteiro`} />
+                    <button onClick={() => abrir(a.id)} className="flex-1 flex items-center gap-2" style={{ textAlign: "left", fontSize: 15, color: C.terra, minWidth: 0 }}>
+                      <span className="flex-1 truncate">{a.nome}</span>
+                      <span style={{ fontSize: 12, color: C.cinza, flexShrink: 0 }}>{inteiro ? "inteiro" : alguns ? `${alguns} de ${lista.length}` : ""}</span>
+                      {lista.length > 0 && <ChevronDown size={18} style={{ color: C.cinza, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .2s" }} />}
+                    </button>
+                  </div>
+                  {aberto && lista.map((q) => (
+                    <label key={q.id} className="flex items-center gap-3" style={{ padding: "7px 4px 7px 34px", fontSize: 14, cursor: "pointer", color: C.terra }}>
+                      <input type="checkbox" checked={inteiro || selE.has(q.id)} onChange={() => alternarEq(q)} style={caixa} />
+                      <span className="flex-1 truncate">{nomeEquipLegivel(q)}</span>
+                    </label>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         ))}
         <button onClick={salvar} disabled={salvando} style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16, marginTop: 6, opacity: salvando ? 0.6 : 1 }}>{salvando ? "Salvando…" : "Salvar"}</button>
@@ -4785,6 +4837,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const toggleExpand = (id) => setExpandidos((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [editando, setEditando] = useState(false);
   const [ents, setEnts] = useState({});
+  useEffect(() => { for (const [id, v] of Object.entries(ents)) if (v?.attributes?.friendly_name) NOMES_HA[id] = v.attributes.friendly_name; }, [ents]);
   const [otim, setOtim] = useState({}); // entity_id -> { patch, base (assinatura antes do toque), ate }
   const [areas, setAreas] = useState(null); // entity_id -> nome da área no Home Assistant
   const [tentativa, setTentativa] = useState(0);
@@ -5577,9 +5630,9 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const listaPavBase = [...pavimentos, semPav].map((p) => ({
     id: p.id, nome: p.nome, ordem: p.ordem,
     // Visitante só vê os cômodos liberados para ele (o banco e o intermediário também barram).
-    comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false) && (eu?.papel === "admin" || !eu?.ambientesControle || eu.ambientesControle.includes(a.id))).sort((a, b) => a.ordem - b.ordem).map((a) => ({
+    comodos: ambientes.filter((a) => (a.pavimento_id || "__sem__") === p.id && (eu?.papel !== "visitante" || a.visitante !== false)).sort((a, b) => a.ordem - b.ordem).map((a) => ({
       id: a.id, nome: a.nome,
-      itens: marcarUso(comGrupos(somPrimeiro(comFontePadrao(agruparBotoes(agruparLuzes(agruparPersianas(juntarZonasDoComodo(equipamentosVis.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), a.id), a.id), p.nome)))),
+      itens: marcarUso(comGrupos(somPrimeiro(comFontePadrao(agruparBotoes(agruparLuzes(agruparPersianas(juntarZonasDoComodo(equipamentosVis.filter((q) => q.ambiente_id === a.id && podeUsarEquip(eu, q)).sort((x, y) => x.ordem - y.ordem).map(mkEquip)), a.id), a.id), a.id), p.nome)))),
     })).filter((c) => c.itens.length > 0),
   })).filter((p) => p.comodos.length > 0).sort((a, b) => a.ordem - b.ordem);
   // Painel pessoal: cômodo escondido "mostrando os aparelhos" põe os aparelhos soltos no nível;
