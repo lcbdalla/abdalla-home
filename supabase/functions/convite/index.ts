@@ -29,10 +29,9 @@ const PORTAO = "cover.portao_garagem";        // Portão Principal
 const PORTA = "lock.fechadura_porta_frente";  // porta da frente da Casa Alta
 const RAIO_M = 500;
 const DURACAO_MS = 5 * 3600 * 1000;
-// Onde fica o portão (latitude, longitude). Sem valor, usa a localização da casa no Home Assistant.
-// ponytail: se o portão ficar longe da casa, preencher aqui para o raio de 500 m valer no portão.
-const PORTAO_LAT: number | null = null;
-const PORTAO_LON: number | null = null;
+// Onde fica o Portão Principal (10°02'15.23"S 48°19'00.95"W, passado pelo Leonardo). Também é o destino do Maps.
+const PORTAO_LAT: number | null = -10.037564;
+const PORTAO_LON: number | null = -48.316931;
 
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function distanciaM(lat1: number, lon1: number, lat2: number, lon2: number) {
