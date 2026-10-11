@@ -3402,7 +3402,8 @@ function ledDoAr(id, attrs, ents) {
   const lan = id.match(/^climate\.(\d+)_climate$/);
   if (lan && attrs && ("screen_display" in attrs || "screen_display_alternate" in attrs)) {
     const v = LED_PELO_DISPLAY.has(lan[1]) ? attrs.screen_display : (attrs.screen_display_alternate ?? attrs.screen_display);
-    return { tipo: "lan", device: Number(lan[1]), aceso: v === true, provavel: true };
+    // Testado no quarto (Leo e Pri): o atributo vem ao contrário (true = LED apagado).
+    return { tipo: "lan", device: Number(lan[1]), aceso: v === false, provavel: true };
   }
   return null;
 }
@@ -3460,7 +3461,7 @@ function CtrlAr({ e, enviar }) {
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Luz do painel (LED)</div>
               <div className="flex flex-wrap gap-2">
-                <CtrlChip ativo={e.led.aceso} cor={C.ambar} onClick={() => alternarLedAr(e, enviar)}>{e.led.aceso ? "Acesa · toque para apagar" : "Apagada · toque para acender"}</CtrlChip>
+                <CtrlChip ativo={e.led.aceso} cor={C.ambar} onClick={() => alternarLedAr(e, enviar)}>{e.led.aceso ? "Acesa" : "Apagada"}</CtrlChip>
               </div>
             </div>
           )}
