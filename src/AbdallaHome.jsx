@@ -1132,6 +1132,7 @@ ${link}?instalar=1`;
 }
 function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   const [ambientesDe, setAmbientesDe] = useState(null); // pessoa com a lista de cômodos liberados aberta
+  const [convite, setConvite] = useState(false);
   const [novo, setNovo] = useState(false);
   const [visitante, setVisitante] = useState(false);
   const [senhaPara, setSenhaPara] = useState(null); // pessoa recebendo senha nova
@@ -1172,14 +1173,17 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   if (!souAdmin) return (
     // Quem tem só "Pode gerar acesso de visitante": a Equipe mostra apenas o QR Code de visitante.
     <div>
+      <button onClick={() => setConvite(true)} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}><MessageCircle size={18} /> Convite para visitante (WhatsApp)</button>
       <button onClick={() => setVisitante(true)} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}><Clock size={18} /> Gerar acesso de visitante (QR Code)</button>
       {visitante && <VisitanteSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setVisitante(false)} />}
+      {convite && <ConviteSheet nomeEu={users.find((x) => x.id === euId)?.nome || ""} showToast={showToast} onFechar={() => setConvite(false)} />}
     </div>
   );
   return (
     <div>
       <div style={{ background: C.lagoClaro, borderRadius: 14 }} className="p-3 mb-3"><div style={{ color: C.lago }} className="text-xs font-semibold uppercase">Equipe do rancho</div><div style={{ color: C.terra }} className="text-sm mt-0.5">Administradores criam e organizam. Colaboradores executam e pedem compras. {souAdmin ? "Para dar acesso a alguém, toque em Adicionar pessoa." : "Somente administradores podem alterar a equipe."}</div></div>
       {souAdmin && <button onClick={() => setNovo(true)} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}><UserPlus size={19} /> Adicionar pessoa</button>}
+      {souAdmin && <button onClick={() => setConvite(true)} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.card, color: C.pasto, border: `1px solid ${C.pasto}`, borderRadius: 12, padding: 12, fontWeight: 700, fontSize: 15 }}><MessageCircle size={18} /> Convite para visitante (WhatsApp)</button>}
       {souAdmin && <button onClick={() => setVisitante(true)} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 12, fontWeight: 700, fontSize: 15 }}><Clock size={18} /> Gerar acesso de visitante (QR Code)</button>}
       {users.filter((u) => u.ativo !== false).map((u) => {
         return (
@@ -1286,6 +1290,7 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
       })}
       {novo && <NovaPessoaSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setNovo(false)} />}
       {visitante && <VisitanteSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setVisitante(false)} />}
+      {convite && <ConviteSheet nomeEu={users.find((x) => x.id === euId)?.nome || ""} showToast={showToast} onFechar={() => setConvite(false)} />}
       {ambientesDe && <AmbientesPessoaSheet u={ambientesDe} showToast={showToast} onSalvo={() => { setAmbientesDe(null); onRecarregar(); }} onFechar={() => setAmbientesDe(null)} />}
       {senhaPara && <NovaSenhaSheet u={senhaPara} email={emails[senhaPara.id]} showToast={showToast} onFechar={() => setSenhaPara(null)} />}
     </div>
@@ -1550,6 +1555,158 @@ function NovaPessoaSheet({ showToast, onCriado, onFechar }) {
 }
 
 // Acesso de visitante: cria um perfil temporário (só controle) e um QR Code de entrada rápida.
+/* ---- Convite para visitante (link pelo WhatsApp) ----
+   Quem convida escolhe dia e horário; o convite vale do horário até 5 h depois e abre o Portão
+   Principal UMA vez, com o convidado a até 500 m do portão (tudo conferido na função "convite"). */
+const linkConvite = (token) => `${window.location.origin}${window.location.pathname}#convite=${token}`;
+const fmtConvite = (iso) => new Date(iso).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const horaBR = (ms) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+function textoConvite(c, nomeEu) {
+  const ini = Date.parse(c.inicio);
+  return `Olá${c.convidado ? ", " + c.convidado : ""}! Você foi convidado por ${String(nomeEu).split(" ")[0]} para o Rancho Abdalla.\n`
+    + `Acesse seu convite: ${linkConvite(c.token)}\n`
+    + `Vale em ${new Date(ini).toLocaleDateString("pt-BR")} das ${horaBR(ini)} às ${horaBR(ini + 5 * 3600000)}.`;
+}
+function ConviteSheet({ nomeEu, showToast, onFechar }) {
+  const hoje = new Date(), dois = (n) => String(n).padStart(2, "0");
+  const [data, setData] = useState(`${hoje.getFullYear()}-${dois(hoje.getMonth() + 1)}-${dois(hoje.getDate())}`);
+  const [hora, setHora] = useState(`${dois(hoje.getHours())}:00`);
+  const [convidado, setConvidado] = useState(""), [salvando, setSalvando] = useState(false);
+  const [criado, setCriado] = useState(null), [lista, setLista] = useState(null);
+  const carregar = () => supabase.from("convites").select("*").is("encerrado_em", null).gte("inicio", new Date(Date.now() - 5 * 3600000).toISOString()).order("inicio")
+    .then(({ data: d }) => setLista(d || []));
+  useEffect(() => { carregar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const criar = async () => {
+    const inicio = new Date(`${data}T${hora}`);
+    if (isNaN(inicio)) { showToast("Escolha o dia e o horário."); return; }
+    if (inicio.getTime() + 5 * 3600000 < Date.now()) { showToast("Esse horário já passou."); return; }
+    setSalvando(true);
+    const bytes = crypto.getRandomValues(new Uint8Array(24));
+    const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const { data: c, error } = await supabase.from("convites").insert({ token, nome_criador: nomeEu || "Rancho Abdalla", convidado: convidado.trim() || null, inicio: inicio.toISOString() }).select().single();
+    setSalvando(false);
+    if (error) { showToast(/convites/.test(error.message) ? "Falta rodar o SQL convites.sql no Supabase." : "Erro ao criar: " + error.message); return; }
+    setCriado(c); carregar();
+  };
+  const cancelar = async (c) => {
+    if (!(await Dialog.confirm({ titulo: "Cancelar convite", mensagem: `Cancelar o convite${c.convidado ? " de " + c.convidado : ""}? O link para de funcionar.`, okLabel: "Cancelar convite", perigo: true }))) return;
+    const { error } = await supabase.from("convites").update({ encerrado_em: new Date().toISOString() }).eq("id", c.id);
+    if (error) { showToast("Erro: " + error.message); return; }
+    if (criado?.id === c.id) setCriado(null);
+    carregar();
+  };
+  const compartilhar = async (c) => {
+    const texto = textoConvite(c, nomeEu);
+    if (navigator.share) { try { await navigator.share({ text: texto }); return; } catch { /* cancelou: tenta o WhatsApp */ } }
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank");
+  };
+  const campo = { border: `1px solid ${C.linha}`, borderRadius: 10, padding: "10px 12px", fontSize: 16, background: C.card, color: C.terra, width: "100%", boxSizing: "border-box" };
+  const verde = { width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 };
+  return (
+    <Sheet titulo="Convite para visitante" onFechar={onFechar}>
+      {!criado ? (
+        <div className="flex flex-col" style={{ gap: 10 }}>
+          <div style={{ color: C.cinza, fontSize: 13.5 }}>O convidado recebe um link. A partir do horário escolhido, e por 5 horas, ele pode abrir o Portão Principal uma vez, estando a até 500 m do portão. A porta da frente da Casa Alta é destrancada quando o portão abre.</div>
+          <label style={{ fontSize: 13, fontWeight: 700, color: C.cinza }}>Nome do convidado (opcional)<input value={convidado} onChange={(e) => setConvidado(e.target.value)} placeholder="Ex.: João" style={{ ...campo, marginTop: 4 }} /></label>
+          <div className="flex gap-2">
+            <label className="flex-1" style={{ fontSize: 13, fontWeight: 700, color: C.cinza }}>Dia<input type="date" value={data} onChange={(e) => setData(e.target.value)} style={{ ...campo, marginTop: 4 }} /></label>
+            <label style={{ fontSize: 13, fontWeight: 700, color: C.cinza, width: 130 }}>Horário<input type="time" value={hora} onChange={(e) => setHora(e.target.value)} style={{ ...campo, marginTop: 4 }} /></label>
+          </div>
+          <button onClick={criar} disabled={salvando} style={{ ...verde, opacity: salvando ? 0.6 : 1 }}>{salvando ? "Criando…" : "Criar convite"}</button>
+        </div>
+      ) : (
+        <div className="flex flex-col" style={{ gap: 10 }}>
+          <div style={{ background: C.pastoClaro, borderRadius: 12, padding: 12, fontSize: 14, color: C.terra, whiteSpace: "pre-wrap" }}>{textoConvite(criado, nomeEu)}</div>
+          <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(textoConvite(criado, nomeEu))}`, "_blank")} style={verde}><MessageCircle size={18} /> Enviar pelo WhatsApp</button>
+          <button onClick={() => compartilhar(criado)} style={{ ...verde, background: C.card, color: C.pasto, border: `1px solid ${C.pasto}` }}>Compartilhar de outro jeito</button>
+          <button onClick={() => { navigator.clipboard?.writeText(linkConvite(criado.token)); showToast("Link copiado"); }} style={{ color: C.cinza, fontWeight: 700, fontSize: 14, padding: 6 }}><Copy size={14} style={{ display: "inline", verticalAlign: -2 }} /> Copiar só o link</button>
+          <button onClick={() => setCriado(null)} style={{ color: C.pasto, fontWeight: 700, fontSize: 14, padding: 6 }}>Criar outro convite</button>
+        </div>
+      )}
+      {lista && lista.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: C.cinza, textTransform: "uppercase", marginBottom: 4 }}>Convites valendo</div>
+          {lista.map((c) => (
+            <div key={c.id} className="flex items-center gap-2" style={{ borderTop: `1px solid ${C.linha}`, padding: "8px 0" }}>
+              <div className="flex-1 min-w-0">
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.terra }}>{c.convidado || "Convidado"}{c.usado_em ? " · já entrou" : ""}</div>
+                <div style={{ fontSize: 12.5, color: C.cinza }}>{fmtConvite(c.inicio)} · por {String(c.nome_criador).split(" ")[0]}</div>
+              </div>
+              {!c.usado_em && <button onClick={() => compartilhar(c)} aria-label="Enviar de novo" style={{ padding: 6, color: C.pasto }}><MessageCircle size={17} /></button>}
+              <button onClick={() => cancelar(c)} aria-label="Cancelar convite" style={{ padding: 6, color: C.vermelho }}><Trash2 size={17} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+// Tela do convidado (abre pelo link #convite=…, sem login).
+export function ConvitePage({ token }) {
+  const [info, setInfo] = useState(null), [erro, setErro] = useState(""), [passo, setPasso] = useState(""), [aviso, setAviso] = useState("");
+  const chamar = async (body) => {
+    const { data, error } = await supabase.functions.invoke("convite", { body: { token, ...body } });
+    if (!error && !data?.error) return data;
+    let msg = data?.error;
+    if (!msg && error?.context) { try { msg = (await error.context.json())?.error; } catch { /* sem corpo */ } }
+    throw new Error(msg || "Não deu para falar com o rancho agora. Tente de novo.");
+  };
+  const ver = () => chamar({ acao: "ver" }).then(setInfo).catch((e) => setErro(e.message));
+  useEffect(() => { ver(); const t = setInterval(ver, 60000); return () => clearInterval(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const abrir = () => {
+    setAviso(""); setPasso("local");
+    if (!navigator.geolocation) { setPasso(""); setAviso("Este celular não informa a localização."); return; }
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      setPasso("abrindo");
+      try {
+        await chamar({ acao: "abrir", lat: pos.coords.latitude, lon: pos.coords.longitude, precisao: pos.coords.accuracy });
+        setPasso("aberto");
+      } catch (e) { setPasso(""); setAviso(e.message); }
+    }, () => { setPasso(""); setAviso("Permita a localização do celular para abrir o portão (o botão só funciona perto do rancho)."); },
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  };
+  const ini = info ? Date.parse(info.inicio) : null;
+  const mapa = info?.lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${info.lat},${info.lon}` : null;
+  return (
+    <div style={{ minHeight: "100dvh", background: C.bg, color: C.terra, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <div className="mx-auto" style={{ maxWidth: 460, padding: "0 16px 30px" }}>
+        <div style={{ background: C.cabecalho, color: "#fff", borderRadius: "0 0 22px 22px", padding: "34px 20px 26px", textAlign: "center", margin: "0 -16px 20px" }}>
+          <div style={{ fontSize: 30, fontWeight: 900, letterSpacing: "0.02em" }}>BEM-VINDO</div>
+          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4, opacity: 0.95 }}>ao Rancho Abdalla</div>
+          {info?.convidadoPor && <div style={{ fontSize: 13.5, marginTop: 10, opacity: 0.85 }}>Convite de {String(info.convidadoPor).split(" ")[0]}{info.convidado ? ` para ${info.convidado}` : ""}</div>}
+        </div>
+        {!info && !erro && <div className="text-center" style={{ color: C.cinza, padding: 20 }}>Abrindo o seu convite…</div>}
+        {erro && <div className="text-center" style={{ color: C.vermelho, padding: 20, fontWeight: 700 }}>{erro}</div>}
+        {info && (<>
+          <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 18, padding: 18, textAlign: "center" }}>
+            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 12 }}>Acesso ao Portão Principal</div>
+            {info.estado === "cedo" && <div style={{ color: C.cinza, fontSize: 15 }}>Seu convite começa em <b style={{ color: C.terra }}>{new Date(ini).toLocaleDateString("pt-BR")} às {horaBR(ini)}</b>. O botão para abrir o portão aparece nesse horário.</div>}
+            {(info.estado === "encerrado" || info.estado === "expirado") && passo !== "aberto" && <div style={{ color: C.cinza, fontSize: 15 }}>Este convite já foi encerrado.</div>}
+            {info.estado === "usado" && passo !== "aberto" && <div style={{ color: C.cinza, fontSize: 15 }}>O portão já foi aberto com este convite.</div>}
+            {passo === "aberto" ? (
+              <div style={{ color: C.pasto, fontSize: 16, fontWeight: 700 }}>Portão abrindo! Pode entrar. A porta da frente da casa está sendo destrancada para você. O portão fecha sozinho em seguida.</div>
+            ) : info.estado === "ativo" && (<>
+              <button onClick={abrir} disabled={!!passo} className="flex items-center justify-center gap-3"
+                style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 16, padding: "20px 14px", fontWeight: 800, fontSize: 20, opacity: passo ? 0.7 : 1, boxShadow: "0 12px 26px -14px rgba(0,0,0,.5)" }}>
+                <DoorOpen size={26} /> {passo === "local" ? "Conferindo onde você está…" : passo === "abrindo" ? "Abrindo…" : "Abrir o portão"}
+              </button>
+              <div style={{ fontSize: 12.5, color: C.cinza, marginTop: 8 }}>Funciona uma vez, quando você estiver a até 500 m do portão.</div>
+            </>)}
+            {aviso && <div style={{ color: C.vermelho, fontSize: 14, fontWeight: 600, marginTop: 10 }}>{aviso}</div>}
+          </div>
+          {mapa && (
+            <a href={mapa} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3"
+              style={{ marginTop: 16, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: 16, color: C.lago, fontWeight: 800, fontSize: 16, textDecoration: "none" }}>
+              <MapPin size={24} /> Como chegar (abrir no Maps)
+            </a>
+          )}
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function VisitanteSheet({ showToast, onCriado, onFechar }) {
   const [dias, setDias] = useState("1");
   const [criando, setCriando] = useState(false);

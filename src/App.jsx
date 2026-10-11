@@ -1,6 +1,7 @@
-import AbdallaHome from './AbdallaHome.jsx'
+import AbdallaHome, { ConvitePage } from './AbdallaHome.jsx'
 
-// O app do Rancho Abdalla e a tela principal.
+// O app do Rancho Abdalla e a tela principal. Link de convite (#convite=…) abre só a tela do convidado.
 export default function App() {
-  return <AbdallaHome />
+  const convite = (window.location.hash.match(/convite=([A-Za-z0-9_-]+)/) || [])[1]
+  return convite ? <ConvitePage token={convite} /> : <AbdallaHome />
 }
