@@ -1646,7 +1646,8 @@ function ConviteSheet({ nomeEu, showToast, onFechar }) {
 export function ConvitePage({ token }) {
   const [info, setInfo] = useState(null), [erro, setErro] = useState(""), [passo, setPasso] = useState(""), [aviso, setAviso] = useState("");
   const chamar = async (body) => {
-    const { data, error } = await supabase.functions.invoke("convite", { body: { token, ...body } });
+    // A função "convite" ficou publicada no Supabase com o endereço "dynamic-worker" (nome automático).
+    const { data, error } = await supabase.functions.invoke("dynamic-worker", { body: { token, ...body } });
     if (!error && !data?.error) return data;
     let msg = data?.error;
     if (!msg && error?.context) { try { msg = (await error.context.json())?.error; } catch { /* sem corpo */ } }

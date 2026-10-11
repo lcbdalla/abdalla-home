@@ -9,7 +9,8 @@
 // O token do Home Assistant fica só aqui (tabela ha_config, lida com a chave secreta).
 //
 // Deploy: painel do Supabase > Edge Functions > Deploy a new function > Via Editor.
-// Digite o NOME "convite" ANTES de publicar e cole este arquivo.
+// Digite o NOME "convite" ANTES de publicar e cole este arquivo. (Publicada com o endereço
+// "dynamic-worker": é esse que o app chama.)
 // Depois, em Settings da função, DESLIGUE "Verify JWT" (o convidado não tem login).
 // -----------------------------------------------------------------------------
 
