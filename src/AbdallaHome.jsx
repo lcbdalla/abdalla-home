@@ -3391,6 +3391,26 @@ function desligarAr(e, enviar) {
   _arTimers[e.id].push(setTimeout(() => enviar("climate", "turn_on", e.id), espera));
   _arTimers[e.id].push(setTimeout(() => enviar("climate", "turn_off", e.id), espera * 2));
 }
+// LED do painel do ar (para dormir). Midea pela integração midea_ac: chave switch.<ar>_display (estado
+// lido). Midea pela midea_ac_lan: serviço set_attribute "screen_display"; o estado vem num atributo e
+// varia por modelo (no Q11 do Quarto Visita é screen_display; nos Q18/Q1E, screen_display_alternate),
+// então é "provável". Carrier (SmartIR, infravermelho) não tem LED pelo HA.
+const LED_PELO_DISPLAY = new Set(["151732607255748"]); // modelos em que o estado certo é screen_display
+function ledDoAr(id, attrs, ents) {
+  const sw = id.replace(/^climate\./, "switch.") + "_display";
+  if (ents[sw]) return { tipo: "switch", id: sw, aceso: ents[sw].state === "on" };
+  const lan = id.match(/^climate\.(\d+)_climate$/);
+  if (lan && attrs && ("screen_display" in attrs || "screen_display_alternate" in attrs)) {
+    const v = LED_PELO_DISPLAY.has(lan[1]) ? attrs.screen_display : (attrs.screen_display_alternate ?? attrs.screen_display);
+    return { tipo: "lan", device: Number(lan[1]), aceso: v === true, provavel: true };
+  }
+  return null;
+}
+function alternarLedAr(e, enviar) {
+  const l = e.led; if (!l) return;
+  if (l.tipo === "switch") enviar("switch", l.aceso ? "turn_off" : "turn_on", l.id);
+  else enviar("midea_ac_lan", "set_attribute", e.id, { device_id: l.device, attribute: "screen_display", value: !l.aceso });
+}
 function CtrlAr({ e, enviar }) {
   const ind = !e.disponivel; const a = e.attributes || {};
   const ligado = !!e.state && e.state !== "off" && !ind;
@@ -3434,6 +3454,14 @@ function CtrlAr({ e, enviar }) {
             <div>
               <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Vento</div>
               <div className="flex flex-wrap gap-2">{ventos.map((f) => <CtrlChip key={f} ativo={a.fan_mode === f} cor={C.pasto} onClick={() => enviar("climate", "set_fan_mode", e.id, { fan_mode: f })}>{AR_VENTO_NOME[f] || f}</CtrlChip>)}</div>
+            </div>
+          )}
+          {e.led && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Luz do painel (LED)</div>
+              <div className="flex flex-wrap gap-2">
+                <CtrlChip ativo={e.led.aceso} cor={C.ambar} onClick={() => alternarLedAr(e, enviar)}>{e.led.aceso ? "Acesa · toque para apagar" : "Apagada · toque para acender"}</CtrlChip>
+              </div>
             </div>
           )}
         </>
@@ -5336,7 +5364,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     }
     const idCmd = idRef.current++;
     comandosRef.current[idCmd] = entityId;
-    ws.send(JSON.stringify({ id: idCmd, type: "call_service", domain, service, target: { entity_id: entityId }, service_data: serviceData || {} }));
+    // midea_ac_lan.set_attribute (LED do ar) recusa entity_id: vai só com os dados (device_id).
+    ws.send(JSON.stringify({ id: idCmd, type: "call_service", domain, service, ...(domain === "midea_ac_lan" ? {} : { target: { entity_id: entityId } }), service_data: serviceData || {} }));
     setAviso({ texto: "Comando enviado…" });
     setTimeout(() => setAviso((a) => (a && !a.erro ? null : a)), 2000);
   };
@@ -5581,7 +5610,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       disponivel: row.tipo === "botao" ? state != null && state !== "unavailable" : state != null && !["unavailable", "unknown", "none", ""].includes(state),
       streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : RECEIVERS_SOM[row.entity_id] ? streamerSpotify(RECEIVERS_SOM[row.entity_id]) : null,
       zonas: ehZonaAAT(row.entity_id) ? zonasAAT : null,
-      ...(row.tipo === "ar" ? { quandoLigado: (fn) => quandoLigado(row.entity_id, fn) } : {}),
+      ...(row.tipo === "ar" ? { quandoLigado: (fn) => quandoLigado(row.entity_id, fn), led: ledDoAr(row.entity_id, live?.attributes, entsVis) } : {}),
       tons: ehZonaAAT(row.entity_id) ? tonsAAT : null,
       mesa: ehZonaAAT(row.entity_id) ? { cfg: MESA_TV, ents: Object.fromEntries(MESA_IDS.map((id) => [id, entsVis[id]])) } : null,
     };

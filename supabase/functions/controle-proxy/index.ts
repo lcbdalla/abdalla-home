@@ -145,6 +145,8 @@ Deno.serve(async (req) => {
   const podeAlarme = p.papel === "admin" || p.pode_menu_controle === true;
   cadastrados.add("sensor.0xa4c13818adff06db_liquid_level_percent"); // nível da caixa d'água (só leitura, para o aviso)
   for (const id of [...cadastrados]) for (const v of VINCULADOS[id] || []) cadastrados.add(v);
+  // LED do painel dos ares Midea (integração midea_ac): chave switch.<ar>_display.
+  for (const id of [...cadastrados]) if (id.startsWith("climate.")) cadastrados.add(id.replace(/^climate\./, "switch.") + "_display");
   // Zonas do AAT: agudo, grave e balanço da zona (number.aat_pmr7_zona_N_…).
   for (const id of [...cadastrados]) {
     const z = id.match(/^media_player\.aat_pmr7_zona_(\d+)$/);
@@ -283,6 +285,17 @@ Deno.serve(async (req) => {
       liberado = rs.ok && ehMeuSpotify(await rs.json(), p.nome);
     }
     if (!liberado) return json({ error: "Este aparelho não está liberado no controle." }, 403);
+    // LED do painel dos ares Midea pela midea_ac_lan: serviço sem entity_id, só screen_display do próprio ar.
+    if (domain === "midea_ac_lan") {
+      const num = entity.match(/^climate\.(\d+)_climate$/)?.[1];
+      const d = body.data || {};
+      if (service !== "set_attribute" || !num || String(d.device_id) !== num || d.attribute !== "screen_display" || typeof d.value !== "boolean") {
+        return json({ error: "Comando não permitido para este aparelho." }, 403);
+      }
+      const rl = await fetch(`${base}/api/services/midea_ac_lan/set_attribute`, { method: "POST", headers: cabecalho, body: JSON.stringify({ device_id: Number(num), attribute: "screen_display", value: d.value }) });
+      if (!rl.ok) return json({ error: `O Home Assistant recusou o comando (${rl.status}).` }, 502);
+      return json({ ok: true });
+    }
     const doProprioTipo = domain === entity.split(".")[0];
     // Única exceção de "recarregar integração": a da mesa XR18 (pela entidade dela), que demora a
     // reconectar sozinha depois que o plug liga.
