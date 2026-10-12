@@ -5766,7 +5766,12 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       ...(RECEIVERS_SOM[row.entity_id] ? { receiver: RECEIVERS_SOM[row.entity_id], spotify: meuSpotify, conectarSpotify, tvNaSala: tvLigada(entsVis[RECEIVERS_SOM[row.entity_id].tvId]) } : {}),
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
       state, attributes: live?.attributes || {}, rotulos: row.rotulos || {}, tamanho: row.tamanho === "g" ? "g" : "p",
-      disponivel: row.tipo === "botao" ? state != null && state !== "unavailable" : state != null && !["unavailable", "unknown", "none", ""].includes(state),
+      // Persiana por RF (só comando, sem retorno): o HA mostra o estado como "unknown",
+      // mas ela É controlável. Então fica disponível desde que o aparelho exista no HA e
+      // não esteja offline ("unavailable") — não exige um estado aberto/fechado conhecido.
+      disponivel: row.tipo === "botao" ? state != null && state !== "unavailable"
+        : row.tipo === "persiana" ? !!live && state !== "unavailable"
+        : state != null && !["unavailable", "unknown", "none", ""].includes(state),
       streamer: ehZonaAAT(row.entity_id) ? vincularStreamer(live) : RECEIVERS_SOM[row.entity_id] ? streamerSpotify(RECEIVERS_SOM[row.entity_id]) : null,
       zonas: ehZonaAAT(row.entity_id) ? zonasAAT : null,
       ...(row.tipo === "ar" ? { quandoLigado: (fn) => quandoLigado(row.entity_id, fn), led: ledDoAr(row.entity_id, live?.attributes, entsVis) } : {}),
