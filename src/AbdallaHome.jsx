@@ -3575,10 +3575,10 @@ const ledUltimo = () => { try { return JSON.parse(localStorage.getItem("ledAr") 
 function alternarLedAr(e, enviar) {
   const l = e.led; if (!l) return;
   if (l.tipo === "switch") { enviar("switch", l.aceso ? "turn_off" : "turn_on", l.id); return; }
-  // midea_ac_lan nesses modelos é "ao contrário" também no comando: value true = APAGAR o LED.
+  // value true = LED aceso (conferido no Quarto Leo e Pri); guarda o que foi mandado.
   const acender = !l.aceso;
   try { localStorage.setItem("ledAr", JSON.stringify({ ...ledUltimo(), [l.device]: { aceso: acender, em: Date.now() } })); } catch { /* ok */ }
-  enviar("midea_ac_lan", "set_attribute", e.id, { device_id: l.device, attribute: "screen_display", value: !acender });
+  enviar("midea_ac_lan", "set_attribute", e.id, { device_id: l.device, attribute: "screen_display", value: acender });
 }
 function CtrlAr({ e, enviar }) {
   const ind = !e.disponivel; const a = e.attributes || {};
@@ -3629,7 +3629,7 @@ function CtrlAr({ e, enviar }) {
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Luz do painel (LED)</div>
               <div className="flex flex-wrap gap-2">
-                <CtrlChip ativo={e.led.aceso} cor={C.ambar} onClick={() => alternarLedAr(e, enviar)}>{e.led.aceso ? "Acesa" : "Apagada"}</CtrlChip>
+                <CtrlChip ativo={e.led.aceso} cor={C.ambar} onClick={() => alternarLedAr(e, enviar)}>{e.led.aceso ? "Led ON" : "Led OFF"}</CtrlChip>
               </div>
             </div>
           )}
