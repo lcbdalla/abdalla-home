@@ -3571,7 +3571,8 @@ function ledDoAr(id, attrs, ents) {
 function alternarLedAr(e, enviar) {
   const l = e.led; if (!l) return;
   if (l.tipo === "switch") enviar("switch", l.aceso ? "turn_off" : "turn_on", l.id);
-  else enviar("midea_ac_lan", "set_attribute", e.id, { device_id: l.device, attribute: "screen_display", value: !l.aceso });
+  // midea_ac_lan nesses modelos é "ao contrário" também no comando: value true = APAGAR o LED.
+  else enviar("midea_ac_lan", "set_attribute", e.id, { device_id: l.device, attribute: "screen_display", value: l.aceso });
 }
 function CtrlAr({ e, enviar }) {
   const ind = !e.disponivel; const a = e.attributes || {};
