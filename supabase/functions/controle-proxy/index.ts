@@ -287,14 +287,15 @@ Deno.serve(async (req) => {
       liberado = rs.ok && ehMeuSpotify(await rs.json(), p.nome);
     }
     if (!liberado) return json({ error: "Este aparelho não está liberado no controle." }, 403);
-    // LED do painel dos ares Midea pela midea_ac_lan: serviço sem entity_id, só screen_display do próprio ar.
+    // LED e brisa indireta dos ares Midea pela midea_ac_lan: serviço sem entity_id, só do próprio ar.
     if (domain === "midea_ac_lan") {
       const num = entity.match(/^climate\.(\d+)_climate$/)?.[1];
       const d = body.data || {};
-      if (service !== "set_attribute" || !num || String(d.device_id) !== num || d.attribute !== "screen_display" || typeof d.value !== "boolean") {
+      const ATRIBUTOS_AR = ["screen_display", "indirect_wind", "breeze_away", "breezeless"]; // LED e brisa indireta
+      if (service !== "set_attribute" || !num || String(d.device_id) !== num || !ATRIBUTOS_AR.includes(d.attribute) || typeof d.value !== "boolean") {
         return json({ error: "Comando não permitido para este aparelho." }, 403);
       }
-      const rl = await fetch(`${base}/api/services/midea_ac_lan/set_attribute`, { method: "POST", headers: cabecalho, body: JSON.stringify({ device_id: Number(num), attribute: "screen_display", value: d.value }) });
+      const rl = await fetch(`${base}/api/services/midea_ac_lan/set_attribute`, { method: "POST", headers: cabecalho, body: JSON.stringify({ device_id: Number(num), attribute: d.attribute, value: d.value }) });
       if (!rl.ok) return json({ error: `O Home Assistant recusou o comando (${rl.status}).` }, 502);
       return json({ ok: true });
     }

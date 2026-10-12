@@ -3594,6 +3594,19 @@ function CtrlAr({ e, enviar }) {
     v = Math.min(max, Math.max(min, v));
     enviar("climate", "set_temperature", e.id, { temperature: v });
   };
+  // Swing (aba oscilando): liga no vertical (ou o 1º modo que não seja "off") e desliga em "off".
+  const swings = a.swing_modes || [];
+  const swingDisponivel = swings.length > 1 && swings.some((m) => /^off$/i.test(m));
+  const swingLigado = !!a.swing_mode && !/^off$/i.test(a.swing_mode);
+  const alternarSwing = () => {
+    const ligar = swings.find((m) => /^vertical$/i.test(m)) || swings.find((m) => !/^off$/i.test(m));
+    enviar("climate", "set_swing_mode", e.id, { swing_mode: swingLigado ? swings.find((m) => /^off$/i.test(m)) : ligar });
+  };
+  // Brisa indireta (vento que não bate direto): atributo da integração midea_ac_lan.
+  const brisaAttr = ["indirect_wind", "breeze_away", "breezeless"].find((k) => typeof a[k] === "boolean");
+  const brisaNum = String(e.id).match(/^climate\.(\d+)_climate$/)?.[1];
+  const brisa = brisaAttr && brisaNum ? { attr: brisaAttr, on: a[brisaAttr] === true } : null;
+  const alternarBrisa = () => enviar("midea_ac_lan", "set_attribute", e.id, { device_id: Number(brisaNum), attribute: brisa.attr, value: !brisa.on });
   return (
     <div>
       <div className="flex items-center gap-3 mb-3">
@@ -3625,11 +3638,13 @@ function CtrlAr({ e, enviar }) {
               <div className="flex flex-wrap gap-2">{ventos.map((f) => <CtrlChip key={f} ativo={a.fan_mode === f} cor={C.pasto} onClick={() => enviar("climate", "set_fan_mode", e.id, { fan_mode: f })}>{AR_VENTO_NOME[f] || f}</CtrlChip>)}</div>
             </div>
           )}
-          {e.led && (
+          {(e.led || swingDisponivel || brisa) && (
             <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Luz do painel (LED)</div>
+              <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>Opções</div>
               <div className="flex flex-wrap gap-2">
-                <CtrlChip ativo={e.led.aceso} cor={C.ambar} onClick={() => alternarLedAr(e, enviar)}>{e.led.aceso ? "Led ON" : "Led OFF"}</CtrlChip>
+                {swingDisponivel && <CtrlChip ativo={swingLigado} cor={LAGO} onClick={alternarSwing}>{swingLigado ? "Swing ON" : "Swing OFF"}</CtrlChip>}
+                {brisa && <CtrlChip ativo={brisa.on} cor={LAGO} onClick={alternarBrisa}>{brisa.on ? "Brisa indireta ON" : "Brisa indireta OFF"}</CtrlChip>}
+                {e.led && <CtrlChip ativo={e.led.aceso} cor={C.ambar} onClick={() => alternarLedAr(e, enviar)}>{e.led.aceso ? "Led ON" : "Led OFF"}</CtrlChip>}
               </div>
             </div>
           )}
