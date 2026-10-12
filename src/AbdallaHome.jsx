@@ -2046,8 +2046,11 @@ const TV_VARANDA = { nome: "TV Varanda", tv: "media_player.tv_varanda", remote: 
   ir: { entity: "remote.broadlink_churrasqueira", device: "tv_power", command: "tv_powero_on" },
   teclas: { BACK: "KEY_RETURN", HOME: "KEY_HOME", DPAD_UP: "KEY_UP", DPAD_DOWN: "KEY_DOWN", DPAD_LEFT: "KEY_LEFT", DPAD_RIGHT: "KEY_RIGHT", DPAD_CENTER: "KEY_ENTER",
     MEDIA_REWIND: "KEY_REWIND", MEDIA_FAST_FORWARD: "KEY_FF", VOLUME_UP: "KEY_VOLUP", VOLUME_DOWN: "KEY_VOLDOWN" } };
-const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA, "media_player.tv_varanda": TV_VARANDA };
-const TVS_COM_CONTROLE = [TV_SALA, TV_VARANDA];
+// TV do Quarto Leo e Pri (Samsung, mesmo esquema da Varanda): liga pelo IR do Broadlink do quarto.
+const TV_QUARTO_LP = { ...TV_VARANDA, nome: "TV Quarto", tv: "media_player.tv_quarto_leo_pri", remote: "remote.tv_quarto_leo_pri",
+  ir: { entity: "remote.broadlink_quarto_leo_e_pri", device: "tv_power", command: "tv_power_on" } };
+const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA, "media_player.tv_varanda": TV_VARANDA, "media_player.tv_quarto_leo_pri": TV_QUARTO_LP };
+const TVS_COM_CONTROLE = [TV_SALA, TV_VARANDA, TV_QUARTO_LP];
 const tvLigada = (v) => !!v && !["off", "standby", "unavailable", "unknown"].includes(v.state);
 // Desenho de controle remoto (o lucide não tem): mesmo estilo de traço dos outros ícones.
 function IconeControleRemoto({ size = 24, strokeWidth = 2, ...props }) {

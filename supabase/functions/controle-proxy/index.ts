@@ -46,12 +46,14 @@ const ehMeuSpotify = (s: any, nome: string) => String(s?.entity_id || "").starts
 const IR_LIGA_TV: Record<string, [string, string]> = {
   "remote.broadlink_sala_tv": ["liga_tv", "tv_on"],
   "remote.broadlink_churrasqueira": ["tv_power", "tv_powero_on"],
+  "remote.broadlink_quarto_leo_e_pri": ["tv_power", "tv_power_on"],
 };
 const VINCULADOS: Record<string, string[]> = {
   "media_player.tv_sala": ["media_player.smarttv_4k_ffm", "remote.smarttv_4k_ffm", "media_player.denon_avr_s770h", "remote.broadlink_sala_tv"],
   "media_player.smarttv_4k_ffm": ["remote.smarttv_4k_ffm", "media_player.denon_avr_s770h", "remote.broadlink_sala_tv"],
   "lock.fechadura_porta_frente": ["sensor.fechadura_porta_frente_battery"],
   "media_player.tv_varanda": ["remote.tv_varanda", "remote.broadlink_churrasqueira"],
+  "media_player.tv_quarto_leo_pri": ["remote.tv_quarto_leo_pri", "remote.broadlink_quarto_leo_e_pri"],
 };
 
 Deno.serve(async (req) => {
