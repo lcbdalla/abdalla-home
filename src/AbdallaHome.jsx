@@ -3563,16 +3563,22 @@ function ledDoAr(id, attrs, ents) {
   const lan = id.match(/^climate\.(\d+)_climate$/);
   if (lan && attrs && ("screen_display" in attrs || "screen_display_alternate" in attrs)) {
     const v = LED_PELO_DISPLAY.has(lan[1]) ? attrs.screen_display : (attrs.screen_display_alternate ?? attrs.screen_display);
-    // Testado no quarto (Leo e Pri): o atributo vem ao contrário (true = LED apagado).
-    return { tipo: "lan", device: Number(lan[1]), aceso: v === false, provavel: true };
+    // Testado no quarto (Leo e Pri): o atributo vem ao contrário (true = LED apagado) e nem sempre
+    // atualiza depois do comando; por isso vale o último toque feito neste celular (até 12 h).
+    const ult = ledUltimo()[lan[1]];
+    const aceso = ult && Date.now() - ult.em < 12 * 3600000 ? ult.aceso : v === false;
+    return { tipo: "lan", device: Number(lan[1]), aceso, provavel: true };
   }
   return null;
 }
+const ledUltimo = () => { try { return JSON.parse(localStorage.getItem("ledAr") || "{}"); } catch { return {}; } };
 function alternarLedAr(e, enviar) {
   const l = e.led; if (!l) return;
-  if (l.tipo === "switch") enviar("switch", l.aceso ? "turn_off" : "turn_on", l.id);
+  if (l.tipo === "switch") { enviar("switch", l.aceso ? "turn_off" : "turn_on", l.id); return; }
   // midea_ac_lan nesses modelos é "ao contrário" também no comando: value true = APAGAR o LED.
-  else enviar("midea_ac_lan", "set_attribute", e.id, { device_id: l.device, attribute: "screen_display", value: l.aceso });
+  const acender = !l.aceso;
+  try { localStorage.setItem("ledAr", JSON.stringify({ ...ledUltimo(), [l.device]: { aceso: acender, em: Date.now() } })); } catch { /* ok */ }
+  enviar("midea_ac_lan", "set_attribute", e.id, { device_id: l.device, attribute: "screen_display", value: !acender });
 }
 function CtrlAr({ e, enviar }) {
   const ind = !e.disponivel; const a = e.attributes || {};
