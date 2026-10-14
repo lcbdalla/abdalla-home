@@ -720,7 +720,7 @@ export default function App() {
 
   return (
     <div style={{ background: C.tela, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra }}>
-      <div className="mx-auto" style={{ maxWidth: 460, position: "relative", minHeight: "100vh", paddingBottom: 88 }}>
+      <div className="mx-auto" style={{ maxWidth: 460, position: "relative", minHeight: "100vh", paddingBottom: "calc(88px + env(safe-area-inset-bottom))" }}>
 
         {/* Cabeçalho fixo no alto (não rola com a tela). */}
         <header style={{ background: C.cabecalho, color: "#fff", padding: "14px 16px 14px", borderBottomLeftRadius: 22, borderBottomRightRadius: 22, position: "sticky", top: 0, zIndex: 45 }}>
@@ -5960,7 +5960,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   return (
     // overflowX "clip" (e não "hidden"): "hidden" impediria o cabeçalho de ficar fixo no alto.
     <div style={{ background: C.tela, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: C.terra, overflowX: "clip", width: "100%" }}>
-      <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: 30 }}>
+      <div className="mx-auto" style={{ maxWidth: 460, width: "100%", boxSizing: "border-box", minHeight: "100vh", paddingBottom: "calc(48px + env(safe-area-inset-bottom))" }}>
         <style>{"@keyframes ah-jig{0%{transform:rotate(-0.7deg)}50%{transform:rotate(0.7deg)}100%{transform:rotate(-0.7deg)}}.ah-jiggle{animation:ah-jig .28s infinite ease-in-out}@keyframes ah-pisca{50%{opacity:.2}}.ah-pisca{animation:ah-pisca .8s infinite}"}</style>
         <DialogHost />
         {portaoAberto && <PortaoModal ent={entsVis[PORTAO_ID]} enviar={enviar} onFechar={() => setPortaoAberto(false)} topo={topoPortao}
