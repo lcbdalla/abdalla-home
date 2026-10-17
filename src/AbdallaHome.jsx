@@ -3243,7 +3243,7 @@ const achatar = (itens) => itens.flatMap((x) => (x.tipo === "grupoLuzes" ? x.mem
 const contarLigados = (itens) => { const d = achatar(itens).filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
 
 // Cabeçalho de pavimento/cômodo: [⏻ desligar tudo] · nome · ligados/total ⌄ (tocar abre/fecha).
-function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo, musica, iconeAmb, atalhos }) {
+function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo, musica, iconeAmb, atalhos, temperatura }) {
   const { on, total } = contarLigados(itens);
   const aceso = on > 0;
   // Cômodo fechado com atalhos: cartão com o dobro da altura, nome em até 2 linhas e atalhos em 2 fileiras.
@@ -3272,6 +3272,11 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
       <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex flex-col justify-center text-left" style={toque}>
         <span className={duplo ? "" : "truncate"} style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: corNome, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2,
           ...(duplo ? { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" } : {}) }}>{nome}</span>
+        {temperatura != null && (
+          <span className="flex items-center" style={{ gap: 3, fontSize: 12.5, fontWeight: 600, color: corSub, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
+            <Thermometer size={14} />{Number(temperatura).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} °C
+          </span>
+        )}
         {sub && (
           <span className="truncate" style={{ fontSize: 12, color: corSub, marginTop: 2 }}>
             {aceso ? <b style={{ color: corAceso, fontWeight: 700 }}>{on} {on === 1 ? "ligado" : "ligados"}</b> : sub}
@@ -3280,12 +3285,12 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
       </button>
       {atalhos?.length > 0 && (duplo && atalhos.length > 1 ? (
         // 2 fileiras, preenchendo da direita para a esquerda: a luz fica no canto de cima, à direita.
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.ceil(atalhos.length / 2)}, 30px)`, gap: 4, flexShrink: 0, direction: "rtl" }}>
-          {[...atalhos].reverse().map((a) => <BolinhaArea key={a.key} tam={30} Icon={a.Icon} cor={a.cor} aceso={a.aceso} preenche={a.preenche} rot={a.rot} onClick={a.onClick} />)}
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.ceil(atalhos.length / 2)}, 34px)`, gap: 4, flexShrink: 0, direction: "rtl" }}>
+          {[...atalhos].reverse().map((a) => <BolinhaArea key={a.key} tam={34} Icon={a.Icon} cor={a.cor} aceso={a.aceso} preenche={a.preenche} rot={a.rot} onClick={a.onClick} />)}
         </div>
       ) : (
         <div className="flex items-center" style={{ gap: 4, flexShrink: 0 }}>
-          {atalhos.map((a) => <BolinhaArea key={a.key} tam={30} Icon={a.Icon} cor={a.cor} aceso={a.aceso} preenche={a.preenche} rot={a.rot} onClick={a.onClick} />)}
+          {atalhos.map((a) => <BolinhaArea key={a.key} tam={34} Icon={a.Icon} cor={a.cor} aceso={a.aceso} preenche={a.preenche} rot={a.rot} onClick={a.onClick} />)}
         </div>
       ))}
       {musica && (
@@ -5951,6 +5956,13 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     { k: "piscina", rot: "a piscina", Icon: WavesLadder, cor: "#3b9bd8", filtro: (x) => categoriaAtalho(x) === "piscina", aceso: estaLigado, agir: ligaHA },
     { k: "chafariz", rot: "o chafariz", Icon: IconeChafariz, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "chafariz", aceso: estaLigado, agir: ligaHA },
   ];
+  const temperaturaDe = (itens) => {
+    const todos = achatar(itens);
+    const ar = todos.find((x) => categoriaAtalho(x) === "ar" && x.attributes?.current_temperature != null && !isNaN(Number(x.attributes.current_temperature)));
+    if (ar) return Number(ar.attributes.current_temperature);
+    const sen = todos.find((x) => x.tipo === "sensor" && /°c/i.test(x.attributes?.unit_of_measurement || "") && x.state !== "" && !isNaN(Number(x.state)));
+    return sen ? Number(sen.state) : null;
+  };
   const atalhosDe = (itens) => {
     const todos = achatar(itens);
     return TIPOS_ATALHO.map((t) => {
@@ -6123,7 +6135,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                         de aparelho; a música fica só no título do nível. */}
                     <CabecalhoNivel nome={semQuarto(c.nome)} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
                       itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)}
-                      iconeAmb={iconeComodo(c.nome)} atalhos={atalhosDe(c.itens)} />
+                      iconeAmb={iconeComodo(c.nome)} atalhos={atalhosDe(c.itens)} temperatura={temperaturaDe(c.itens)} />
                   </div>
                   {abertoC && (
                     <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
