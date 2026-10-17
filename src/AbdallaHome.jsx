@@ -3246,7 +3246,9 @@ const contarLigados = (itens) => { const d = achatar(itens).filter(ehDesligavel)
 function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo, musica, iconeAmb, atalhos }) {
   const { on, total } = contarLigados(itens);
   const aceso = on > 0;
-  const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 52 : 44 };
+  // Cômodo fechado com atalhos: cartão com o dobro da altura, nome em até 2 linhas e atalhos em 2 fileiras.
+  const duplo = !grande && !aberto && atalhos?.length > 0;
+  const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 52 : duplo ? 88 : 44 };
   // Botão ⏻ "Desligar tudo": fica no lugar do ícone do pavimento / do pontinho do cômodo.
   // Aceso (âmbar, com brilho) = tem algo ligado; apagado (cinza) = nada ligado, não faz nada.
   const tam = grande ? 34 : 30;
@@ -3268,18 +3270,24 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
         <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: corApagado }}><Layers size={17} /></span>
       ) : null}
       <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex flex-col justify-center text-left" style={toque}>
-        <span className="truncate" style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: corNome, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2 }}>{nome}</span>
+        <span className={duplo ? "" : "truncate"} style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: corNome, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2,
+          ...(duplo ? { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" } : {}) }}>{nome}</span>
         {sub && (
           <span className="truncate" style={{ fontSize: 12, color: corSub, marginTop: 2 }}>
             {aceso ? <b style={{ color: corAceso, fontWeight: 700 }}>{on} {on === 1 ? "ligado" : "ligados"}</b> : sub}
           </span>
         )}
       </button>
-      {atalhos?.length > 0 && (
+      {atalhos?.length > 0 && (duplo && atalhos.length > 1 ? (
+        // 2 fileiras, preenchendo da direita para a esquerda: a luz fica no canto de cima, à direita.
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.ceil(atalhos.length / 2)}, 30px)`, gap: 4, flexShrink: 0, direction: "rtl" }}>
+          {[...atalhos].reverse().map((a) => <BolinhaArea key={a.key} tam={30} Icon={a.Icon} cor={a.cor} aceso={a.aceso} preenche={a.preenche} rot={a.rot} onClick={a.onClick} />)}
+        </div>
+      ) : (
         <div className="flex items-center" style={{ gap: 4, flexShrink: 0 }}>
           {atalhos.map((a) => <BolinhaArea key={a.key} tam={30} Icon={a.Icon} cor={a.cor} aceso={a.aceso} preenche={a.preenche} rot={a.rot} onClick={a.onClick} />)}
         </div>
-      )}
+      ))}
       {musica && (
         // Trocar a música sem abrir o cômodo.
         <div className="flex items-center" style={{ gap: 3, flexShrink: 0 }}>
