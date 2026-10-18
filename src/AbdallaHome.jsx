@@ -2050,7 +2050,7 @@ const TV_VARANDA = { nome: "TV Varanda", tv: "media_player.tv_varanda", remote: 
 const TV_QUARTO_LP = { ...TV_VARANDA, nome: "TV Quarto", tv: "media_player.tv_quarto_leo_pri", remote: "remote.tv_quarto_leo_pri",
   ir: { entity: "remote.broadlink_quarto_leo_e_pri", device: "tv_power", command: "tv_power_on" } };
 // TV do Quarto Visita (Samsung QN50Q8FA): mesmo esquema, liga pelo IR do Broadlink do quarto.
-const TV_QUARTO_VISITA = { ...TV_VARANDA, nome: "TV Visitas", tv: "media_player.tv_quarto_visita", remote: "remote.tv_quarto_visita", semApps: false, apps: "samsung",
+const TV_QUARTO_VISITA = { ...TV_VARANDA, nome: "TV Visitas", tv: "media_player.tv_quarto_visita", remote: "remote.tv_quarto_visita",
   ir: { entity: "remote.broadlink_quarto_visita", device: "tv_power", command: "tv_power_on" } };
 const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA, "media_player.tv_varanda": TV_VARANDA, "media_player.tv_quarto_leo_pri": TV_QUARTO_LP,
   "media_player.tv_quarto_visita": TV_QUARTO_VISITA };
@@ -2074,9 +2074,6 @@ const TV_APPS = [
   { nome: "Disney+", id: "https://www.disneyplus.com", marca: <span style={{ color: "#2b5bd7", fontWeight: 900, fontSize: 17 }}>D+</span> },
   { nome: "Prime Video", id: "https://app.primevideo.com", marca: <span style={{ background: "#1fa0e3", color: "#fff", fontWeight: 900, fontSize: 14, borderRadius: 5, padding: "1px 6px" }}>P</span> },
 ];
-// Os mesmos apps na Samsung (Tizen): o play_media "app" usa o código do app na loja Samsung.
-// ponytail: nas Samsung da Varanda e do Quarto Leo e Pri a TV ignorou; na do Quarto Visita ainda a testar.
-const TV_APPS_SAMSUNG = TV_APPS.map((a) => ({ ...a, id: { Netflix: "3201907018807", YouTube: "111299001912", "Disney+": "3201901017640", "Prime Video": "3201910019365" }[a.nome] }));
 // Volume do receiver da sala: no Denon 80% = 0 dB (referência); acima disso fica alto demais.
 const TV_VOL_MAX = 0.8; // ajuste se quiser liberar mais
 function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
@@ -2149,7 +2146,7 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
           <BotaoAcao icon={FastForward} label="Avançar" cor={C.cinza} onClick={() => tecla("MEDIA_FAST_FORWARD")} />
         </div>
         {!cfg.semApps && <div style={linha}>
-          {(cfg.apps === "samsung" ? TV_APPS_SAMSUNG : TV_APPS).map((a) => (
+          {TV_APPS.map((a) => (
             <button key={a.nome} onClick={() => app(a.id)} disabled={ind} aria-label={`Abrir ${a.nome}`}
               style={{ flex: 1, minWidth: 0, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, padding: "8px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", opacity: ind ? 0.5 : 1 }}>
               <span style={{ height: 24, display: "flex", alignItems: "center" }}>{a.marca}</span>
