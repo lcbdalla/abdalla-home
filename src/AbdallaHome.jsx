@@ -3281,7 +3281,9 @@ function acaoBotao(m) {
 
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
 // Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
-const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas", "grupoLuzes", "botao", "grupoBotoes"].includes(e.tipo);
+// TVs só por infravermelho (sem a TV no HA, não se sabe se está ligada): um botão Power pelo Broadlink.
+const TV_IR = { "remote.broadlink_quarto_visita": { device: "tv_power", command: "tv_power_on" } };
+const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas", "grupoLuzes", "botao", "grupoBotoes", "tvIr"].includes(e.tipo);
 const estaLigado = (e) => {
   if (!e.disponivel) return false;
   if (e.tipo === "ar") return e.state !== "off";
@@ -3489,6 +3491,7 @@ function visualPorTipo(e) {
   if (e.tipo === "grupoPersianas") return { Icon: Blinds, ativo: e.membros.some((m) => visualPorTipo(m).ativo), cor: C.ambar };
   if (e.tipo === "grupoLuzes") return { Icon: e.icone || Lightbulb, ativo: e.membros.some(estaLigado), cor: C.ambar, luz: true };
   if (e.tipo === "botao" || e.tipo === "grupoBotoes") return { Icon: CircleDot, ativo: false, cor: C.lago };
+  if (e.tipo === "tvIr") return { Icon: Tv, ativo: false, cor: C.lago };
   if (e.tipo === "alexa") return { Icon: Speaker, ativo: ["playing", "paused"].includes(e.state), cor: C.lago };
   const dom = String(e.id).split(".")[0];
   const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
@@ -4253,6 +4256,7 @@ function EquipControle({ e, enviar, cardClicavel }) {
   if (e.tipo === "sensor") return <CtrlSensor e={e} />;
   if (e.tipo === "alexa") return <CtrlAlexa e={e} enviar={enviar} />;
   if (e.tipo === "botao") return <BotaoAcao icon={acaoBotao(e).Icon} label="Apertar" cor={C.lago} disabled={!e.disponivel} onClick={() => enviar("input_button", "press", e.id)} />;
+  if (e.tipo === "tvIr") return <BotaoAcao icon={Power} label="Liga / Desliga" cor={C.lago} disabled={!e.disponivel} onClick={() => enviar("remote", "send_command", e.id, { device: TV_IR[e.id].device, command: TV_IR[e.id].command })} />;
   return <CtrlInterruptor e={e} enviar={enviar} cardClicavel={cardClicavel} />;
 }
 // Controle compacto do ar (quando o card está encolhido): liga/desliga + temperatura.
@@ -5882,7 +5886,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return {
       // Visitante: fechadura e portão aparecem só para ver (o intermediário também barra).
       dbId: row.id, id: tvc ? tvc.tv : row.entity_id,
-      tipo: eu?.papel === "visitante" && (row.tipo === "fechadura" || row.entity_id === PORTAO_ID) ? "sensor" : row.tipo,
+      tipo: TV_IR[row.entity_id] ? "tvIr" : eu?.papel === "visitante" && (row.tipo === "fechadura" || row.entity_id === PORTAO_ID) ? "sensor" : row.tipo,
       ...(tvc ? { controleTv: tvc, abrirControle: () => { topoDoCabecalho(); setTvAberta(tvc); } } : {}),
       ...(RECEIVERS_SOM[row.entity_id] ? { receiver: RECEIVERS_SOM[row.entity_id], spotify: meuSpotify, conectarSpotify, tvNaSala: tvLigada(entsVis[RECEIVERS_SOM[row.entity_id].tvId]) } : {}),
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
