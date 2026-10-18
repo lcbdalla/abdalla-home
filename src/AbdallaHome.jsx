@@ -2049,8 +2049,12 @@ const TV_VARANDA = { nome: "TV Varanda", tv: "media_player.tv_varanda", remote: 
 // TV do Quarto Leo e Pri (Samsung, mesmo esquema da Varanda): liga pelo IR do Broadlink do quarto.
 const TV_QUARTO_LP = { ...TV_VARANDA, nome: "TV Quarto", tv: "media_player.tv_quarto_leo_pri", remote: "remote.tv_quarto_leo_pri",
   ir: { entity: "remote.broadlink_quarto_leo_e_pri", device: "tv_power", command: "tv_power_on" } };
-const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA, "media_player.tv_varanda": TV_VARANDA, "media_player.tv_quarto_leo_pri": TV_QUARTO_LP };
-const TVS_COM_CONTROLE = [TV_SALA, TV_VARANDA, TV_QUARTO_LP];
+// TV do Quarto Visita (Samsung QN50Q8FA): mesmo esquema, liga pelo IR do Broadlink do quarto.
+const TV_QUARTO_VISITA = { ...TV_VARANDA, nome: "TV Visitas", tv: "media_player.tv_quarto_visita", remote: "remote.tv_quarto_visita",
+  ir: { entity: "remote.broadlink_quarto_visita", device: "tv_power", command: "tv_power_on" } };
+const TV_CONTROLE = { "media_player.tv_sala": TV_SALA, "media_player.smarttv_4k_ffm": TV_SALA, "media_player.tv_varanda": TV_VARANDA, "media_player.tv_quarto_leo_pri": TV_QUARTO_LP,
+  "media_player.tv_quarto_visita": TV_QUARTO_VISITA };
+const TVS_COM_CONTROLE = [TV_SALA, TV_VARANDA, TV_QUARTO_LP, TV_QUARTO_VISITA];
 const tvLigada = (v) => !!v && !["off", "standby", "unavailable", "unknown"].includes(v.state);
 // Desenho de controle remoto (o lucide não tem): mesmo estilo de traço dos outros ícones.
 function IconeControleRemoto({ size = 24, strokeWidth = 2, ...props }) {
@@ -3281,9 +3285,7 @@ function acaoBotao(m) {
 
 /* ---- Contagem "ligados/total" e "Desligar tudo" ---- */
 // Só entra o que liga/desliga: persiana/portão, fechadura e sensor ficam de fora.
-// TVs só por infravermelho (sem a TV no HA, não se sabe se está ligada): um botão Power pelo Broadlink.
-const TV_IR = { "remote.broadlink_quarto_visita": { device: "tv_power", command: "tv_power_on" } };
-const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas", "grupoLuzes", "botao", "grupoBotoes", "tvIr"].includes(e.tipo);
+const ehDesligavel = (e) => !["persiana", "fechadura", "sensor", "grupoPersianas", "grupoLuzes", "botao", "grupoBotoes"].includes(e.tipo);
 const estaLigado = (e) => {
   if (!e.disponivel) return false;
   if (e.tipo === "ar") return e.state !== "off";
@@ -3491,7 +3493,6 @@ function visualPorTipo(e) {
   if (e.tipo === "grupoPersianas") return { Icon: Blinds, ativo: e.membros.some((m) => visualPorTipo(m).ativo), cor: C.ambar };
   if (e.tipo === "grupoLuzes") return { Icon: e.icone || Lightbulb, ativo: e.membros.some(estaLigado), cor: C.ambar, luz: true };
   if (e.tipo === "botao" || e.tipo === "grupoBotoes") return { Icon: CircleDot, ativo: false, cor: C.lago };
-  if (e.tipo === "tvIr") return { Icon: Tv, ativo: false, cor: C.lago };
   if (e.tipo === "alexa") return { Icon: Speaker, ativo: ["playing", "paused"].includes(e.state), cor: C.lago };
   const dom = String(e.id).split(".")[0];
   const alvo = ((e.nome || "") + " " + e.id).toLowerCase();
@@ -4256,7 +4257,6 @@ function EquipControle({ e, enviar, cardClicavel }) {
   if (e.tipo === "sensor") return <CtrlSensor e={e} />;
   if (e.tipo === "alexa") return <CtrlAlexa e={e} enviar={enviar} />;
   if (e.tipo === "botao") return <BotaoAcao icon={acaoBotao(e).Icon} label="Apertar" cor={C.lago} disabled={!e.disponivel} onClick={() => enviar("input_button", "press", e.id)} />;
-  if (e.tipo === "tvIr") return <BotaoAcao icon={Power} label="Liga / Desliga" cor={C.lago} disabled={!e.disponivel} onClick={() => enviar("remote", "send_command", e.id, { device: TV_IR[e.id].device, command: TV_IR[e.id].command })} />;
   return <CtrlInterruptor e={e} enviar={enviar} cardClicavel={cardClicavel} />;
 }
 // Controle compacto do ar (quando o card está encolhido): liga/desliga + temperatura.
@@ -5886,7 +5886,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return {
       // Visitante: fechadura e portão aparecem só para ver (o intermediário também barra).
       dbId: row.id, id: tvc ? tvc.tv : row.entity_id,
-      tipo: TV_IR[row.entity_id] ? "tvIr" : eu?.papel === "visitante" && (row.tipo === "fechadura" || row.entity_id === PORTAO_ID) ? "sensor" : row.tipo,
+      tipo: eu?.papel === "visitante" && (row.tipo === "fechadura" || row.entity_id === PORTAO_ID) ? "sensor" : row.tipo,
       ...(tvc ? { controleTv: tvc, abrirControle: () => { topoDoCabecalho(); setTvAberta(tvc); } } : {}),
       ...(RECEIVERS_SOM[row.entity_id] ? { receiver: RECEIVERS_SOM[row.entity_id], spotify: meuSpotify, conectarSpotify, tvNaSala: tvLigada(entsVis[RECEIVERS_SOM[row.entity_id].tvId]) } : {}),
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,

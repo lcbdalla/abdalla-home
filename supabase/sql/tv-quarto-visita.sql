@@ -1,4 +1,6 @@
--- Cadastra o cartão "TV" (só infravermelho, pelo Broadlink do quarto: remote.broadlink_quarto_visita) no Quarto Visitas.
+-- Cadastra o cartão "TV" (Samsung pela rede: media_player.tv_quarto_visita) no Quarto Visitas.
+-- Troca o cartão provisório (só infravermelho, remote.broadlink_quarto_visita), se ele existir.
+delete from public.controle_equipamentos where entity_id = 'remote.broadlink_quarto_visita';
 -- Rodar UMA vez no Supabase > SQL Editor > New query > colar > Run. Pode rodar de novo sem duplicar.
 with base as (
   select a.id, a.nome, a.ordem,
@@ -10,7 +12,7 @@ comodo as (
 ),
 ins as (
   insert into public.controle_equipamentos (ambiente_id, entity_id, nome, tipo, ordem)
-  select c.id, 'remote.broadlink_quarto_visita', 'TV', 'tv',
+  select c.id, 'media_player.tv_quarto_visita', 'TV', 'tv',
          coalesce((select max(e.ordem) + 1 from public.controle_equipamentos e where e.ambiente_id = c.id), 0)
   from comodo c
   on conflict (entity_id) do update set ambiente_id = excluded.ambiente_id, nome = excluded.nome, tipo = excluded.tipo
