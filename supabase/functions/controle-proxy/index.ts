@@ -56,6 +56,7 @@ const VINCULADOS: Record<string, string[]> = {
   "media_player.tv_varanda": ["remote.tv_varanda", "remote.broadlink_churrasqueira"],
   "media_player.tv_quarto_leo_pri": ["remote.tv_quarto_leo_pri", "remote.broadlink_quarto_leo_e_pri"],
   "media_player.tv_quarto_visita": ["remote.tv_quarto_visita", "remote.broadlink_quarto_visita"],
+  "climate.151732607255748_climate": ["switch.led_ar_visitas"], // LED do ar do Quarto Visita (IR)
 };
 
 Deno.serve(async (req) => {

@@ -3640,21 +3640,20 @@ function desligarAr(e, enviar) {
 }
 // LED do painel do ar (para dormir). Midea pela integração midea_ac: chave switch.<ar>_display (estado
 // lido). Midea pela midea_ac_lan: serviço set_attribute "screen_display"; o estado vem num atributo e
-// varia por modelo (no Q11 do Quarto Visita é screen_display; nos Q18/Q1E, screen_display_alternate),
-// então é "provável". Carrier (SmartIR, infravermelho) não tem LED pelo HA.
-const LED_PELO_DISPLAY = new Set(["151732607255748"]); // modelos em que o estado certo é screen_display
+// vem invertido nos Q18/Q1E, então é "provável". Carrier (SmartIR, infravermelho) não tem LED pelo HA.
+// Ares cujo LED vai por uma chave própria do HA (infravermelho do Broadlink): o do Quarto Visita (Q11),
+// que pela rede não obedecia. switch.led_ar_visitas: ligar = acender, desligar = apagar.
+const LED_POR_CHAVE = { "climate.151732607255748_climate": "switch.led_ar_visitas" };
 function ledDoAr(id, attrs, ents) {
-  const sw = id.replace(/^climate\./, "switch.") + "_display";
+  const sw = LED_POR_CHAVE[id] || id.replace(/^climate\./, "switch.") + "_display";
   if (ents[sw]) return { tipo: "switch", id: sw, aceso: ents[sw].state === "on" };
   const lan = id.match(/^climate\.(\d+)_climate$/);
   if (lan && attrs && ("screen_display" in attrs || "screen_display_alternate" in attrs)) {
-    const v = LED_PELO_DISPLAY.has(lan[1]) ? attrs.screen_display : (attrs.screen_display_alternate ?? attrs.screen_display);
+    const v = attrs.screen_display_alternate ?? attrs.screen_display;
     // Testado no quarto (Leo e Pri): o atributo vem ao contrário (true = LED apagado) e nem sempre
     // atualiza depois do comando; por isso vale o último toque feito neste celular (até 12 h).
     const ult = ledUltimo()[lan[1]];
-    // Q11 (Quarto Visita): screen_display começa certo (true = aceso), mas também não atualiza depois do
-    // comando — então vale a memória do último toque, como nos outros.
-    const aceso = ult && Date.now() - ult.em < 12 * 3600000 ? ult.aceso : LED_PELO_DISPLAY.has(lan[1]) ? v === true : v === false;
+    const aceso = ult && Date.now() - ult.em < 12 * 3600000 ? ult.aceso : v === false;
     return { tipo: "lan", device: Number(lan[1]), aceso, provavel: true };
   }
   return null;
