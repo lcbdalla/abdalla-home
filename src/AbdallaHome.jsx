@@ -2192,7 +2192,8 @@ const PONTOS_CAMERAS = {
 // Número da câmera externa (Frigate): "Camera 07", "Cam07", camera.camera_07…
 const numeroCamExterna = (nome, id) => { const m = `${nome} ${id}`.match(/\bcam(?:era)?[\s_-]*0*(\d{1,2})\b/i); return m ? Number(m[1]) : null; };
 const canalDvr = (id) => { const m = String(id).match(/mhdx_1116_mediaprofile_channel(\d+)|intelbras_ch(\d+)_/i); return m ? Number(m[1] || m[2]) : null; };
-function MapaCameras({ cams, aberta, onEscolher }) {
+// deitado = com uma câmera aberta, o mapa volta à horizontal (gira 90° anti-horário) para caber melhor.
+function MapaCameras({ cams, aberta, onEscolher, deitado }) {
   const [url, setUrl] = useState(null), [erro, setErro] = useState("");
   useEffect(() => {
     supabase.storage.from("privado").createSignedUrl(MAPA_CAMERAS.arquivo, 3600)
@@ -2201,14 +2202,17 @@ function MapaCameras({ cams, aberta, onEscolher }) {
   if (erro) return <div style={{ color: C.cinza, fontSize: 13.5, marginBottom: 12 }}>{erro}</div>;
   if (!url) return <div style={{ color: C.cinza, fontSize: 13.5, marginBottom: 12 }}>Carregando o mapa…</div>;
   return (
-    <div style={{ position: "relative", width: "100%", aspectRatio: `${MAPA_CAMERAS.h} / ${MAPA_CAMERAS.w}`, borderRadius: 14, overflow: "hidden", marginBottom: 14, background: "#000" }}>
-      <img src={url} alt="Mapa das câmeras externas" draggable={false} style={{ width: "100%", height: "100%", display: "block" }} />
+    <div style={{ position: "relative", width: "100%", aspectRatio: deitado ? `${MAPA_CAMERAS.w} / ${MAPA_CAMERAS.h}` : `${MAPA_CAMERAS.h} / ${MAPA_CAMERAS.w}`, borderRadius: 14, overflow: "hidden", marginBottom: 14, background: "#000" }}>
+      {deitado
+        // A imagem guardada é a vertical: deitada, ela gira -90° dentro da caixa horizontal.
+        ? <img src={url} alt="Mapa das câmeras externas" draggable={false} style={{ position: "absolute", left: "50%", top: "50%", width: `${(MAPA_CAMERAS.h / MAPA_CAMERAS.w) * 100}%`, height: `${(MAPA_CAMERAS.w / MAPA_CAMERAS.h) * 100}%`, transform: "translate(-50%, -50%) rotate(-90deg)", display: "block" }} />
+        : <img src={url} alt="Mapa das câmeras externas" draggable={false} style={{ width: "100%", height: "100%", display: "block" }} />}
       {Object.entries(PONTOS_CAMERAS).map(([n, [x, y]]) => {
         const c = cams.find((k) => k.numero === Number(n));
         const sel = c && c.id === aberta;
         return (
           <button key={n} onClick={() => c && !c.fora && onEscolher(sel ? null : c.id)} aria-label={c ? `Câmera ${n}` : `Câmera ${n} (não encontrada)`}
-            style={{ position: "absolute", left: `${((MAPA_CAMERAS.h - y) / MAPA_CAMERAS.h) * 100}%`, top: `${(x / MAPA_CAMERAS.w) * 100}%`, width: 36, height: 36, transform: "translate(-50%, -50%)",
+            style={{ position: "absolute", left: deitado ? `${(x / MAPA_CAMERAS.w) * 100}%` : `${((MAPA_CAMERAS.h - y) / MAPA_CAMERAS.h) * 100}%`, top: deitado ? `${(y / MAPA_CAMERAS.h) * 100}%` : `${(x / MAPA_CAMERAS.w) * 100}%`, width: deitado ? 26 : 36, height: deitado ? 26 : 36, transform: "translate(-50%, -50%)",
               borderRadius: 999, border: sel ? "3px solid #ffd43b" : "none", background: sel ? alfa("#ffd43b", 30) : "transparent", cursor: c && !c.fora ? "pointer" : "default", padding: 0,
               boxShadow: sel ? "0 0 0 3px #0008" : "none" }}>
             {(!c || c.fora) && <span style={{ position: "absolute", right: 2, top: 2, width: 9, height: 9, borderRadius: 999, background: C.vermelho, border: "1.5px solid #fff" }} />}
@@ -2289,7 +2293,7 @@ function CamerasModal({ pedirHA, assinarHA, baseUrl, direto, onFechar }) {
         if (aba === "alta") return grupo("Casa Alta", alta);
         if (aba === "baixa") return grupo("Casa Baixa", baixa);
         if (aba === "externa") return (<>
-          <MapaCameras cams={externas} aberta={aberta} onEscolher={setAberta} />
+          <MapaCameras cams={externas} aberta={aberta} onEscolher={setAberta} deitado={!!cam} />
           {grupo("Outras câmeras externas", canaisFora)}
         </>);
         return (<>{grupo("Casa Alta", alta)}{grupo("Casa Baixa", baixa)}{grupo("Área Externa", [...externas.sort((a, b) => (a.numero ?? 999) - (b.numero ?? 999)), ...canaisFora])}</>);
