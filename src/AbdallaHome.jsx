@@ -966,7 +966,7 @@ function CardTarefa({ t, users, podeMexer, onConcluir, onReabrir, onEditar, onEx
               {abrirResp && (
                 <div style={{ position: "absolute", top: 34, left: 0, background: C.card, border: `1px solid ${C.linha}`, borderRadius: 12, boxShadow: "0 6px 18px #0002", zIndex: 20, minWidth: 180, overflow: "hidden" }}>
                   <div style={{ padding: "8px 12px", fontSize: 11, color: C.cinza, borderBottom: `1px solid ${C.linha}` }}>Passar para:</div>
-                  {users.filter((u) => u.ativo !== false).map((u) => <button key={u.id} onClick={() => { onTrocar(t, u.id); setAbrirResp(false); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", fontSize: 14, background: t.responsavelId === u.id ? C.pastoClaro : "#fff" }}>{u.nome}</button>)}
+                  {users.filter((u) => u.ativo !== false && u.papel !== "visitante").map((u) => <button key={u.id} onClick={() => { onTrocar(t, u.id); setAbrirResp(false); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", fontSize: 14, background: t.responsavelId === u.id ? C.pastoClaro : "#fff" }}>{u.nome}</button>)}
                 </div>
               )}
             </div>
@@ -6557,7 +6557,7 @@ function TarefaModal({ task, users, eu, produtos, ehCompraInicial, onCadastrarPr
       {!souAdmin && <div style={{ background: C.lagoClaro, borderRadius: 10 }} className="p-2.5 mb-3 flex items-center gap-2 text-sm"><Info size={15} style={{ color: C.lago }} /> <span>Como colaborador, você cria tarefas de <b>uma vez</b>.</span></div>}
       <Campo label={f.ehCompra ? "O que precisa ser feito? (opcional)" : "O que precisa ser feito?"}><input autoFocus placeholder={f.ehCompra ? "Opcional — padrão: Compras" : "Ex.: Cortar a grama do gramado"} value={f.titulo} onChange={(e) => set("titulo", e.target.value)} style={inpSt} /></Campo>
       <Campo label="Detalhes (opcional)"><textarea placeholder="Alguma observação…" value={f.descricao} onChange={(e) => set("descricao", e.target.value)} style={{ ...inpSt, minHeight: 62, resize: "vertical" }} /></Campo>
-      <Campo label="Responsável"><select value={f.responsavelId || ""} onChange={(e) => set("responsavelId", e.target.value)} style={inpSt}><option value="">Sem responsável</option>{users.filter((u) => u.ativo !== false).map((u) => <option key={u.id} value={u.id}>{u.nome}{u.papel === "admin" ? " (administrador)" : ""}</option>)}</select></Campo>
+      <Campo label="Responsável"><select value={f.responsavelId || ""} onChange={(e) => set("responsavelId", e.target.value)} style={inpSt}><option value="">Sem responsável</option>{users.filter((u) => u.ativo !== false && u.papel !== "visitante").map((u) => <option key={u.id} value={u.id}>{u.nome}{u.papel === "admin" ? " (administrador)" : ""}</option>)}</select></Campo>
       {respSetor ? (
         <div className="mb-3">
           <div style={lblSt}>Setor</div>
