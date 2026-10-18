@@ -5379,6 +5379,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           return;
         }
         if (m.type === "event" && assinaturasRef.current[m.id]) { assinaturasRef.current[m.id](m.event); return; }
+        if (m.type === "pong" && pedidosRef.current[m.id]) { const resp = pedidosRef.current[m.id]; delete pedidosRef.current[m.id]; resp(m); return; }
         if (m.type === "result") {
           if (pedidosRef.current[m.id]) { const resp = pedidosRef.current[m.id]; delete pedidosRef.current[m.id]; resp(m); return; }
           const tipo = pend[m.id]; delete pend[m.id];
@@ -5416,16 +5417,30 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return () => { ativo = false; try { ws && ws.close(); } catch { /* ok */ } };
   }, [tentativa, usarProxy]);
 
-  // Ao voltar para o app: atualiza na hora (intermediário) ou reconecta se a conexão caiu (direto).
+  // Ao voltar para o app: atualiza na hora (intermediário) ou confere a conexão direta. Com o celular
+  // em segundo plano a conexão pode "morrer calada" (parece aberta, mas não chega mais nada): aí o que
+  // outra pessoa mudou (ex.: fechou a persiana) não aparecia. Agora: "ping" no HA; respondeu → relê
+  // todos os estados; não respondeu em 4 s → reconecta. Também confere a cada 45 s com o app na tela.
   useEffect(() => {
-    const aoVoltar = () => {
+    const conferir = (reler) => {
       if (document.visibilityState !== "visible") return;
-      if (usarProxy) proxyRefresh.current?.();
-      else if (!wsRef.current || wsRef.current.readyState > 1) setTentativa((t) => t + 1);
+      if (usarProxy) { if (reler) proxyRefresh.current?.(); return; }
+      const ws = wsRef.current;
+      if (!ws || ws.readyState > 1) { setTentativa((t) => t + 1); return; }
+      if (ws.readyState !== 1) return; // ainda conectando
+      pedirHA({ type: "ping" }, 4000)
+        .then(() => reler && pedirHA({ type: "get_states" }, 15000).then((todos) => {
+          const map = {};
+          (todos || []).forEach((st) => { if (acompanhar(st.entity_id, st.attributes)) map[st.entity_id] = { state: st.state, attributes: st.attributes || {} }; });
+          setEnts(map);
+        }))
+        .catch(() => setTentativa((t) => t + 1)); // a troca de "tentativa" fecha a conexão velha e abre outra
     };
+    const aoVoltar = () => conferir(true);
     document.addEventListener("visibilitychange", aoVoltar);
-    return () => document.removeEventListener("visibilitychange", aoVoltar);
-  }, [usarProxy]);
+    const t = setInterval(() => conferir(false), 45000);
+    return () => { document.removeEventListener("visibilitychange", aoVoltar); clearInterval(t); };
+  }, [usarProxy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Segurar e arrastar PAVIMENTOS para mudar a ordem (só gestor) ----
   // Segura ~0,5 s (até vibrar) no título do pavimento → ele flutua seguindo o dedo; os outros
