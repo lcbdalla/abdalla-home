@@ -3652,9 +3652,9 @@ function ledDoAr(id, attrs, ents) {
     // Testado no quarto (Leo e Pri): o atributo vem ao contrário (true = LED apagado) e nem sempre
     // atualiza depois do comando; por isso vale o último toque feito neste celular (até 12 h).
     const ult = ledUltimo()[lan[1]];
-    // Q11 (Quarto Visita): screen_display é o estado de verdade (true = aceso) e atualiza sozinho; e a
-    // integração só manda o comando quando o valor pedido é diferente dele — por isso sem a "memória".
-    const aceso = LED_PELO_DISPLAY.has(lan[1]) ? v === true : ult && Date.now() - ult.em < 12 * 3600000 ? ult.aceso : v === false;
+    // Q11 (Quarto Visita): screen_display começa certo (true = aceso), mas também não atualiza depois do
+    // comando — então vale a memória do último toque, como nos outros.
+    const aceso = ult && Date.now() - ult.em < 12 * 3600000 ? ult.aceso : LED_PELO_DISPLAY.has(lan[1]) ? v === true : v === false;
     return { tipo: "lan", device: Number(lan[1]), aceso, provavel: true };
   }
   return null;
