@@ -2177,13 +2177,55 @@ const nomeCamera = (nome, id = "") => {
   if (canal) return `Canal ${canal[1] || canal[2]}`;
   const m = String(nome).match(/G5 Turret Ultra (\d+)/i) || String(nome).match(/^cam\s*(\d+)$/i); return m ? `Câmera ${m[1]}` : nome;
 };
+// Mapa das câmeras externas (imagem de satélite já girada 90° no sentido horário, 497 x 1045 px).
+// Fica no Storage PRIVADO do Supabase (bucket "privado"), não no site: mostra onde estão as câmeras.
+// Pontos azuis: número da câmera → posição (x, y) na imagem ORIGINAL (deitada, 1045 x 497), achados
+// pela cor dos marcadores. Na imagem girada: left = (497 - y) / 497, top = x / 1045.
+const MAPA_CAMERAS = { arquivo: "mapa-cameras.jpg", w: 1045, h: 497 };
+const PONTOS_CAMERAS = {
+  1: [210, 81], 2: [259, 106], 3: [320, 60], 4: [384, 52], 5: [466, 55], 6: [530, 61], 7: [617, 57], 8: [688, 56], 9: [767, 53],
+  10: [837, 57], 11: [911, 59], 12: [991, 67], 13: [976, 109], 14: [944, 144], 15: [929, 181], 16: [929, 237], 17: [956, 293],
+  18: [1024, 348], 19: [933, 356], 20: [852, 369], 21: [748, 379], 22: [667, 394], 26: [38, 138], 27: [73, 199], 28: [30, 404],
+  29: [128, 387], 30: [176, 390], 31: [237, 388], 32: [144, 336], 33: [143, 279], 34: [118, 227], 37: [577, 405], 38: [506, 417],
+  39: [347, 440], 40: [197, 232],
+};
+// Número da câmera externa (Frigate): "Camera 07", "Cam07", camera.camera_07…
+const numeroCamExterna = (nome, id) => { const m = `${nome} ${id}`.match(/\bcam(?:era)?[\s_-]*0*(\d{1,2})\b/i); return m ? Number(m[1]) : null; };
+const canalDvr = (id) => { const m = String(id).match(/mhdx_1116_mediaprofile_channel(\d+)|intelbras_ch(\d+)_/i); return m ? Number(m[1] || m[2]) : null; };
+function MapaCameras({ cams, aberta, onEscolher }) {
+  const [url, setUrl] = useState(null), [erro, setErro] = useState("");
+  useEffect(() => {
+    supabase.storage.from("privado").createSignedUrl(MAPA_CAMERAS.arquivo, 3600)
+      .then(({ data, error }) => (error || !data?.signedUrl ? setErro("O mapa ainda não foi enviado ao Supabase (Storage > privado > mapa-cameras.jpg).") : setUrl(data.signedUrl)));
+  }, []);
+  if (erro) return <div style={{ color: C.cinza, fontSize: 13.5, marginBottom: 12 }}>{erro}</div>;
+  if (!url) return <div style={{ color: C.cinza, fontSize: 13.5, marginBottom: 12 }}>Carregando o mapa…</div>;
+  return (
+    <div style={{ position: "relative", width: "100%", aspectRatio: `${MAPA_CAMERAS.h} / ${MAPA_CAMERAS.w}`, borderRadius: 14, overflow: "hidden", marginBottom: 14, background: "#000" }}>
+      <img src={url} alt="Mapa das câmeras externas" draggable={false} style={{ width: "100%", height: "100%", display: "block" }} />
+      {Object.entries(PONTOS_CAMERAS).map(([n, [x, y]]) => {
+        const c = cams.find((k) => k.numero === Number(n));
+        const sel = c && c.id === aberta;
+        return (
+          <button key={n} onClick={() => c && !c.fora && onEscolher(sel ? null : c.id)} aria-label={c ? `Câmera ${n}` : `Câmera ${n} (não encontrada)`}
+            style={{ position: "absolute", left: `${((MAPA_CAMERAS.h - y) / MAPA_CAMERAS.h) * 100}%`, top: `${(x / MAPA_CAMERAS.w) * 100}%`, width: 36, height: 36, transform: "translate(-50%, -50%)",
+              borderRadius: 999, border: sel ? "3px solid #ffd43b" : "none", background: sel ? alfa("#ffd43b", 30) : "transparent", cursor: c && !c.fora ? "pointer" : "default", padding: 0,
+              boxShadow: sel ? "0 0 0 3px #0008" : "none" }}>
+            {(!c || c.fora) && <span style={{ position: "absolute", right: 2, top: 2, width: 9, height: 9, borderRadius: 999, background: C.vermelho, border: "1.5px solid #fff" }} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 function CamerasModal({ pedirHA, assinarHA, baseUrl, direto, onFechar }) {
+  const [aba, setAba] = useState("alta"); // alta | externa | baixa | todas
   const [lista, setLista] = useState(null), [erro, setErro] = useState(""), [aberta, setAberta] = useState(null);
   const [live, setLive] = useState(false); // vídeo ao vivo (HLS) em vez das fotos a 3 por segundo
   const carregar = () => pedirHA({ type: "get_states" }).then((todos) => {
     setLista((todos || []).filter((x) => String(x.entity_id).startsWith("camera.") && !CAMERAS_FORA.test(x.entity_id))
       .map((x) => ({ id: x.entity_id, nome: nomeCamera(x.attributes?.friendly_name || x.entity_id, x.entity_id), ordem: (() => { const i = CAMERAS_CASA_ALTA.findIndex(([n]) => n === numeroG5(x.attributes?.friendly_name || "")); return i < 0 ? 999 : i; })(), tk: x.attributes?.access_token, fora: ["unavailable", "unknown"].includes(x.state),
-        g5: /g5/i.test(x.entity_id + " " + (x.attributes?.friendly_name || "")) }))
+        g5: /g5/i.test(x.entity_id + " " + (x.attributes?.friendly_name || "")), canal: canalDvr(x.entity_id), numero: numeroCamExterna(x.attributes?.friendly_name || "", x.entity_id) }))
       .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, "pt-BR", { numeric: true })));
   }).catch((e) => setErro(e.message));
   useEffect(() => { if (direto) carregar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2209,13 +2251,13 @@ function CamerasModal({ pedirHA, assinarHA, baseUrl, direto, onFechar }) {
     </div>
   );
   return (
-    <Sheet titulo="Câmeras" onFechar={onFechar}>
+    <Sheet titulo="Câmeras" onFechar={onFechar} topo={0}>
       {!direto && <div style={{ color: C.cinza, fontSize: 14 }}>As câmeras ficam disponíveis só para a família (conexão direta com a casa).</div>}
       {direto && erro && <div style={{ color: C.vermelho, fontSize: 13.5 }}>{erro}</div>}
       {direto && !lista && !erro && <div style={{ color: C.cinza, fontSize: 14 }}>Carregando as câmeras…</div>}
       {cam && (
         // Imagem ao vivo parada no alto enquanto a lista rola por baixo.
-        <div style={{ position: "sticky", top: 56, zIndex: 1, background: C.bg, paddingBottom: 8, marginBottom: 4 }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 3, background: C.bg, paddingBottom: 8, marginBottom: 4 }}>
           {live
             ? <CameraLive key={cam.id} cam={cam} pedirHA={pedirHA} assinarHA={assinarHA} baseUrl={baseUrl} />
             : <CameraAoVivo key={cam.id} cam={{ id: cam.id, nome: cam.nome, url: cam.tk ? `${baseUrl}/api/camera_proxy/${cam.id}?token=${cam.tk}&width=${cam.g5 ? 960 : 640}` : null, aviso: cam.tk ? null : "Câmera sem imagem agora." }} ms={333} />}
@@ -2230,8 +2272,28 @@ function CamerasModal({ pedirHA, assinarHA, baseUrl, direto, onFechar }) {
         </div>
       )}
       {lista && lista.length === 0 && <div style={{ color: C.cinza, fontSize: 14 }}>Nenhuma câmera encontrada no Home Assistant.</div>}
-      {lista && grupo("Casa Alta", lista.filter((c) => c.g5))}
-      {lista && grupo("Externas", lista.filter((c) => !c.g5))}
+      {/* Abas: Casa Alta (G5), Área Externa (mapa + canais 10–16 do DVR), Casa Baixa (canais 1–9), Todas. */}
+      {lista && lista.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 12 }}>
+          {[["alta", "Casa Alta"], ["externa", "Área Externa"], ["baixa", "Casa Baixa"], ["todas", "Todas Cam"]].map(([k, t]) => (
+            <button key={k} onClick={() => setAba(k)} style={{ borderRadius: 12, padding: "9px 4px", fontSize: 12.5, fontWeight: 800, lineHeight: 1.15,
+              background: aba === k ? C.pasto : C.card, color: aba === k ? "#fff" : C.terra, border: `1px solid ${aba === k ? C.pasto : C.linha}` }}>{t}</button>
+          ))}
+        </div>
+      )}
+      {lista && (() => {
+        const alta = lista.filter((c) => c.g5);
+        const baixa = lista.filter((c) => !c.g5 && c.canal != null && c.canal <= 9).sort((a, b) => a.canal - b.canal);
+        const canaisFora = lista.filter((c) => !c.g5 && c.canal != null && c.canal > 9).sort((a, b) => a.canal - b.canal);
+        const externas = lista.filter((c) => !c.g5 && c.canal == null);
+        if (aba === "alta") return grupo("Casa Alta", alta);
+        if (aba === "baixa") return grupo("Casa Baixa", baixa);
+        if (aba === "externa") return (<>
+          <MapaCameras cams={externas} aberta={aberta} onEscolher={setAberta} />
+          {grupo("Outras câmeras externas", canaisFora)}
+        </>);
+        return (<>{grupo("Casa Alta", alta)}{grupo("Casa Baixa", baixa)}{grupo("Área Externa", [...externas.sort((a, b) => (a.numero ?? 999) - (b.numero ?? 999)), ...canaisFora])}</>);
+      })()}
     </Sheet>
   );
 }
