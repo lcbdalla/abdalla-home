@@ -8,6 +8,7 @@ window.DADOS = {
   alexa: ["ligar o ar", "apagar a luz", "acender o abajur"],
   // Link do acesso de visitante (app > Equipe > Gerar acesso de visitante). Vazio = sem o QR.
   visitante: "",
+  visitanteAte: "", // data em que o link vence, ex.: "03/11"
   // Estação meteorológica do HA (chave publishable/anon do Supabase, a mesma do .env.local).
   supabaseUrl: "https://hsfnreiryoyenhablydm.supabase.co",
   supabaseKey: "",

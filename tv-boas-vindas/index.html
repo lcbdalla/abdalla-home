@@ -65,7 +65,8 @@
   var html = '<div class="cartao qr"><img src="wifi-qr.svg" alt="" onerror="this.remove()"><div><h2>Wi-Fi</h2>' +
     '<p>Rede<strong>' + esc(D.wifi.rede) + '</strong></p><p style="margin-top:.8vw">Senha<strong>' + esc(D.wifi.senha) + '</strong></p></div></div>';
   if (D.visitante) html += '<div class="cartao qr"><img src="visitante-qr.svg" alt=""><div><h2>Controle da casa</h2>' +
-    '<p>Aponte a câmera e comande<strong>luzes, ar e TV</strong></p></div></div>';
+    '<p>Aponte a câmera e comande<strong>luzes, ar e TV</strong></p>' +
+    (D.visitanteAte ? '<p style="font-size:1.1vw;opacity:.7;margin-top:.6vw">Válido até ' + esc(D.visitanteAte) + '</p>' : '') + '</div></div>';
   el("cartoes").innerHTML = html + '<div class="cartao estacao" id="estacao"><h2>Agora no rancho</h2><div class="grade" id="grade"></div></div>';
 
   // Estação meteorológica do HA, sem login (função pública só de leitura).
