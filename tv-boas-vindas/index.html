@@ -24,12 +24,15 @@
   .tempo b { font-size: 2.4vw; }
   .cartoes { display: flex; gap: 2vw; margin-top: auto; }
   .cartao { flex: 1; background: rgba(246, 243, 234, .1); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.4vw; padding: 1.8vw 2vw; }
-  .cartao.wifi { flex: 0 0 auto; background: #f6f3ea; color: #33302a; display: flex; gap: 2vw; align-items: center; }
-  .wifi img { width: 11vw; height: 11vw; border-radius: .6vw; }
-  .cartao h2 { font-size: 1.2vw; letter-spacing: .15em; text-transform: uppercase; color: #c8862a; margin-bottom: .8vw; }
-  .cartao p { font-size: 1.7vw; line-height: 1.35; }
-  .wifi p { font-size: 1.5vw; }
-  .wifi strong { display: block; font-size: 2.4vw; color: #1f5c39; }
+  .cartao.qr { flex: 0 0 26vw; background: #f6f3ea; color: #33302a; display: flex; gap: 1.6vw; align-items: center; }
+  .qr img { width: 10vw; height: 10vw; border-radius: .6vw; flex: none; }
+  .cartao h2 { font-size: 1.1vw; letter-spacing: .15em; text-transform: uppercase; color: #c8862a; margin-bottom: .8vw; }
+  .cartao p { font-size: 1.5vw; line-height: 1.35; }
+  .qr strong { display: block; font-size: 2.2vw; color: #1f5c39; }
+  .estacao { display: none; }
+  .estacao .grade { display: flex; flex-wrap: wrap; gap: 1.2vw 0; }
+  .estacao .grade div { width: 33.3%; font-size: 1.1vw; color: rgba(246, 243, 234, .8); }
+  .estacao .grade b { display: block; font-size: 2.4vw; font-weight: 600; opacity: 1; color: #f6f3ea; }
   .dica { text-align: center; font-size: 1.1vw; opacity: .6; margin-top: 2vw; }
 </style>
 </head>
@@ -58,8 +61,37 @@
 
   el("titulo").textContent = D.titulo;
   el("subtitulo").textContent = D.subtitulo;
-  el("cartoes").innerHTML = '<div class="cartao wifi"><img src="wifi-qr.svg" alt="" onerror="this.remove()"><div><h2>Wi-Fi · aponte a câmera</h2>' +
+  var html = '<div class="cartao qr"><img src="wifi-qr.svg" alt="" onerror="this.remove()"><div><h2>Wi-Fi</h2>' +
     '<p>Rede<strong>' + esc(D.wifi.rede) + '</strong></p><p style="margin-top:.8vw">Senha<strong>' + esc(D.wifi.senha) + '</strong></p></div></div>';
+  if (D.visitante) html += '<div class="cartao qr"><img src="visitante-qr.svg" alt=""><div><h2>Controle da casa</h2>' +
+    '<p>Aponte a câmera e comande<strong>luzes, ar e TV</strong></p></div></div>';
+  el("cartoes").innerHTML = html + '<div class="cartao estacao" id="estacao"><h2>Agora no rancho</h2><div class="grade" id="grade"></div></div>';
+
+  // Estação meteorológica do HA, sem login (função pública só de leitura).
+  var temEstacao = false;
+  function num(v, casas) { return v == null ? null : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas || 0 }); }
+  function estacao() {
+    if (!D.supabaseKey) return;
+    var x = new XMLHttpRequest();
+    x.open("POST", D.supabaseUrl + "/functions/v1/dynamic-worker");
+    x.setRequestHeader("Content-Type", "application/json");
+    x.setRequestHeader("apikey", D.supabaseKey);
+    x.setRequestHeader("Authorization", "Bearer " + D.supabaseKey);
+    x.onload = function () {
+      try {
+        var j = JSON.parse(x.responseText);
+        if (x.status !== 200 || j.temperatura_c == null) return;
+        var itens = [["Temperatura", num(j.temperatura_c), "°"], ["Sensação", num(j.sensacao_c), "°"], ["Umidade", num(j.umidade_pct), "%"],
+          ["Vento", num(j.vento_kmh), " km/h"], ["Chuva hoje", num(j.chuva_hoje_mm, 1), " mm"], ["UV", num(j.uv), ""]];
+        el("grade").innerHTML = itens.filter(function (i) { return i[1] != null; })
+          .map(function (i) { return "<div><b>" + i[1] + i[2] + "</b>" + i[0] + "</div>"; }).join("");
+        el("estacao").style.display = "block";
+        temEstacao = true; tempo();
+      } catch (e) {}
+    };
+    x.send('{"acao":"clima_publico"}');
+  }
+  estacao(); setInterval(estacao, 60000);
 
   function relogio() {
     var a = new Date();
@@ -84,7 +116,8 @@
     x.onload = function () {
       try {
         var j = JSON.parse(x.responseText);
-        el("tempo").innerHTML = "<b>" + Math.round(j.current.temperature_2m) + "°</b> " + ceu(j.current.weather_code) +
+        // Com a estação no ar, a temperatura medida fica no cartão de baixo; aqui só o céu.
+        el("tempo").innerHTML = (temEstacao ? "" : "<b>" + Math.round(j.current.temperature_2m) + "°</b> ") + ceu(j.current.weather_code) +
           "<br>máx " + Math.round(j.daily.temperature_2m_max[0]) + "° · mín " + Math.round(j.daily.temperature_2m_min[0]) + "°";
       } catch (e) {}
     };

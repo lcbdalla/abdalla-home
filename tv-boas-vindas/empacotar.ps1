@@ -8,6 +8,6 @@ $saida = Join-Path (Split-Path $pasta) "privado"
 New-Item -ItemType Directory -Force $saida | Out-Null
 $zip = "$saida\boas-vindas.zip"
 Remove-Item $zip, "$saida\boas-vindas.wgt" -ErrorAction SilentlyContinue
-Compress-Archive -Path "$pasta\config.xml", "$pasta\index.html", "$pasta\icon.png", "$pasta\dados.js", "$pasta\dados.exemplo.js", "$pasta\wifi-qr.svg" -DestinationPath $zip
+Compress-Archive -Path "$pasta\config.xml", "$pasta\index.html", "$pasta\icon.png", "$pasta\dados.js", "$pasta\dados.exemplo.js", "$pasta\*-qr.svg" -DestinationPath $zip
 Rename-Item $zip "boas-vindas.wgt"
 Write-Host "Pronto: $saida\boas-vindas.wgt"

@@ -1,7 +1,9 @@
 # Tela de boas-vindas — TV do Quarto Visita (Samsung QM50Q8FAAGXZD)
 
-## Mudar os textos (Wi-Fi, avisos)
+## Mudar os textos (Wi-Fi, link do visitante)
 1. Abra `tv-boas-vindas\dados.js` no Bloco de Notas e troque os textos.
+   - `visitante`: cole o link gerado no app (Equipe > Gerar acesso de visitante). Ele vira o QR "Controle da casa".
+     O link expira sozinho; quando gerar outro, troque aqui e reinstale.
    (Esse arquivo não vai para o GitHub. Se ele sumir, copie o `dados.exemplo.js` para `dados.js`.)
 2. Clique com o botão direito em `empacotar.ps1` > "Executar com o PowerShell".
 3. Instale de novo o arquivo `privado\boas-vindas.wgt` na TV (passo abaixo).
