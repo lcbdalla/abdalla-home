@@ -9,6 +9,4 @@ window.DADOS = {
   // Estação meteorológica do HA (chave publishable/anon do Supabase, a mesma do .env.local).
   supabaseUrl: "https://hsfnreiryoyenhablydm.supabase.co",
   supabaseKey: "",
-  // Localização para a previsão do céu (padrão: Palmas-TO).
-  lat: -10.18, lon: -48.33,
 };

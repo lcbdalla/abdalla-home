@@ -13,15 +13,12 @@
     display: flex; flex-direction: column; padding: 4.5vw 6vw;
   }
   .topo { display: flex; justify-content: space-between; align-items: flex-start; }
-  .marca { font-size: 1.5vw; letter-spacing: .35em; text-transform: uppercase; color: #c8862a; font-weight: 700; }
-  h1 { font-size: 4.4vw; font-weight: 700; line-height: 1.1; margin-top: 1.2vw; max-width: 55vw; }
+  h1 { font-size: 4.4vw; font-weight: 700; line-height: 1.1; max-width: 55vw; }
   .sub { font-size: 1.8vw; opacity: .85; margin-top: 1vw; max-width: 55vw; }
   .hora { text-align: right; }
   .relogio { font-size: 7vw; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
   .data { font-size: 1.6vw; opacity: .85; margin-top: .6vw; }
   .data::first-letter { text-transform: uppercase; }
-  .tempo { font-size: 1.6vw; margin-top: 1vw; color: #f6f3ea; }
-  .tempo b { font-size: 2.4vw; }
   .cartoes { display: flex; gap: 2vw; margin-top: auto; }
   .cartao { flex: 1; background: rgba(246, 243, 234, .1); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.4vw; padding: 1.8vw 2vw; }
   .cartao.qr { flex: 0 0 26vw; background: #f6f3ea; color: #33302a; display: flex; gap: 1.6vw; align-items: center; }
@@ -39,14 +36,12 @@
 <body>
   <div class="topo">
     <div>
-      <div class="marca">Rancho Abdalla</div>
       <h1 id="titulo"></h1>
       <p class="sub" id="subtitulo"></p>
     </div>
     <div class="hora">
       <div class="relogio" id="relogio"></div>
       <div class="data" id="data"></div>
-      <div class="tempo" id="tempo"></div>
     </div>
   </div>
   <div class="cartoes" id="cartoes"></div>
@@ -68,7 +63,6 @@
   el("cartoes").innerHTML = html + '<div class="cartao estacao" id="estacao"><h2>Agora no rancho</h2><div class="grade" id="grade"></div></div>';
 
   // Estação meteorológica do HA, sem login (função pública só de leitura).
-  var temEstacao = false;
   function num(v, casas) { return v == null ? null : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas || 0 }); }
   function estacao() {
     if (!D.supabaseKey) return;
@@ -86,7 +80,6 @@
         el("grade").innerHTML = itens.filter(function (i) { return i[1] != null; })
           .map(function (i) { return "<div><b>" + i[1] + i[2] + "</b>" + i[0] + "</div>"; }).join("");
         el("estacao").style.display = "block";
-        temEstacao = true; tempo();
       } catch (e) {}
     };
     x.send('{"acao":"clima_publico"}');
@@ -100,30 +93,6 @@
   }
   relogio(); setInterval(relogio, 10000);
 
-  // Códigos do Open-Meteo (WMO) resumidos.
-  function ceu(c) {
-    if (c === 0) return "Céu limpo";
-    if (c <= 3) return "Parcialmente nublado";
-    if (c <= 48) return "Neblina";
-    if (c <= 67 || (c >= 80 && c <= 82)) return "Chuva";
-    if (c >= 95) return "Tempestade";
-    return "Nublado";
-  }
-  function tempo() {
-    var x = new XMLHttpRequest();
-    x.open("GET", "https://api.open-meteo.com/v1/forecast?latitude=" + D.lat + "&longitude=" + D.lon +
-      "&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto");
-    x.onload = function () {
-      try {
-        var j = JSON.parse(x.responseText);
-        // Com a estação no ar, a temperatura medida fica no cartão de baixo; aqui só o céu.
-        el("tempo").innerHTML = (temEstacao ? "" : "<b>" + Math.round(j.current.temperature_2m) + "°</b> ") + ceu(j.current.weather_code) +
-          "<br>máx " + Math.round(j.daily.temperature_2m_max[0]) + "° · mín " + Math.round(j.daily.temperature_2m_min[0]) + "°";
-      } catch (e) {}
-    };
-    x.send();
-  }
-  tempo(); setInterval(tempo, 15 * 60000);
 
   // Botão VOLTAR (10009) fecha o app e volta para a TV.
   document.addEventListener("keydown", function (e) {
