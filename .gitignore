@@ -31,3 +31,4 @@ dist-ssr
 # Arquivos sensíveis que vão só para o Supabase Storage (não publicar)
 privado/
 tv-boas-vindas/dados.js
+tv-boas-vindas/wifi-qr.svg

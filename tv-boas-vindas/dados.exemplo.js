@@ -6,9 +6,4 @@ window.DADOS = {
   wifi: { rede: "NOME-DA-REDE", senha: "SENHA-DO-WIFI" },
   // Localização para a previsão do tempo (padrão: Palmas-TO).
   lat: -10.18, lon: -48.33,
-  info: [
-    { titulo: "Café da manhã", texto: "Das 7h às 9h, na varanda" },
-    { titulo: "Precisa de algo?", texto: "Fale com o caseiro ou com o Leonardo" },
-    { titulo: "Ar e luzes", texto: "Pelo app Abdalla Home, aba Casa" },
-  ],
 };
