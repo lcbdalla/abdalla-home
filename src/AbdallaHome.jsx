@@ -1133,7 +1133,6 @@ ${link}?instalar=1`;
 function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
   const [ambientesDe, setAmbientesDe] = useState(null); // pessoa com a lista de cômodos liberados aberta
   const [convite, setConvite] = useState(false);
-  const [tvAcesso, setTvAcesso] = useState(false);
   const [novo, setNovo] = useState(false);
   const [visitante, setVisitante] = useState(false);
   const [senhaPara, setSenhaPara] = useState(null); // pessoa recebendo senha nova
@@ -1185,8 +1184,7 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
       <div style={{ background: C.lagoClaro, borderRadius: 14 }} className="p-3 mb-3"><div style={{ color: C.lago }} className="text-xs font-semibold uppercase">Equipe do rancho</div><div style={{ color: C.terra }} className="text-sm mt-0.5">Administradores criam e organizam. Colaboradores executam e pedem compras. {souAdmin ? "Para dar acesso a alguém, toque em Adicionar pessoa." : "Somente administradores podem alterar a equipe."}</div></div>
       {souAdmin && <button onClick={() => setNovo(true)} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}><UserPlus size={19} /> Adicionar pessoa</button>}
       {souAdmin && <button onClick={() => setConvite(true)} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.card, color: C.pasto, border: `1px solid ${C.pasto}`, borderRadius: 12, padding: 12, fontWeight: 700, fontSize: 15 }}><MessageCircle size={18} /> Convite para visitante (WhatsApp)</button>}
-      {souAdmin && <button onClick={() => setVisitante(true)} className="flex items-center justify-center gap-2 mb-2" style={{ width: "100%", background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 12, fontWeight: 700, fontSize: 15 }}><Clock size={18} /> Gerar acesso de visitante (QR Code)</button>}
-      {souAdmin && <button onClick={() => setTvAcesso(true)} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 12, fontWeight: 700, fontSize: 15 }}><Tv size={18} /> QR da TV do Quarto Visita</button>}
+      {souAdmin && <button onClick={() => setVisitante(true)} className="flex items-center justify-center gap-2 mb-3" style={{ width: "100%", background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 12, fontWeight: 700, fontSize: 15 }}><Clock size={18} /> Gerar acesso de visitante (QR Code)</button>}
       {users.filter((u) => u.ativo !== false).map((u) => {
         return (
           <div key={u.id} style={{ background: C.card, border: `1px solid ${u.id === euId ? C.pasto : C.linha}`, borderRadius: 14 }} className="p-3 mb-2">
@@ -1293,7 +1291,6 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
       {novo && <NovaPessoaSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setNovo(false)} />}
       {visitante && <VisitanteSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setVisitante(false)} />}
       {convite && <ConviteSheet nomeEu={users.find((x) => x.id === euId)?.nome || ""} showToast={showToast} onFechar={() => setConvite(false)} />}
-      {tvAcesso && <TvAcessoSheet showToast={showToast} onCriado={onRecarregar} onFechar={() => setTvAcesso(false)} />}
       {ambientesDe && <AmbientesPessoaSheet u={ambientesDe} showToast={showToast} onSalvo={() => { setAmbientesDe(null); onRecarregar(); }} onFechar={() => setAmbientesDe(null)} />}
       {senhaPara && <NovaSenhaSheet u={senhaPara} email={emails[senhaPara.id]} showToast={showToast} onFechar={() => setSenhaPara(null)} />}
     </div>
@@ -1708,66 +1705,6 @@ export function ConvitePage({ token }) {
         </>)}
       </div>
     </div>
-  );
-}
-
-/* ---- QR do visitante na TV do Quarto Visita ----
-   Uma conta de visitante (90 dias) cujo link a TV mostra em QR. "Gerar novo QR" cria outra conta e
-   DESLIGA a anterior (quem fotografou o QR antigo perde o acesso); "Desligar" tira o QR da TV.
-   A TV busca o link na função pública (dynamic-worker, acao "tv_acesso") com a chave secreta dela. */
-const TV_ACESSO_ID = "quarto_visita";
-function TvAcessoSheet({ showToast, onCriado, onFechar }) {
-  const [tv, setTv] = useState(undefined), [ocupado, setOcupado] = useState(false), [qr, setQr] = useState(null), [erro, setErro] = useState("");
-  const ler = () => supabase.from("tv_acessos").select("*").eq("id", TV_ACESSO_ID).maybeSingle().then(({ data, error }) => {
-    if (error) { setErro(/tv_acessos/.test(error.message) ? "Falta rodar o SQL tv-acessos.sql no Supabase." : error.message); setTv(null); return; }
-    setTv(data || null);
-  });
-  useEffect(() => { ler(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (tv?.link) QRCode.toDataURL(tv.link, { width: 320, margin: 1 }).then(setQr).catch(() => setQr(null)); else setQr(null); }, [tv?.link]);
-  const desligarConta = (id) => id && supabase.from("perfis").update({ ativo: false }).eq("id", id);
-  const gerar = async () => {
-    setOcupado(true); setErro("");
-    const email = `visitante-tv-${uid()}@convidado.local`, senha = senhaForte(), dias = 90;
-    const { data, error } = await supabase.functions.invoke("quick-service", { body: { nome: "Visitante · TV Quarto Visita", email, senha, telefone: "", papel: "colaborador", setor: "", visitante: true, dias } });
-    if (error || data?.error) { setErro(await erroDaFuncao(error, data)); setOcupado(false); return; }
-    const ate = new Date(Date.now() + dias * 86400000).toISOString();
-    if (data?.id && !data?.visitante) await supabase.from("perfis").update({ papel: "visitante", pode_controle: true, expira_em: ate, nome: "Visitante · TV Quarto Visita" }).eq("id", data.id);
-    const link = new URL(import.meta.env.BASE_URL, window.location.href).href + "#v=" + encodeURIComponent(btoa(email + ":" + senha));
-    await desligarConta(tv?.perfil_id); // o QR antigo para de funcionar
-    const { error: e2 } = await supabase.from("tv_acessos").upsert({ id: TV_ACESSO_ID, nome: "TV Quarto Visita", chave: tv?.chave || senhaForte(), link, perfil_id: data?.id || null, ate, atualizado_em: new Date().toISOString() });
-    if (e2) setErro(e2.message);
-    setOcupado(false); onCriado?.(); ler();
-  };
-  const desligar = async () => {
-    if (!(await Dialog.confirm({ titulo: "Desligar o QR da TV", mensagem: "O QR some da TV e quem já entrou por ele perde o acesso.", okLabel: "Desligar", perigo: true }))) return;
-    setOcupado(true);
-    await desligarConta(tv?.perfil_id);
-    await supabase.from("tv_acessos").update({ link: null, perfil_id: null, ate: null, atualizado_em: new Date().toISOString() }).eq("id", TV_ACESSO_ID);
-    setOcupado(false); onCriado?.(); ler();
-  };
-  const copiar = async (t, ok) => { try { await navigator.clipboard.writeText(t); showToast(ok); } catch { showToast("Não foi possível copiar"); } };
-  const verde = { width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16, opacity: ocupado ? 0.6 : 1 };
-  return (
-    <Sheet titulo="QR da TV · Quarto Visita" onFechar={onFechar}>
-      <div style={{ color: C.cinza, fontSize: 13.5, marginBottom: 10 }}>A TV do Quarto Visita mostra este QR para o hóspede entrar no Controle de visitante (só os ambientes liberados para visitantes; nunca fechadura, portão ou alarme). Vale 90 dias; gerar um novo desliga o anterior.</div>
-      {erro && <div style={{ color: C.vermelho, fontSize: 13.5, marginBottom: 8 }}>{erro}</div>}
-      {tv === undefined ? <div style={{ color: C.cinza }}>Carregando…</div> : (<>
-        {tv?.link ? (
-          <div className="text-center" style={{ marginBottom: 12 }}>
-            {qr && <img src={qr} alt="QR do visitante da TV" style={{ width: 220, height: 220, borderRadius: 14, border: `1px solid ${C.linha}`, background: "#fff", padding: 8, display: "inline-block" }} />}
-            <div style={{ background: C.pastoClaro, color: C.pastoEsc, borderRadius: 999, fontSize: 13, fontWeight: 700 }} className="inline-block px-4 py-1.5 mt-2">Na TV · válido até {new Date(tv.ate).toLocaleDateString("pt-BR")}</div>
-          </div>
-        ) : <div style={{ color: C.cinza, fontSize: 14, marginBottom: 12 }}>{tv ? "O QR da TV está desligado." : "Ainda não há QR para a TV."}</div>}
-        <button onClick={gerar} disabled={ocupado} style={verde}>{ocupado ? "Aguarde…" : tv?.link ? "Gerar novo QR (desliga o atual)" : "Gerar QR da TV"}</button>
-        {tv?.link && <button onClick={desligar} disabled={ocupado} style={{ width: "100%", color: C.vermelho, fontWeight: 700, padding: 12, marginTop: 4 }}>Desligar o QR da TV</button>}
-        {tv?.chave && (
-          <div style={{ borderTop: `1px solid ${C.linha}`, marginTop: 12, paddingTop: 10 }}>
-            <div style={{ fontSize: 12.5, color: C.cinza }}>Chave da TV (vai só na configuração da TV; não compartilhe):</div>
-            <button onClick={() => copiar(tv.chave, "Chave copiada")} className="flex items-center gap-2" style={{ fontSize: 13, fontWeight: 700, color: C.terra, padding: "6px 0", wordBreak: "break-all", textAlign: "left" }}><Copy size={14} /> {tv.chave}</button>
-          </div>
-        )}
-      </>)}
-    </Sheet>
   );
 }
 
