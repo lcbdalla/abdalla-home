@@ -19,7 +19,11 @@
   .relogio { font-size: 7vw; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
   .data { font-size: 1.6vw; opacity: .85; margin-top: .6vw; }
   .data::first-letter { text-transform: uppercase; }
-  .cartoes { display: flex; gap: 2vw; margin-top: auto; }
+  .alexa { margin-top: auto; display: flex; align-items: center; gap: 2.4vw; background: rgba(43, 122, 140, .35); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.4vw; padding: 1.4vw 2vw; }
+  .alexa h2 { font-size: 1.1vw; letter-spacing: .15em; text-transform: uppercase; color: #c8862a; white-space: nowrap; }
+  .alexa p { font-size: 1.9vw; font-weight: 600; }
+  .alexa span { font-size: 1.6vw; opacity: .85; }
+  .cartoes { display: flex; gap: 2vw; margin-top: 2vw; }
   .cartao { flex: 1; background: rgba(246, 243, 234, .1); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.4vw; padding: 1.8vw 2vw; }
   .cartao.qr { flex: 0 0 26vw; background: #f6f3ea; color: #33302a; display: flex; gap: 1.6vw; align-items: center; }
   .qr img { width: 10vw; height: 10vw; border-radius: .6vw; flex: none; }
@@ -44,6 +48,7 @@
       <div class="data" id="data"></div>
     </div>
   </div>
+  <div class="alexa"><h2>Fale com a Alexa</h2><div><p>Este quarto atende pela voz.</p><span id="frases"></span></div></div>
   <div class="cartoes" id="cartoes"></div>
   <p class="dica">Aperte VOLTAR no controle para usar a TV normalmente</p>
 
@@ -56,6 +61,7 @@
 
   el("titulo").textContent = D.titulo;
   el("subtitulo").textContent = D.subtitulo;
+  el("frases").textContent = D.alexa.map(function (f) { return "“Alexa, " + f + "”"; }).join("   ·   ");
   var html = '<div class="cartao qr"><img src="wifi-qr.svg" alt="" onerror="this.remove()"><div><h2>Wi-Fi</h2>' +
     '<p>Rede<strong>' + esc(D.wifi.rede) + '</strong></p><p style="margin-top:.8vw">Senha<strong>' + esc(D.wifi.senha) + '</strong></p></div></div>';
   if (D.visitante) html += '<div class="cartao qr"><img src="visitante-qr.svg" alt=""><div><h2>Controle da casa</h2>' +

@@ -4,6 +4,8 @@ window.DADOS = {
   titulo: "Seja bem-vindo ao Rancho Abdalla",
   subtitulo: "Que sua estadia seja tranquila. Fique à vontade!",
   wifi: { rede: "NOME-DA-REDE", senha: "SENHA-DO-WIFI" },
+  // Exemplos de comandos de voz (cartão "Fale com a Alexa").
+  alexa: ["ligar o ar", "apagar a luz", "acender o abajur"],
   // Link do acesso de visitante (app > Equipe > Gerar acesso de visitante). Vazio = sem o QR.
   visitante: "",
   // Estação meteorológica do HA (chave publishable/anon do Supabase, a mesma do .env.local).
