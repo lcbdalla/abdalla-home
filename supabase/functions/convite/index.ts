@@ -2,6 +2,7 @@
 // -----------------------------------------------------------------------------
 // Página do convidado (link do WhatsApp, sem login). Com o código do convite:
 //   "ver"   → diz se o convite está valendo, quem convidou e onde fica o portão;
+//   (também, sem convite: "clima_publico" = números da estação; "tv_acesso" = QR do visitante da TV)
 //   "abrir" → confere horário (do início até 5 h depois), se ainda não foi usado e se o
 //             celular está a até 500 m do portão; abre o Portão Principal e, em segundo plano:
 //             quando o portão aparece aberto, destranca a porta da frente da Casa Alta; 45 s
@@ -53,6 +54,45 @@ Deno.serve(async (req) => {
 
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "Pedido inválido." }, 400); }
+
+  // ---- Tela de boas-vindas da TV (sem login) ----
+  const haCfg = async () => {
+    const { data } = await admin.from("ha_config").select("base_url, token").eq("id", "default").maybeSingle();
+    return data?.base_url && data?.token ? { base: String(data.base_url).replace(/\/+$/, ""), cab: { Authorization: "Bearer " + data.token } } : null;
+  };
+  // Clima da estação Ecowitt (GW3000C): só os números, só leitura.
+  if (body?.acao === "clima_publico") {
+    const ha = await haCfg();
+    if (!ha) return json({ error: "Sem configuração." }, 500);
+    const rs = await fetch(ha.base + "/api/states", { headers: ha.cab }).catch(() => null);
+    if (!rs || !rs.ok) return json({ error: "A estação não respondeu." }, 502);
+    const todos: any[] = await rs.json();
+    const est = todos.filter((x) => String(x.entity_id).startsWith("sensor.gw3000c_") || (String(x.entity_id).startsWith("sensor.") && /^gw3000c/i.test(String(x.attributes?.friendly_name || ""))));
+    const texto = (x: any) => String(x.entity_id).replace(/^sensor\./, "").replace(/_/g, " ");
+    const usados = new Set<string>();
+    const achar = (re: RegExp) => {
+      const s = est.find((x) => !usados.has(x.entity_id) && !["unknown", "unavailable", ""].includes(x.state) && re.test(texto(x)));
+      if (!s) return null;
+      usados.add(s.entity_id);
+      const n = Number(s.state);
+      return Number.isFinite(n) ? n : null;
+    };
+    // Mesma ordem do app (a rajada máxima antes da rajada, para não confundir).
+    const temperatura = achar(/outdoor temp/), sensacao = achar(/feels like/), umidade = achar(/^gw3000c (outdoor )?humidity$/);
+    achar(/max.*gust|gust.*max/);
+    const rajada = achar(/gust/), vento = achar(/wind speed/), direcao = achar(/wind dir/), uv = achar(/\buv\b/);
+    const chuvaHoje = achar(/daily rain|rain daily|24h rain/);
+    return json({ temperatura_c: temperatura, sensacao_c: sensacao, umidade_pct: umidade, vento_kmh: vento, rajada_kmh: rajada, direcao_graus: direcao, chuva_hoje_mm: chuvaHoje, uv, lido_em: new Date().toISOString() });
+  }
+  // QR do visitante para a TV: a TV manda a sua chave secreta e recebe o link de visitante que vale
+  // agora (gerado pelo dono na Equipe; trocar o QR lá desliga o antigo).
+  if (body?.acao === "tv_acesso") {
+    const { data: tv } = await admin.from("tv_acessos").select("chave, link, ate").eq("id", String(body.tv || "")).maybeSingle();
+    if (!tv || !tv.chave || String(body.chave || "") !== tv.chave) return json({ error: "Acesso negado." }, 403);
+    if (!tv.link || (tv.ate && Date.parse(tv.ate) <= Date.now())) return json({ link: null, ate: tv.ate || null });
+    return json({ link: tv.link, ate: tv.ate });
+  }
+
   const token = String(body?.token || "");
   if (!/^[A-Za-z0-9_-]{20,80}$/.test(token)) return json({ error: "Convite não encontrado." }, 404);
 
