@@ -3644,6 +3644,16 @@ function estadoPersiana(e) {
 // Vale para toda cortina assim que for cadastrada (ex.: Cortina Visitas, Cortina da entrada).
 const aceitaPosicao = (e) => typeof e?.attributes?.current_position === "number" && ((Number(e.attributes?.supported_features) || 0) & 4) !== 0;
 const ehCortinaPosicao = (e) => e?.tipo === "persiana" && aceitaPosicao(e) && (e.attributes?.device_class === "curtain" || /cortina|curtain/i.test(`${e.nome} ${e.id}`));
+const PAISAGEM_JANELA = "url(\"data:image/svg+xml," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 130" preserveAspectRatio="xMidYMid slice">'
+  + '<defs><linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fd0ff"/><stop offset="1" stop-color="#e8f6ff"/></linearGradient>'
+  + '<linearGradient id="l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fa8d3"/><stop offset="1" stop-color="#2f7d9c"/></linearGradient></defs>'
+  + '<rect width="400" height="130" fill="url(#c)"/><circle cx="318" cy="30" r="14" fill="#ffd66b"/>'
+  + '<path d="M0 78 Q60 52 120 70 T250 62 T400 72 V130 H0Z" fill="#7fb26a"/>'
+  + '<path d="M0 88 Q90 70 190 84 T400 82 V130 H0Z" fill="#5c9a4f"/>'
+  + '<rect y="96" width="400" height="34" fill="url(#l)"/><path d="M30 104h60M140 112h80M260 106h70" stroke="#d6efff" stroke-width="2" opacity=".6"/>'
+  + '<g fill="#2f6b3a"><circle cx="58" cy="78" r="11"/><circle cx="74" cy="82" r="8"/><circle cx="300" cy="74" r="12"/><circle cx="318" cy="80" r="8"/></g>'
+  + '<g fill="#5b4a33"><rect x="56" y="86" width="3" height="10"/><rect x="298" y="84" width="3" height="12"/></g></svg>') + "\")";
 function CortinaArrastar({ e, enviar }) {
   const ref = useRef(null), [local, setLocal] = useState(null), arrasto = useRef(false);
   const atual = e.attributes?.current_position ?? 0;
@@ -3660,15 +3670,14 @@ function CortinaArrastar({ e, enviar }) {
   const mover = (ev) => { if (arrasto.current) setLocal(lerPos(ev)); };
   const soltar = () => { if (!arrasto.current) return; arrasto.current = false; if (local != null) enviar("cover", "set_cover_position", e.id, { position: local }); setTimeout(() => setLocal(null), 1500); };
   const movendo = ["opening", "closing"].includes(e.state) && local == null;
-  const tecido = `repeating-linear-gradient(90deg, ${alfa(C.ambar, 85)} 0 7px, ${alfa(C.ambar, 60)} 7px 14px)`;
+  const tecido = "repeating-linear-gradient(90deg, #c8862a 0 7px, #dba253 7px 14px)"; // tecido opaco (não deixa ver a paisagem)
   return (
     <div onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => ev.stopPropagation()}>
       <div ref={ref} onPointerDown={inicio} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar} role="slider" aria-label="Arraste para abrir ou fechar a cortina" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pos}
         style={{ position: "relative", height: 130, borderRadius: 12, overflow: "hidden", touchAction: "none", cursor: "ew-resize", userSelect: "none",
-          background: "linear-gradient(180deg, #bfe3ff 0%, #e9f6ff 70%, #cfe8c8 100%)", border: `1px solid ${C.linha}` }}>
-        <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 8, background: C.terra, opacity: 0.55 }} />
-        <div style={{ position: "absolute", left: 0, top: 8, bottom: 0, width: `${metade * 100}%`, background: tecido, boxShadow: "4px 0 10px -6px #0008", transition: arrasto.current ? "none" : "width .4s" }} />
-        <div style={{ position: "absolute", right: 0, top: 8, bottom: 0, width: `${metade * 100}%`, background: tecido, boxShadow: "-4px 0 10px -6px #0008", transition: arrasto.current ? "none" : "width .4s" }} />
+          backgroundColor: "#bfe3ff", backgroundImage: PAISAGEM_JANELA, backgroundSize: "cover", backgroundPosition: "center", border: `1px solid ${C.linha}` }}>
+        <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${metade * 100}%`, background: tecido, boxShadow: "4px 0 10px -6px #0008", transition: arrasto.current ? "none" : "width .4s" }} />
+        <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: `${metade * 100}%`, background: tecido, boxShadow: "-4px 0 10px -6px #0008", transition: arrasto.current ? "none" : "width .4s" }} />
         <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", background: "#000a", color: "#fff", borderRadius: 999, padding: "4px 12px", fontSize: 13, fontWeight: 800, pointerEvents: "none", whiteSpace: "nowrap" }}>
           {movendo ? (e.state === "opening" ? "Abrindo…" : "Fechando…") : pos === 0 ? "Fechada" : pos === 100 ? "Aberta" : `Aberta ${pos}%`}
         </div>
@@ -3677,18 +3686,10 @@ function CortinaArrastar({ e, enviar }) {
     </div>
   );
 }
-function CtrlPersiana({ e, enviar }) {
+function CtrlPersiana({ e, enviar, verCortina }) {
   const ind = !e.disponivel;
   const inv = ehInvertido(e);
-  if (ehCortinaPosicao(e)) return (
-    <div>
-      {!ind && <CortinaArrastar e={e} enviar={enviar} />}
-      <div className="flex gap-2" style={{ marginTop: 10 }}>
-        <BotaoAcao icon={ArrowUpFromLine} label={rotulo(e, "abrir", "Abrir")} cor={C.pasto} disabled={ind} onClick={() => enviar("cover", "open_cover", e.id)} />
-        <BotaoAcao icon={ArrowDownToLine} label={rotulo(e, "fechar", "Fechar")} cor={C.cinza} disabled={ind} onClick={() => enviar("cover", "close_cover", e.id)} />
-      </div>
-    </div>
-  );
+  const cortina = ehCortinaPosicao(e);
   return (
     <div>
       <div className="flex gap-2">
@@ -3697,7 +3698,8 @@ function CtrlPersiana({ e, enviar }) {
         <BotaoAcao icon={X} label={rotulo(e, "parar", "Parar")} cor={C.ambar} disabled={ind} onClick={() => enviar("cover", "stop_cover", e.id)} />
         <BotaoAcao icon={inv ? ArrowUpFromLine : ArrowDownToLine} label={rotulo(e, "fechar", "Fechar")} cor={C.cinza} disabled={ind} onClick={() => enviar("cover", inv ? "open_cover" : "close_cover", e.id)} />
       </div>
-      {!ind && !inv && <BarraPosicao e={e} enviar={enviar} />}
+      {!ind && !inv && !cortina && <BarraPosicao e={e} enviar={enviar} />}
+      {!ind && cortina && verCortina && <div style={{ marginTop: 10 }}><CortinaArrastar e={e} enviar={enviar} /></div>}
     </div>
   );
 }
@@ -4362,8 +4364,8 @@ function CtrlSensor({ e }) {
   const st = haEstado(e.state, e.attributes);
   return <div className="text-right"><span style={{ color: e.disponivel ? st.cor : C.cinzaClaro, fontWeight: 700, fontSize: 15 }}>{e.disponivel ? st.texto : "Indisponível"}</span></div>;
 }
-function EquipControle({ e, enviar, cardClicavel }) {
-  if (e.tipo === "persiana") return <CtrlPersiana e={e} enviar={enviar} />;
+function EquipControle({ e, enviar, cardClicavel, verCortina }) {
+  if (e.tipo === "persiana") return <CtrlPersiana e={e} enviar={enviar} verCortina={verCortina} />;
   if (e.tipo === "lareira") return <CtrlLareira e={e} enviar={enviar} />;
   if (e.tipo === "ar") return <CtrlAr e={e} enviar={enviar} />;
   if (e.tipo === "tv" && e.controleTv) return estadoMidia(e).ligado ? <BotaoAcao icon={IconeControleRemoto} label="Controle remoto" cor={LAGO} onClick={e.abrirControle} /> : null;
@@ -4585,6 +4587,7 @@ function fundoCartao(e, v, ativo) {
 }
 function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
   const [tomAberto, setTomAberto] = useState(false); // ajustes de som (zonas do AAT)
+  const [verCortina, setVerCortina] = useState(false); // cortina com posição: desenho para arrastar
   if (e.tipo === "grupoBotoes") return <CartaoGrupoBotoes e={e} enviar={enviar} />;
   if (e.tipo === "grupoLuzes") return <CartaoGrupoLuzes e={e} enviar={enviar} aberto={expandido} onAlternar={onExpandir} editando={editando} />;
   if (e.tipo === "grupoPersianas") return <CartaoGrupoPersianas e={e} enviar={enviar} aberto={expandido} onAlternar={onExpandir} editando={editando} />;
@@ -4633,6 +4636,13 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
           </>);
         })()}
         {e.tipo === "persiana" && !compacto && (() => { const st = estadoPersiana(e); return <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: st.cor }}>{st.texto}</span>; })()}
+        {/* Cortina com posição: a setinha abre o desenho para arrastar. */}
+        {ehCortinaPosicao(e) && !compacto && e.disponivel && !editando && (
+          <button onClick={(ev) => { ev.stopPropagation(); setVerCortina((x) => !x); }} onPointerDown={(ev) => ev.stopPropagation()} aria-label={verCortina ? "Fechar o desenho da cortina" : "Abrir o desenho da cortina"} aria-expanded={verCortina}
+            style={{ flexShrink: 0, width: 28, height: 28, margin: "-4px -6px 0 0", display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 9, background: "transparent", color: C.cinza, cursor: "pointer" }}>
+            <ChevronDown size={18} style={{ transform: verCortina ? "rotate(180deg)" : "none", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+          </button>
+        )}
         {luzAjustavel(e) && !editando && (
           <button onClick={(ev) => { ev.stopPropagation(); onExpandir(); }} onPointerDown={(ev) => ev.stopPropagation()} aria-label={expandido ? "Fechar ajustes da luz" : "Ajustar brilho e cor"} aria-expanded={expandido}
             style={{ flexShrink: 0, width: 30, height: 30, margin: "-6px -6px 0 0", alignSelf: "flex-start", display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 10, background: "transparent", color: C.cinza, cursor: "pointer" }}>
@@ -4645,7 +4655,7 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
       {tomAberto && ehZonaAAT(e.id) && <PainelTomAAT e={e} enviar={enviar} />}
       {compacto
         ? (e.tipo === "ar" ? <CtrlArCompacto e={e} enviar={enviar} /> : <CtrlPersianaCompacto e={e} enviar={enviar} />)
-        : e.alheio ? null : <EquipControle e={e} enviar={enviar} cardClicavel={e.tipo === "interruptor" && !!cardClick} />}
+        : e.alheio ? null : <EquipControle e={e} enviar={enviar} cardClicavel={e.tipo === "interruptor" && !!cardClick} verCortina={verCortina} />}
       {luzAjustavel(e) && expandido && <CtrlLuzAjuste e={e} enviar={enviar} />}
     </div>
   );
