@@ -1923,7 +1923,11 @@ const ALARMES = [
 ];
 const ehDoAlarme = (id) => ALARMES.some((a) => id === a.painel || id === a.memoria || id === a.sirene || a.zona.test(id) || (a.partes || []).includes(id));
 const ehTomAAT = (id) => /^number\.aat_pmr7_zona_\d+_(graves|agudos|balanco)$/.test(id);
-const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || id === CAIXA_AGUA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+// Lareira elétrica do Subsolo (Tuya local): a chave liga; os ajustes são select/number do HA.
+const LAREIRA = { sw: "switch.lareira", aquec: "select.lareira_aquecimento", temp: "number.lareira_temperatura", chama: "select.lareira_intensidade_da_chama",
+  corChama: "select.lareira_cor_da_chama", corCarvao: "select.lareira_cor_do_carvao", brilhoCarvao: "select.lareira_brilho_do_carvao" };
+const LAREIRA_IDS = Object.values(LAREIRA);
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || LAREIRA_IDS.includes(id) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || id === CAIXA_AGUA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button", "remote"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
@@ -3443,6 +3447,7 @@ function categoriaAtalho(x) {
   // Aquecedor da piscina é um "ar" no HA (climate), mas o cartão mostra a chama: vai para Piscina.
   if (["ar", "interruptor"].includes(x.tipo) && ICONES_PISCINA.has(visualEquip(x).Icon)) return "piscina";
   if (x.tipo === "ar") return "ar";
+  if (x.tipo === "lareira") return "lareira";
   if (ehCoifa(x)) return "coifa";
   if (x.tipo === "grupoPersianas") return "persiana";
   if (x.tipo === "persiana") return ehPortao(x) ? null : ehInvertido(x) ? "flap" : "persiana";
@@ -3504,6 +3509,7 @@ function visualPorTipo(e) {
   }
   if (e.tipo === "ar") return { Icon: Snowflake, ativo: estaLigado(e), cor: AZUL_AR };
   if (e.tipo === "tv") return { Icon: ["speaker", "receiver"].includes(e.attributes?.device_class) ? Speaker : Tv, ativo: estaLigado(e), cor: C.lago };
+  if (e.tipo === "lareira") return { Icon: Flame, ativo: e.state === "on", cor: C.ambar };
   if (e.tipo === "irrigacao") return { Icon: Droplets, ativo: estaLigado(e), cor: C.lago };
   if (e.tipo === "fechadura") { const aberta = e.disponivel && e.state === "unlocked"; return { Icon: aberta ? LockOpen : Lock, ativo: aberta, cor: C.ambar }; }
   if (e.tipo === "sensor") return { Icon: Gauge, ativo: e.disponivel, cor: C.lago };
@@ -3522,6 +3528,50 @@ function IconeEquip({ v, disponivel }) {
 }
 
 /* ---- Controles por tipo de aparelho ---- */
+function CtrlLareira({ e, enviar }) {
+  const on = e.state === "on", ind = !e.disponivel, L = e.lareira || {};
+  const [ajustes, setAjustes] = useState(false);
+  const opcoes = (x) => (x?.attributes?.options || []).slice().sort((a, b) => String(a).localeCompare(String(b), "pt-BR", { numeric: true }));
+  const escolher = (id, op) => enviar("select", "select_option", id, { option: op });
+  const t = Number(L.temp?.state), tMin = Number(L.temp?.attributes?.min ?? 18), tMax = Number(L.temp?.attributes?.max ?? 28), passo = Number(L.temp?.attributes?.step ?? 1);
+  const mudarTemp = (d) => { if (!Number.isFinite(t)) return; const v = Math.min(tMax, Math.max(tMin, t + d * passo)); enviar("number", "set_value", LAREIRA.temp, { value: v }); };
+  const linhaChips = (titulo, ent, id, rotulo = (o) => o) => ent && (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 11, color: C.cinzaClaro, marginBottom: 5 }}>{titulo}</div>
+      <div className="flex flex-wrap gap-2">{opcoes(ent).map((o) => <CtrlChip key={o} ativo={ent.state === o} cor={C.ambar} onClick={() => escolher(id, o)}>{rotulo(o)}</CtrlChip>)}</div>
+    </div>
+  );
+  return (
+    <div onPointerDown={(ev) => ev.stopPropagation()}>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 text-sm" style={{ color: ind ? C.cinzaClaro : on ? C.terra : C.cinza, fontWeight: 600 }}>{ind ? "Indisponível" : on ? "Ligada" : "Desligada"}</div>
+        <PillToggle on={on} cor={C.ambar} disabled={ind} onClick={() => enviar("homeassistant", "toggle", e.id)} />
+      </div>
+      {on && !ind && (<>
+        {linhaChips("Aquecimento", L.aquec, LAREIRA.aquec)}
+        {L.temp && Number.isFinite(t) && (
+          <div className="flex items-center justify-center gap-4" style={{ marginTop: 12 }}>
+            <RoundBtn onClick={() => mudarTemp(-1)} disabled={t <= tMin}>−</RoundBtn>
+            <div style={{ minWidth: 92, textAlign: "center" }}>
+              <div style={{ fontSize: 30, fontWeight: 800, color: C.terra, lineHeight: 1 }}>{t}°</div>
+              <div style={{ fontSize: 11, color: C.cinzaClaro }}>temperatura</div>
+            </div>
+            <RoundBtn onClick={() => mudarTemp(1)} disabled={t >= tMax}>+</RoundBtn>
+          </div>
+        )}
+        <button onClick={() => setAjustes((x) => !x)} aria-expanded={ajustes} className="flex items-center gap-2" style={{ marginTop: 12, fontSize: 13.5, fontWeight: 700, color: C.ambarTexto }}>
+          <Flame size={15} /> Ajustes da chama <ChevronDown size={16} style={{ transform: ajustes ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
+        </button>
+        {ajustes && (<>
+          {linhaChips("Intensidade da chama", L.chama, LAREIRA.chama)}
+          {linhaChips("Cor da chama", L.corChama, LAREIRA.corChama, (o) => String(o).replace(/^cor\s*/i, ""))}
+          {linhaChips("Cor do carvão", L.corCarvao, LAREIRA.corCarvao, (o) => String(o).replace(/^cor\s*/i, ""))}
+          {linhaChips("Brilho do carvão", L.brilhoCarvao, LAREIRA.brilhoCarvao)}
+        </>)}
+      </>)}
+    </div>
+  );
+}
 function CtrlInterruptor({ e, enviar, cardClicavel }) {
   const on = e.state === "on"; const ind = !e.disponivel;
   return (
@@ -4267,6 +4317,7 @@ function CtrlSensor({ e }) {
 }
 function EquipControle({ e, enviar, cardClicavel }) {
   if (e.tipo === "persiana") return <CtrlPersiana e={e} enviar={enviar} />;
+  if (e.tipo === "lareira") return <CtrlLareira e={e} enviar={enviar} />;
   if (e.tipo === "ar") return <CtrlAr e={e} enviar={enviar} />;
   if (e.tipo === "tv" && e.controleTv) return estadoMidia(e).ligado ? <BotaoAcao icon={IconeControleRemoto} label="Controle remoto" cor={LAGO} onClick={e.abrirControle} /> : null;
   if (e.tipo === "tv") return <CtrlTv e={e} enviar={enviar} />;
@@ -5904,7 +5955,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     return {
       // Visitante: fechadura e portão aparecem só para ver (o intermediário também barra).
       dbId: row.id, id: tvc ? tvc.tv : row.entity_id,
-      tipo: eu?.papel === "visitante" && (row.tipo === "fechadura" || row.entity_id === PORTAO_ID) ? "sensor" : row.tipo,
+      tipo: row.entity_id === LAREIRA.sw ? "lareira" : eu?.papel === "visitante" && (row.tipo === "fechadura" || row.entity_id === PORTAO_ID) ? "sensor" : row.tipo,
+      ...(row.entity_id === LAREIRA.sw ? { lareira: Object.fromEntries(Object.entries(LAREIRA).map(([k, id]) => [k, entsVis[id]])) } : {}),
       ...(tvc ? { controleTv: tvc, abrirControle: () => { topoDoCabecalho(); setTvAberta(tvc); } } : {}),
       ...(RECEIVERS_SOM[row.entity_id] ? { receiver: RECEIVERS_SOM[row.entity_id], spotify: meuSpotify, conectarSpotify, tvNaSala: tvLigada(entsVis[RECEIVERS_SOM[row.entity_id].tvId]) } : {}),
       nome: row.nome || live?.attributes?.friendly_name || row.entity_id,
@@ -6059,6 +6111,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     { k: "som", rot: "o som", Icon: Speaker, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "som", aceso: estaLigado, agir: alternarMidia },
     { k: "coifa", rot: "a coifa", Icon: AirVent, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "coifa", aceso: (x) => { const c = coifaEstado(x); return c.luz || c.vel > 0; }, agir: (x) => alternarCoifa(x, enviar) },
     { k: "piscina", rot: "a piscina", Icon: WavesLadder, cor: "#3b9bd8", filtro: (x) => categoriaAtalho(x) === "piscina", aceso: estaLigado, agir: ligaHA },
+    { k: "lareira", rot: "a lareira", Icon: Flame, cor: C.ambar, filtro: (x) => categoriaAtalho(x) === "lareira", aceso: estaLigado, agir: ligaHA },
     { k: "chafariz", rot: "o chafariz", Icon: IconeChafariz, cor: LAGO, filtro: (x) => categoriaAtalho(x) === "chafariz", aceso: estaLigado, agir: ligaHA },
   ];
   const temperaturaDe = (itens) => {

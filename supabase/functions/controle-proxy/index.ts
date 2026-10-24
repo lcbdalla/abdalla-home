@@ -57,6 +57,8 @@ const VINCULADOS: Record<string, string[]> = {
   "media_player.tv_quarto_leo_pri": ["remote.tv_quarto_leo_pri", "remote.broadlink_quarto_leo_e_pri"],
   "media_player.tv_quarto_visita": ["remote.tv_quarto_visita", "remote.broadlink_quarto_visita"],
   "climate.151732607255748_climate": ["switch.led_ar_visitas"], // LED do ar do Quarto Visita (IR)
+  // Lareira do Subsolo: aquecimento, temperatura e ajustes da chama.
+  "switch.lareira": ["select.lareira_aquecimento", "number.lareira_temperatura", "select.lareira_intensidade_da_chama", "select.lareira_cor_da_chama", "select.lareira_cor_do_carvao", "select.lareira_brilho_do_carvao"],
 };
 
 Deno.serve(async (req) => {
