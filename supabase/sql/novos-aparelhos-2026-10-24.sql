@@ -1,5 +1,5 @@
 -- Aparelhos novos do HA (24/10/2026) no Controle da Casa:
---   Quarto Visitas: Cortina (motor Tuya), Persiana (RF) e Abajur Esquerdo (plug Tasmota);
+--   Quarto Visitas: Cortina (motor Tuya), Persiana (RF) e Abajur Direito (plug Tasmota);
 --   Sala TV: Abajur pelo light.sala_de_tv_abajur (troca o switch.tomada_salatv_l1, se existir);
 --   sai do app: os 6 ares do subsolo removidos do HA (serão recadastrados pelo MSmartHome).
 -- Rodar no Supabase > SQL Editor > New query > colar > Run. Pode rodar de novo sem duplicar.
@@ -16,7 +16,7 @@ select a.id, v.entidade, v.nome, v.tipo,
 from (values
   ('cover.cortina_visitas',               'Cortina',         'persiana',    '%visita%',  0),
   ('cover.persiana_visitas',              'Persiana',        'persiana',    '%visita%',  1),
-  ('light.quarto_visita_abajur_esquerdo', 'Abajur Esquerdo', 'interruptor', '%visita%',  2),
+  ('light.quarto_visita_abajur_esquerdo', 'Abajur Direito', 'interruptor', '%visita%',  2),
   ('light.sala_de_tv_abajur',             'Abajur',          'interruptor', '%sala%tv%', 0)
 ) as v(entidade, nome, tipo, padrao, k)
 join lateral (

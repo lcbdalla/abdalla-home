@@ -1,4 +1,4 @@
--- Cadastra o cartão "Abajur Esquerdo" (plug Tasmota: light.quarto_visita_abajur_esquerdo) no Quarto Visitas.
+-- Cadastra o cartão "Abajur Direito" (plug Tasmota; o entity_id diz "esquerdo": light.quarto_visita_abajur_esquerdo) no Quarto Visitas.
 -- Rodar UMA vez no Supabase > SQL Editor > New query > colar > Run. Pode rodar de novo sem duplicar.
 with base as (
   select a.id, a.nome, a.ordem,
@@ -10,7 +10,7 @@ comodo as (
 ),
 ins as (
   insert into public.controle_equipamentos (ambiente_id, entity_id, nome, tipo, ordem)
-  select c.id, 'light.quarto_visita_abajur_esquerdo', 'Abajur Esquerdo', 'interruptor',
+  select c.id, 'light.quarto_visita_abajur_esquerdo', 'Abajur Direito', 'interruptor',
          coalesce((select max(e.ordem) + 1 from public.controle_equipamentos e where e.ambiente_id = c.id), 0)
   from comodo c
   on conflict (entity_id) do update set ambiente_id = excluded.ambiente_id, nome = excluded.nome, tipo = excluded.tipo
@@ -19,6 +19,6 @@ ins as (
 select case
   when not exists (select 1 from comodo)
     then 'Quarto Visitas não encontrado. Ambientes que existem: ' || (select string_agg(nome, ', ' order by nome) from base)
-  when (select novo from ins) then 'Abajur Esquerdo cadastrado em: ' || (select b.nome from base b join ins i on i.ambiente_id = b.id)
-  else 'Abajur Esquerdo já existia (atualizado) em: ' || (select b.nome from base b join ins i on i.ambiente_id = b.id)
+  when (select novo from ins) then 'Abajur Direito cadastrado em: ' || (select b.nome from base b join ins i on i.ambiente_id = b.id)
+  else 'Abajur Direito já existia (atualizado) em: ' || (select b.nome from base b join ins i on i.ambiente_id = b.id)
 end as resultado;
