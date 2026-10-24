@@ -3600,6 +3600,25 @@ function CtrlPersiana({ e, enviar }) {
         <BotaoAcao icon={X} label={rotulo(e, "parar", "Parar")} cor={C.ambar} disabled={ind} onClick={() => enviar("cover", "stop_cover", e.id)} />
         <BotaoAcao icon={inv ? ArrowUpFromLine : ArrowDownToLine} label={rotulo(e, "fechar", "Fechar")} cor={C.cinza} disabled={ind} onClick={() => enviar("cover", inv ? "open_cover" : "close_cover", e.id)} />
       </div>
+      {!ind && !inv && <BarraPosicao e={e} enviar={enviar} />}
+    </div>
+  );
+}
+// Cortina com motor que informa a posição (ex.: Cortina Visitas): barra 0–100% (0 = fechada).
+// Só aparece se o HA disser que ela aceita posição (supported_features bit 4) e mandar current_position.
+function BarraPosicao({ e, enviar }) {
+  const atual = e.attributes?.current_position;
+  const aceita = typeof atual === "number" && ((Number(e.attributes?.supported_features) || 0) & 4) !== 0;
+  const [local, setLocal] = useState(null);
+  if (!aceita) return null;
+  const v = local ?? atual;
+  const soltar = () => { if (local != null) { enviar("cover", "set_cover_position", e.id, { position: local }); setLocal(null); } };
+  return (
+    <div className="flex items-center gap-3" style={{ marginTop: 10 }} onPointerDown={(ev) => ev.stopPropagation()}>
+      <span style={{ fontSize: 12.5, fontWeight: 700, color: C.cinza, flexShrink: 0, width: 92 }}>{v === 0 ? "Fechada" : v === 100 ? "Aberta" : `Aberta ${v}%`}</span>
+      <input type="range" min="0" max="100" step="5" value={v} aria-label="Posição da cortina" className="ah-vol"
+        style={{ flex: 1, minWidth: 0, "--cor": C.ambar, "--trilha": `linear-gradient(to right, ${C.ambar} ${v}%, ${alfa(C.cinzaClaro, 30)} ${v}%)` }}
+        onChange={(ev) => setLocal(Number(ev.target.value))} onPointerUp={soltar} onTouchEnd={soltar} onKeyUp={soltar} />
     </div>
   );
 }
