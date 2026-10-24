@@ -3639,9 +3639,56 @@ function estadoPersiana(e) {
   const troca = { open: "closed", closed: "open", opening: "closing", closing: "opening" }; // flap: HA informa ao contrário
   return haEstado(ehInvertido(e) ? (troca[e.state] || e.state) : e.state, e.attributes);
 }
+// Cortina com motor que informa a posição (nome "cortina" ou tipo "curtain" no HA): fechada mostra só
+// Abrir/Fechar; aberta (cartão ampliado) mostra o desenho da cortina para arrastar até o ponto certo.
+// Vale para toda cortina assim que for cadastrada (ex.: Cortina Visitas, Cortina da entrada).
+const aceitaPosicao = (e) => typeof e?.attributes?.current_position === "number" && ((Number(e.attributes?.supported_features) || 0) & 4) !== 0;
+const ehCortinaPosicao = (e) => e?.tipo === "persiana" && aceitaPosicao(e) && (e.attributes?.device_class === "curtain" || /cortina|curtain/i.test(`${e.nome} ${e.id}`));
+function CortinaArrastar({ e, enviar }) {
+  const ref = useRef(null), [local, setLocal] = useState(null), arrasto = useRef(false);
+  const atual = e.attributes?.current_position ?? 0;
+  const pos = local ?? atual; // 0 = fechada, 100 = aberta
+  const MIN = 0.08, MAX = 0.5; // largura de cada metade da cortina (fração da janela): aberta / fechada
+  const metade = MAX - (MAX - MIN) * (pos / 100);
+  const lerPos = (ev) => {
+    const r = ref.current.getBoundingClientRect();
+    const d = Math.abs(ev.clientX - (r.left + r.width / 2)) / r.width; // distância do meio (0–0,5)
+    const fracFechada = (0.5 - d - MIN) / (MAX - MIN);
+    return Math.round(Math.max(0, Math.min(100, (1 - fracFechada) * 100)) / 5) * 5;
+  };
+  const inicio = (ev) => { ev.stopPropagation(); arrasto.current = true; ref.current.setPointerCapture?.(ev.pointerId); setLocal(lerPos(ev)); };
+  const mover = (ev) => { if (arrasto.current) setLocal(lerPos(ev)); };
+  const soltar = () => { if (!arrasto.current) return; arrasto.current = false; if (local != null) enviar("cover", "set_cover_position", e.id, { position: local }); setTimeout(() => setLocal(null), 1500); };
+  const movendo = ["opening", "closing"].includes(e.state) && local == null;
+  const tecido = `repeating-linear-gradient(90deg, ${alfa(C.ambar, 85)} 0 7px, ${alfa(C.ambar, 60)} 7px 14px)`;
+  return (
+    <div onPointerDown={(ev) => ev.stopPropagation()} onClick={(ev) => ev.stopPropagation()}>
+      <div ref={ref} onPointerDown={inicio} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar} role="slider" aria-label="Arraste para abrir ou fechar a cortina" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pos}
+        style={{ position: "relative", height: 130, borderRadius: 12, overflow: "hidden", touchAction: "none", cursor: "ew-resize", userSelect: "none",
+          background: "linear-gradient(180deg, #bfe3ff 0%, #e9f6ff 70%, #cfe8c8 100%)", border: `1px solid ${C.linha}` }}>
+        <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 8, background: C.terra, opacity: 0.55 }} />
+        <div style={{ position: "absolute", left: 0, top: 8, bottom: 0, width: `${metade * 100}%`, background: tecido, boxShadow: "4px 0 10px -6px #0008", transition: arrasto.current ? "none" : "width .4s" }} />
+        <div style={{ position: "absolute", right: 0, top: 8, bottom: 0, width: `${metade * 100}%`, background: tecido, boxShadow: "-4px 0 10px -6px #0008", transition: arrasto.current ? "none" : "width .4s" }} />
+        <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", background: "#000a", color: "#fff", borderRadius: 999, padding: "4px 12px", fontSize: 13, fontWeight: 800, pointerEvents: "none", whiteSpace: "nowrap" }}>
+          {movendo ? (e.state === "opening" ? "Abrindo…" : "Fechando…") : pos === 0 ? "Fechada" : pos === 100 ? "Aberta" : `Aberta ${pos}%`}
+        </div>
+      </div>
+      <div style={{ fontSize: 11.5, color: C.cinzaClaro, textAlign: "center", marginTop: 4 }}>Arraste a cortina para abrir ou fechar</div>
+    </div>
+  );
+}
 function CtrlPersiana({ e, enviar }) {
   const ind = !e.disponivel;
   const inv = ehInvertido(e);
+  if (ehCortinaPosicao(e)) return (
+    <div>
+      {!ind && <CortinaArrastar e={e} enviar={enviar} />}
+      <div className="flex gap-2" style={{ marginTop: 10 }}>
+        <BotaoAcao icon={ArrowUpFromLine} label={rotulo(e, "abrir", "Abrir")} cor={C.pasto} disabled={ind} onClick={() => enviar("cover", "open_cover", e.id)} />
+        <BotaoAcao icon={ArrowDownToLine} label={rotulo(e, "fechar", "Fechar")} cor={C.cinza} disabled={ind} onClick={() => enviar("cover", "close_cover", e.id)} />
+      </div>
+    </div>
+  );
   return (
     <div>
       <div className="flex gap-2">
