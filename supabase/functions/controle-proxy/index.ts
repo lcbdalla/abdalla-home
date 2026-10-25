@@ -126,6 +126,19 @@ Deno.serve(async (req) => {
     return json({ sensores, lat: conf.latitude ?? null, lon: conf.longitude ?? null });
   }
 
+  // 1d) QR do visitante na TV do Quarto Visita: só para o usuário marcado como TV (perfis.eh_tv).
+  //     Devolve o link do último visitante gerado com "Mostrar na TV", se ele ainda estiver ativo e
+  //     no prazo; senão tudo null (a TV esconde o QR).
+  if (body?.acao === "qr_tv") {
+    if (p.eh_tv !== true) return json({ error: "Só para a TV." }, 403);
+    const vazio = { link: null, nome: null, expira_em: null };
+    const { data: q } = await admin.from("tv_qr").select("visitante_id, nome, link").eq("id", "quarto_visita").maybeSingle();
+    if (!q?.visitante_id || !q.link) return json(vazio);
+    const { data: v } = await admin.from("perfis").select("ativo, expira_em").eq("id", q.visitante_id).maybeSingle();
+    if (!v || v.ativo === false || (v.expira_em && Date.parse(v.expira_em) <= Date.now())) return json(vazio);
+    return json({ link: q.link, nome: q.nome || null, expira_em: v.expira_em || null });
+  }
+
   // Daqui para baixo é o Controle da Casa: precisa da permissão de controle.
   if (!(p.pode_controle || p.pode_gerir_controle)) return json({ error: "Você não tem acesso ao controle da casa." }, 403);
 

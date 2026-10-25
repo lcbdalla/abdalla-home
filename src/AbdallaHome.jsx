@@ -183,7 +183,7 @@ const NOMES_HA = {};
 // ---------- Conversores banco (snake_case) <-> app (camelCase) ----------
 const timeHM = (t) => (t ? String(t).slice(0, 5) : "");
 const toMs = (ts) => (ts ? new Date(ts).getTime() : null);
-const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, spotifyEntity: r.spotify_entity || null, ambientesControle: Array.isArray(r.ambientes_controle) ? r.ambientes_controle : null, equipamentosControle: Array.isArray(r.equipamentos_controle) ? r.equipamentos_controle : null, podeGerirEquipe: r.pode_gerir_equipe !== false, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
+const mapPerfil = (r) => ({ id: r.id, nome: r.nome, papel: r.papel, telefone: r.telefone || "", setor: r.setor || "", ativo: r.ativo !== false, podeControle: r.pode_controle === true, podeGerirControle: r.pode_gerir_controle === true, podeMenuControle: r.pode_menu_controle === true, podePersonalizar: r.pode_personalizar === true, podeGerarVisitante: r.pode_gerar_visitante === true, spotifyEntity: r.spotify_entity || null, ambientesControle: Array.isArray(r.ambientes_controle) ? r.ambientes_controle : null, equipamentosControle: Array.isArray(r.equipamentos_controle) ? r.equipamentos_controle : null, podeGerirEquipe: r.pode_gerir_equipe !== false, ehTv: r.eh_tv === true, expiraEm: r.expira_em ? new Date(r.expira_em).getTime() : null });
 const mapProduto = (r) => ({ id: r.id, nome: r.nome, categoria: r.categoria, subcategoria: r.subcategoria || "", unidade: r.unidade });
 const mapMov = (r) => ({ id: r.id, produtoId: r.produto_id, tipo: r.tipo, qtd: Number(r.qtd) || 0, userId: r.user_id, origem: r.origem || "manual", em: toMs(r.criado_em) });
 
@@ -1244,6 +1244,13 @@ function EquipeView({ users, souAdmin, euId, showToast, onRecarregar }) {
                   <Toggle on={u.podeGerirEquipe !== false} onToggle={() => editar(u.id, "pode_gerir_equipe", u.podeGerirEquipe === false)} />
                 </div>
               )}
+              {u.papel !== "admin" && (
+                <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
+                  <Tv size={13} style={{ color: C.cinzaClaro }} />
+                  <div className="flex-1" style={{ fontSize: 13, color: C.cinza }}>É a TV do Quarto Visita (mostra o QR do visitante)</div>
+                  <Toggle on={u.ehTv === true} onToggle={() => editar(u.id, "eh_tv", !(u.ehTv === true))} />
+                </div>
+              )}
               {u.papel !== "admin" && u.papel !== "visitante" && (
                 <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 40 }}>
                   <Clock size={13} style={{ color: C.cinzaClaro }} />
@@ -1710,6 +1717,7 @@ export function ConvitePage({ token }) {
 
 function VisitanteSheet({ showToast, onCriado, onFechar }) {
   const [dias, setDias] = useState("1");
+  const [nomeVis, setNomeVis] = useState(""), [naTv, setNaTv] = useState(true); // nome aparece na TV ("Bem-vindo, Maria")
   const [criando, setCriando] = useState(false);
   const [erro, setErro] = useState("");
   const [pronto, setPronto] = useState(null); // { qr, url, dias, ate }
@@ -1734,6 +1742,14 @@ function VisitanteSheet({ showToast, onCriado, onFechar }) {
       }
     }
     const url = new URL(import.meta.env.BASE_URL, window.location.href).href + "#v=" + encodeURIComponent(btoa(email + ":" + senha));
+    const nomeLimpo = nomeVis.trim().slice(0, 60);
+    // Nome na Equipe (só admin consegue mudar o perfil; para os outros fica "Visitante · Nd").
+    if (data?.id && nomeLimpo) await supabase.from("perfis").update({ nome: nomeLimpo }).eq("id", data.id);
+    // QR na TV do Quarto Visita: o último visitante gerado substitui o anterior.
+    if (data?.id && naTv) {
+      const { error: eTv } = await supabase.from("tv_qr").upsert({ id: "quarto_visita", visitante_id: data.id, nome: nomeLimpo || null, link: url, atualizado_em: new Date().toISOString() });
+      if (eTv) showToast(/tv_qr/.test(eTv.message) ? "Visitante criado. Para aparecer na TV, falta rodar o SQL tv-qr.sql." : "Visitante criado, mas não foi para a TV: " + eTv.message);
+    }
     let qr = null;
     try { qr = await QRCode.toDataURL(url, { width: 320, margin: 1, errorCorrectionLevel: "M" }); } catch { /* sem imagem de QR */ }
     setPronto({ qr, url, dias: d, ate });
@@ -1762,6 +1778,9 @@ function VisitanteSheet({ showToast, onCriado, onFechar }) {
   return (
     <Sheet titulo="Acesso de visitante" onFechar={onFechar}>
       <div style={{ color: C.cinza }} className="text-sm mb-3">Gera um acesso temporário que abre <b>só o Controle da Casa</b> (sem tarefas), por QR Code — sem precisar de e-mail e senha.</div>
+      <Campo label="Nome do visitante (opcional)">
+        <input value={nomeVis} onChange={(e) => setNomeVis(e.target.value)} placeholder="Ex.: Maria" style={inpSt} />
+      </Campo>
       <Campo label="Quantos dias de acesso?">
         <div className="flex items-center gap-2">
           <button onClick={() => setDias((v) => String(Math.max(1, (parseInt(v) || 1) - 1)))} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${C.linha}`, background: C.card, color: C.terra, fontSize: 20, fontWeight: 700 }}>−</button>
@@ -1769,6 +1788,10 @@ function VisitanteSheet({ showToast, onCriado, onFechar }) {
           <button onClick={() => setDias((v) => String(Math.min(90, (parseInt(v) || 1) + 1)))} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${C.linha}`, background: C.card, color: C.terra, fontSize: 20, fontWeight: 700 }}>+</button>
         </div>
       </Campo>
+      <label className="flex items-center gap-3 mb-3" style={{ fontSize: 14.5, color: C.terra, cursor: "pointer" }}>
+        <input type="checkbox" checked={naTv} onChange={(e) => setNaTv(e.target.checked)} style={{ width: 20, height: 20, accentColor: C.pasto }} />
+        Mostrar na TV do Quarto Visita (QR e "Bem-vindo" com o nome)
+      </label>
       {erro && <div style={{ background: C.vermelhoClaro, color: C.vermelho, borderRadius: 10, fontSize: 14 }} className="p-3 mb-3">{erro}</div>}
       <button onClick={gerar} disabled={criando} style={{ width: "100%", background: criando ? C.cinzaClaro : C.lago, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>{criando ? "Gerando…" : "Gerar QR Code"}</button>
     </Sheet>
