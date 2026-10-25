@@ -24,10 +24,10 @@
   .controles h2, .cartao h2, .alexa h2 { font-size: 1.1vw; letter-spacing: .15em; text-transform: uppercase; color: #c8862a; }
   .controles h2 { margin-bottom: .8vw; }
   .botoes { display: flex; flex-wrap: wrap; gap: 1vw; }
-  .grupo { display: flex; align-items: center; gap: .5vw; background: rgba(246, 243, 234, .1); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.2vw; padding: .5vw .5vw .5vw 1.2vw; }
-  .grupo span { font-size: 1.4vw; margin-right: .6vw; white-space: nowrap; }
-  .grupo.so { padding: .5vw; }
-  button { font: inherit; font-size: 1.4vw; font-weight: 600; color: #f6f3ea; background: rgba(246, 243, 234, .14); border: .2vw solid transparent; border-radius: .9vw; padding: .7vw 1.3vw; cursor: pointer; white-space: nowrap; }
+  .grupo { display: flex; align-items: center; gap: .5vw; background: rgba(246, 243, 234, .1); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.2vw; padding: .4vw .4vw .4vw 1.1vw; }
+  .grupo span { font-size: 1.3vw; margin-right: .6vw; white-space: nowrap; }
+  .grupo.so { padding: .4vw; }
+  button { font: inherit; font-size: 1.3vw; font-weight: 600; color: #f6f3ea; background: rgba(246, 243, 234, .14); border: .2vw solid transparent; border-radius: .9vw; padding: .55vw 1.1vw; cursor: pointer; white-space: nowrap; }
   button.ligado { background: #c8862a; color: #33302a; }
   button:focus { outline: none; border-color: #f6f3ea; transform: scale(1.06); }
 
@@ -38,9 +38,10 @@
 
   .cartoes { display: flex; gap: 2vw; margin-top: auto; padding-top: 1.6vw; }
   .cartao { flex: 1; background: rgba(246, 243, 234, .1); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.4vw; padding: 1.3vw 1.8vw; }
-  .cartao h2 { margin-bottom: .8vw; }
+  .cartao h2 { margin-bottom: .9vw; text-align: center; }
   .cartao p { font-size: 1.5vw; line-height: 1.35; }
-  .cartao.qr { flex: 0 0 27vw; background: #f6f3ea; color: #33302a; display: flex; gap: 1.6vw; align-items: center; }
+  .cartao.qr { flex: 0 0 27vw; background: #f6f3ea; color: #33302a; }
+  .qr .linha { display: flex; gap: 1.6vw; align-items: center; justify-content: center; }
   .qr .codigo { width: 8vw; height: 8vw; flex: none; background: #fff; border-radius: .6vw; padding: .3vw; }
   .qr .codigo svg { width: 100%; height: 100%; display: block; }
   .qr strong { display: block; font-size: 2.1vw; color: #1f5c39; }
@@ -48,7 +49,10 @@
   #visitante, .estacao { display: none; }
   .estacao .grade { display: flex; flex-wrap: wrap; gap: 1vw 0; }
   .estacao .grade div { width: 33.3%; font-size: 1.1vw; color: rgba(246, 243, 234, .8); }
-  .estacao .grade b { display: block; font-size: 2.3vw; font-weight: 600; color: #f6f3ea; }
+  .estacao .grade svg { width: 1.7vw; height: 1.7vw; flex: none; fill: none; stroke: #8fd0de; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .estacao .grade svg.uv { stroke: #c8862a; }
+  .estacao .grade b i { font-style: normal; font-size: 1.2vw; font-weight: 600; opacity: .8; }
+  .estacao .grade b { display: flex; align-items: center; gap: .5vw; white-space: nowrap; font-size: 2.3vw; font-weight: 600; color: #f6f3ea; }
   .dica { text-align: center; font-size: 1.1vw; opacity: .6; margin-top: 1.4vw; }
 </style>
 </head>
@@ -66,10 +70,10 @@
   <div class="controles" id="controles"><h2>Este quarto · use as setas e OK</h2><div class="botoes" id="botoes"></div></div>
   <div class="alexa"><h2>Fale com a Alexa</h2><div><p>Este quarto atende pela voz.</p><span id="frases"></span></div></div>
   <div class="cartoes">
-    <div class="cartao qr"><div class="codigo" id="qrWifi"></div><div><h2>Wi-Fi</h2>
-      <p>Rede<strong id="rede"></strong></p><p style="margin-top:.6vw">Senha<strong id="senha"></strong></p></div></div>
-    <div class="cartao qr" id="visitante"><div class="codigo" id="qrVisitante"></div><div><h2>Controle da casa</h2>
-      <p>Aponte a câmera e comande<strong>luzes, ar e TV</strong></p><small id="validade"></small></div></div>
+    <div class="cartao qr"><h2>Wi-Fi</h2><div class="linha"><div class="codigo" id="qrWifi"></div><div>
+      <p>Rede<strong id="rede"></strong></p><p style="margin-top:.6vw">Senha<strong id="senha"></strong></p></div></div></div>
+    <div class="cartao qr" id="visitante"><h2>Controle da casa</h2><div class="linha"><div class="codigo" id="qrVisitante"></div><div>
+      <p>Aponte a câmera e comande<strong>luzes, ar e TV</strong></p><small id="validade"></small></div></div></div>
     <div class="cartao estacao" id="estacao"><h2>Agora no rancho</h2><div class="grade" id="grade"></div></div>
   </div>
   <p class="dica">Aperte VOLTAR no controle para usar a TV normalmente</p>
@@ -114,13 +118,21 @@
 
   // Estação meteorológica do HA, sem login (função pública só de leitura).
   function num(v, casas) { return v == null ? null : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas || 0 }); }
+  var ICONES = { // lucide (os mesmos do app Abdalla Home)
+    termometro: '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>',
+    gotas: '<path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/>',
+    vento: '<path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/>',
+    guarda: '<path d="M12 13v7a2 2 0 0 0 4 0"/><path d="M12 2v2"/><path d="M20.992 13a1 1 0 0 0 .97-1.274 10.284 10.284 0 0 0-19.923 0A1 1 0 0 0 3 13z"/>',
+    sol: '<circle cx="12" cy="12" r="4"/><path d="M12 3v1"/><path d="M12 20v1"/><path d="M3 12h1"/><path d="M20 12h1"/><path d="m18.364 5.636-.707.707"/><path d="m6.343 17.657-.707.707"/><path d="m5.636 5.636.707.707"/><path d="m17.657 17.657.707.707"/>',
+  };
+  function icone(n) { return '<svg viewBox="0 0 24 24" class="' + (n === "sol" ? "uv" : "") + '">' + ICONES[n] + "</svg>"; }
   function estacao() {
     post("/functions/v1/dynamic-worker", { acao: "clima_publico" }, { Authorization: "Bearer " + D.supabaseKey }).then(function (j) {
       if (j.temperatura_c == null) return;
-      var itens = [["Temperatura", num(j.temperatura_c), "°"], ["Sensação", num(j.sensacao_c), "°"], ["Umidade", num(j.umidade_pct), "%"],
-        ["Vento", num(j.vento_kmh), " km/h"], ["Chuva hoje", num(j.chuva_hoje_mm, 1), " mm"], ["UV", num(j.uv), ""]];
+      var itens = [["Temperatura", num(j.temperatura_c), "°", "termometro"], ["Sensação", num(j.sensacao_c), "°", "termometro"], ["Umidade", num(j.umidade_pct), "%", "gotas"],
+        ["Vento", num(j.vento_kmh), " km/h", "vento"], ["Chuva hoje", num(j.chuva_hoje_mm, 1), " mm", "guarda"], ["UV", num(j.uv), "", "sol"]];
       el("grade").innerHTML = itens.filter(function (i) { return i[1] != null; })
-        .map(function (i) { return "<div><b>" + i[1] + i[2] + "</b>" + i[0] + "</div>"; }).join("");
+        .map(function (i) { return "<div><b>" + icone(i[3]) + i[1] + (i[2].trim().length > 1 ? "<i>" + i[2] + "</i>" : i[2]) + "</b>" + i[0] + "</div>"; }).join("");
       el("estacao").style.display = "block";
     }).catch(function () {});
   }
@@ -147,7 +159,7 @@
       if (!j.link) { linkAtual = null; el("visitante").style.display = "none"; boasVindas(null); return; }
       if (j.link !== linkAtual) { linkAtual = j.link; qr("qrVisitante", j.link); }
       el("validade").textContent = j.expira_em ? "Válido até " + new Date(j.expira_em).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "";
-      el("visitante").style.display = "flex";
+      el("visitante").style.display = "block";
       boasVindas(j.nome || null);
     }).catch(function () {});
   }
@@ -184,6 +196,7 @@
           } else if (dom === "cover") {
             g.innerHTML = "<span>" + esc(nome) + "</span>";
             bs.push(botao("Abrir", s.state === "open", function () { comando(id, "cover", "open_cover"); }));
+            bs.push(botao("Parar", false, function () { comando(id, "cover", "stop_cover"); }));
             bs.push(botao("Fechar", s.state === "closed", function () { comando(id, "cover", "close_cover"); }));
           } else if (/^(light|switch|fan|input_boolean)$/.test(dom)) {
             var on = s.state === "on";
