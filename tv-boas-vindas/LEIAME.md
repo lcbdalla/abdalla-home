@@ -1,24 +1,28 @@
 # Tela de boas-vindas — TV do Quarto Visita (Samsung QM50Q8FAAGXZD)
 
-## Mudar os textos (Wi-Fi, link do visitante)
-1. Abra `tv-boas-vindas\dados.js` no Bloco de Notas e troque os textos.
-   - `visitante`: cole o link gerado no app (Equipe > Gerar acesso de visitante). Ele vira o QR "Controle da casa".
-     O link expira sozinho; quando gerar outro, troque aqui e reinstale.
-   (Esse arquivo não vai para o GitHub. Se ele sumir, copie o `dados.exemplo.js` para `dados.js`.)
-2. Clique com o botão direito em `empacotar.ps1` > "Executar com o PowerShell".
-3. Instale de novo o arquivo `privado\boas-vindas.wgt` na TV (passo abaixo).
+Mostra: "Bem-vindo, <nome do visitante>!", relógio, botões do quarto (luz, ar, persiana — setas e OK do
+controle), cartão da Alexa, QR do Wi-Fi, QR do controle da casa do visitante atual e a estação meteorológica.
 
-## Instalar na TV (só o computador e a TV na mesma rede)
-1. **No computador:** descubra o IP dele (Configurações > Rede e Internet > Propriedades do Wi-Fi > "Endereço IPv4").
-2. **Na TV:** abra **Apps**. Com o controle, digite **1 2 3 4 5** (use o teclado numérico da tela, se o controle não tiver números).
-   Ligue o **Modo Desenvolvedor**, coloque o IP do computador e **desligue e ligue a TV** (na tomada, se precisar).
-3. **No computador:** baixe o **Apps2Samsung** em https://github.com/Apps2Samsung/Apps2Samsung/releases (versão Windows).
-   Abra, escolha a TV, escolha **"arquivo .wgt próprio"** e aponte para `privado\boas-vindas.wgt`. Instale.
-   (Na primeira vez ele pede login na conta Samsung para gerar o certificado.)
-4. O app aparece em **Apps** com o nome **"Bem-vindo"**. Dá para mover para o começo da lista.
-5. Depois de instalado, pode **desligar o Modo Desenvolvedor** na TV (mesmo caminho do passo 2).
+## Como o QR e o nome do visitante chegam na TV (sozinhos)
+- No app: Equipe > Gerar acesso de visitante, com o nome e a caixinha "Mostrar na TV do Quarto Visita".
+- A TV confere a cada 5 minutos. Quando o visitante vence ou é removido, o QR some e volta o "Seja bem-vindo".
+- Não precisa reinstalar nada na TV para trocar de visitante.
+
+## Dados guardados na TV (`tv-boas-vindas\dados.js`, fora do GitHub)
+- Wi-Fi (rede e senha), frases da Alexa.
+- `tv`: e-mail e senha do usuário TV do app (visitante sem validade, só com o Quarto Visita e com a chave
+  "É a TV do Quarto Visita" ligada na Equipe). Sem ele, a TV não mostra os botões nem o QR do visitante.
+- Se o dados.js sumir, copie o `dados.exemplo.js` para `dados.js` e preencha.
+
+Mudou algo no dados.js? Botão direito em `empacotar.ps1` > "Executar com o PowerShell" e reinstale
+`privado\boas-vindas.wgt` na TV.
+
+## Instalar na TV
+1. **TV:** Apps > digite **1 2 3 4 5** (pelo teclado numérico do controle do app SmartThings no celular).
+   Modo Desenvolvedor **On**, IP do computador (hoje 192.168.120.200), OK. Tire a TV da tomada 30 s.
+2. **Computador:** abra o **Apps2Samsung** (https://github.com/Apps2Samsung/Apps2Samsung/releases, arquivo
+   `...-win-x64.msi`). Em "Selecionar TV" escolha a **QM50Q8FAAGXZD** (não a de 55" do quarto do casal).
+3. Escolha **"Arquivo WGT / TPK"**, aponte para `privado\boas-vindas.wgt` e clique em **Baixar e instalar**.
+4. Na TV, o app aparece em Apps como **"Bem-vindo"**. Depois desligue o Modo Desenvolvedor (mesmo caminho, Off).
 
 O botão **VOLTAR** do controle fecha a tela de boas-vindas.
-
-## Ver no computador antes de instalar
-Abra `index.html` com um servidor local (ou peça ao Claude: "abre a tela de boas-vindas").

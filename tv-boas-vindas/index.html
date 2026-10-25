@@ -10,31 +10,46 @@
   body {
     font-family: "Samsung One", "SamsungOne", Arial, sans-serif; color: #f6f3ea;
     background: radial-gradient(ellipse at 80% 0%, #2b7a8c 0%, transparent 55%), linear-gradient(160deg, #1f5c39 0%, #163f28 60%, #10301e 100%);
-    display: flex; flex-direction: column; padding: 4.5vw 6vw;
+    display: flex; flex-direction: column; padding: 4vw 6vw 3vw;
   }
   .topo { display: flex; justify-content: space-between; align-items: flex-start; }
-  h1 { font-size: 4.4vw; font-weight: 700; line-height: 1.1; max-width: 55vw; }
-  .sub { font-size: 1.8vw; opacity: .85; margin-top: 1vw; max-width: 55vw; }
+  h1 { font-size: 4.2vw; font-weight: 700; line-height: 1.1; max-width: 58vw; }
+  .sub { font-size: 1.7vw; opacity: .85; margin-top: .8vw; max-width: 58vw; }
   .hora { text-align: right; }
   .relogio { font-size: 7vw; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
   .data { font-size: 1.6vw; opacity: .85; margin-top: .6vw; }
   .data::first-letter { text-transform: uppercase; }
-  .alexa { margin-top: auto; display: flex; align-items: center; gap: 2.4vw; background: rgba(43, 122, 140, .35); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.4vw; padding: 1.4vw 2vw; }
-  .alexa h2 { font-size: 1.1vw; letter-spacing: .15em; text-transform: uppercase; color: #c8862a; white-space: nowrap; }
-  .alexa p { font-size: 1.9vw; font-weight: 600; }
-  .alexa span { font-size: 1.6vw; opacity: .85; }
-  .cartoes { display: flex; gap: 2vw; margin-top: 2vw; }
-  .cartao { flex: 1; background: rgba(246, 243, 234, .1); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.4vw; padding: 1.8vw 2vw; }
-  .cartao.qr { flex: 0 0 26vw; background: #f6f3ea; color: #33302a; display: flex; gap: 1.6vw; align-items: center; }
-  .qr img { width: 10vw; height: 10vw; border-radius: .6vw; flex: none; }
-  .cartao h2 { font-size: 1.1vw; letter-spacing: .15em; text-transform: uppercase; color: #c8862a; margin-bottom: .8vw; }
+
+  .controles { display: none; margin-top: 1.6vw; }
+  .controles h2, .cartao h2, .alexa h2 { font-size: 1.1vw; letter-spacing: .15em; text-transform: uppercase; color: #c8862a; }
+  .controles h2 { margin-bottom: .8vw; }
+  .botoes { display: flex; flex-wrap: wrap; gap: 1vw; }
+  .grupo { display: flex; align-items: center; gap: .5vw; background: rgba(246, 243, 234, .1); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.2vw; padding: .5vw .5vw .5vw 1.2vw; }
+  .grupo span { font-size: 1.4vw; margin-right: .6vw; white-space: nowrap; }
+  .grupo.so { padding: .5vw; }
+  button { font: inherit; font-size: 1.4vw; font-weight: 600; color: #f6f3ea; background: rgba(246, 243, 234, .14); border: .2vw solid transparent; border-radius: .9vw; padding: .7vw 1.3vw; cursor: pointer; white-space: nowrap; }
+  button.ligado { background: #c8862a; color: #33302a; }
+  button:focus { outline: none; border-color: #f6f3ea; transform: scale(1.06); }
+
+  .alexa { margin-top: 1.6vw; display: flex; align-items: center; gap: 2.4vw; background: rgba(43, 122, 140, .35); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.4vw; padding: 1.2vw 2vw; }
+  .alexa h2 { white-space: nowrap; }
+  .alexa p { font-size: 1.8vw; font-weight: 600; }
+  .alexa span { font-size: 1.5vw; opacity: .85; }
+
+  .cartoes { display: flex; gap: 2vw; margin-top: auto; padding-top: 1.6vw; }
+  .cartao { flex: 1; background: rgba(246, 243, 234, .1); border: 1px solid rgba(246, 243, 234, .18); border-radius: 1.4vw; padding: 1.3vw 1.8vw; }
+  .cartao h2 { margin-bottom: .8vw; }
   .cartao p { font-size: 1.5vw; line-height: 1.35; }
-  .qr strong { display: block; font-size: 2.2vw; color: #1f5c39; }
-  .estacao { display: none; }
-  .estacao .grade { display: flex; flex-wrap: wrap; gap: 1.2vw 0; }
+  .cartao.qr { flex: 0 0 27vw; background: #f6f3ea; color: #33302a; display: flex; gap: 1.6vw; align-items: center; }
+  .qr .codigo { width: 8vw; height: 8vw; flex: none; background: #fff; border-radius: .6vw; padding: .3vw; }
+  .qr .codigo svg { width: 100%; height: 100%; display: block; }
+  .qr strong { display: block; font-size: 2.1vw; color: #1f5c39; }
+  .qr small { display: block; font-size: 1.1vw; opacity: .7; margin-top: .5vw; }
+  #visitante, .estacao { display: none; }
+  .estacao .grade { display: flex; flex-wrap: wrap; gap: 1vw 0; }
   .estacao .grade div { width: 33.3%; font-size: 1.1vw; color: rgba(246, 243, 234, .8); }
-  .estacao .grade b { display: block; font-size: 2.4vw; font-weight: 600; opacity: 1; color: #f6f3ea; }
-  .dica { text-align: center; font-size: 1.1vw; opacity: .6; margin-top: 2vw; }
+  .estacao .grade b { display: block; font-size: 2.3vw; font-weight: 600; color: #f6f3ea; }
+  .dica { text-align: center; font-size: 1.1vw; opacity: .6; margin-top: 1.4vw; }
 </style>
 </head>
 <body>
@@ -48,50 +63,40 @@
       <div class="data" id="data"></div>
     </div>
   </div>
+  <div class="controles" id="controles"><h2>Este quarto · use as setas e OK</h2><div class="botoes" id="botoes"></div></div>
   <div class="alexa"><h2>Fale com a Alexa</h2><div><p>Este quarto atende pela voz.</p><span id="frases"></span></div></div>
-  <div class="cartoes" id="cartoes"></div>
+  <div class="cartoes">
+    <div class="cartao qr"><div class="codigo" id="qrWifi"></div><div><h2>Wi-Fi</h2>
+      <p>Rede<strong id="rede"></strong></p><p style="margin-top:.6vw">Senha<strong id="senha"></strong></p></div></div>
+    <div class="cartao qr" id="visitante"><div class="codigo" id="qrVisitante"></div><div><h2>Controle da casa</h2>
+      <p>Aponte a câmera e comande<strong>luzes, ar e TV</strong></p><small id="validade"></small></div></div>
+    <div class="cartao estacao" id="estacao"><h2>Agora no rancho</h2><div class="grade" id="grade"></div></div>
+  </div>
   <p class="dica">Aperte VOLTAR no controle para usar a TV normalmente</p>
 
+<script src="qrcode.min.js"></script>
 <script src="dados.exemplo.js"></script>
 <script src="dados.js"></script>
 <script>
   var D = window.DADOS;
   function el(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
-
-  el("titulo").textContent = D.titulo;
-  el("subtitulo").textContent = D.subtitulo;
-  el("frases").textContent = D.alexa.map(function (f) { return "“Alexa, " + f + "”"; }).join("   ·   ");
-  var html = '<div class="cartao qr"><img src="wifi-qr.svg" alt="" onerror="this.remove()"><div><h2>Wi-Fi</h2>' +
-    '<p>Rede<strong>' + esc(D.wifi.rede) + '</strong></p><p style="margin-top:.8vw">Senha<strong>' + esc(D.wifi.senha) + '</strong></p></div></div>';
-  if (D.visitante) html += '<div class="cartao qr"><img src="visitante-qr.svg" alt=""><div><h2>Controle da casa</h2>' +
-    '<p>Aponte a câmera e comande<strong>luzes, ar e TV</strong></p>' +
-    (D.visitanteAte ? '<p style="font-size:1.1vw;opacity:.7;margin-top:.6vw">Válido até ' + esc(D.visitanteAte) + '</p>' : '') + '</div></div>';
-  el("cartoes").innerHTML = html + '<div class="cartao estacao" id="estacao"><h2>Agora no rancho</h2><div class="grade" id="grade"></div></div>';
-
-  // Estação meteorológica do HA, sem login (função pública só de leitura).
-  function num(v, casas) { return v == null ? null : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas || 0 }); }
-  function estacao() {
-    if (!D.supabaseKey) return;
-    var x = new XMLHttpRequest();
-    x.open("POST", D.supabaseUrl + "/functions/v1/dynamic-worker");
-    x.setRequestHeader("Content-Type", "application/json");
-    x.setRequestHeader("apikey", D.supabaseKey);
-    x.setRequestHeader("Authorization", "Bearer " + D.supabaseKey);
-    x.onload = function () {
-      try {
-        var j = JSON.parse(x.responseText);
-        if (x.status !== 200 || j.temperatura_c == null) return;
-        var itens = [["Temperatura", num(j.temperatura_c), "°"], ["Sensação", num(j.sensacao_c), "°"], ["Umidade", num(j.umidade_pct), "%"],
-          ["Vento", num(j.vento_kmh), " km/h"], ["Chuva hoje", num(j.chuva_hoje_mm, 1), " mm"], ["UV", num(j.uv), ""]];
-        el("grade").innerHTML = itens.filter(function (i) { return i[1] != null; })
-          .map(function (i) { return "<div><b>" + i[1] + i[2] + "</b>" + i[0] + "</div>"; }).join("");
-        el("estacao").style.display = "block";
-      } catch (e) {}
-    };
-    x.send('{"acao":"clima_publico"}');
+  function qr(id, texto) {
+    var q = qrcode(0, "M"); q.addData(texto); q.make();
+    el(id).innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }).replace(/fill="black"/, 'fill="#1f5c39"');
   }
-  estacao(); setInterval(estacao, 60000);
+  function wifiEsc(s) { return String(s).replace(/([\\;,:"])/g, "\\$1"); }
+
+  // ---------- Textos fixos ----------
+  function boasVindas(nome) {
+    el("titulo").textContent = nome ? "Bem-vindo, " + nome + "!" : D.titulo;
+    el("subtitulo").textContent = nome ? "Que sua estadia no Rancho Abdalla seja tranquila. Fique à vontade!" : D.subtitulo;
+  }
+  boasVindas(null);
+  el("frases").textContent = D.alexa.map(function (f) { return "“Alexa, " + f + "”"; }).join("   ·   ");
+  el("rede").textContent = D.wifi.rede;
+  el("senha").textContent = D.wifi.senha;
+  qr("qrWifi", "WIFI:T:WPA;S:" + wifiEsc(D.wifi.rede) + ";P:" + wifiEsc(D.wifi.senha) + ";;");
 
   function relogio() {
     var a = new Date();
@@ -100,10 +105,114 @@
   }
   relogio(); setInterval(relogio, 10000);
 
+  // ---------- Supabase ----------
+  function post(caminho, corpo, extra) {
+    var h = Object.assign({ "Content-Type": "application/json", apikey: D.supabaseKey }, extra || {});
+    return fetch(D.supabaseUrl + caminho, { method: "POST", headers: h, body: JSON.stringify(corpo) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || j.msg || r.status); return j; }); });
+  }
 
-  // Botão VOLTAR (10009) fecha o app e volta para a TV.
+  // Estação meteorológica do HA, sem login (função pública só de leitura).
+  function num(v, casas) { return v == null ? null : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas || 0 }); }
+  function estacao() {
+    post("/functions/v1/dynamic-worker", { acao: "clima_publico" }, { Authorization: "Bearer " + D.supabaseKey }).then(function (j) {
+      if (j.temperatura_c == null) return;
+      var itens = [["Temperatura", num(j.temperatura_c), "°"], ["Sensação", num(j.sensacao_c), "°"], ["Umidade", num(j.umidade_pct), "%"],
+        ["Vento", num(j.vento_kmh), " km/h"], ["Chuva hoje", num(j.chuva_hoje_mm, 1), " mm"], ["UV", num(j.uv), ""]];
+      el("grade").innerHTML = itens.filter(function (i) { return i[1] != null; })
+        .map(function (i) { return "<div><b>" + i[1] + i[2] + "</b>" + i[0] + "</div>"; }).join("");
+      el("estacao").style.display = "block";
+    }).catch(function () {});
+  }
+  estacao(); setInterval(estacao, 60000);
+
+  // ---------- Usuário TV: login, QR do visitante e botões do quarto ----------
+  var sessao = null; // { token, refresh, vence }
+  function entrar() {
+    var renovar = sessao && sessao.refresh;
+    var corpo = renovar ? { refresh_token: sessao.refresh } : { email: D.tv.email, password: D.tv.senha };
+    return post("/auth/v1/token?grant_type=" + (renovar ? "refresh_token" : "password"), corpo).then(function (j) {
+      sessao = { token: j.access_token, refresh: j.refresh_token, vence: Date.now() + (j.expires_in - 120) * 1000 };
+    }, function (e) { if (renovar) { sessao = null; return entrar(); } throw e; });
+  }
+  function proxy(corpo) {
+    var pronto = sessao && Date.now() < sessao.vence ? Promise.resolve() : entrar();
+    return pronto.then(function () { return post("/functions/v1/controle-proxy", corpo, { Authorization: "Bearer " + sessao.token }); });
+  }
+
+  // QR e nome do visitante atual (o último gerado no app com "Mostrar na TV"). Some quando vence/é removido.
+  var linkAtual = null;
+  function visitante() {
+    proxy({ acao: "qr_tv" }).then(function (j) {
+      if (!j.link) { linkAtual = null; el("visitante").style.display = "none"; boasVindas(null); return; }
+      if (j.link !== linkAtual) { linkAtual = j.link; qr("qrVisitante", j.link); }
+      el("validade").textContent = j.expira_em ? "Válido até " + new Date(j.expira_em).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "";
+      el("visitante").style.display = "flex";
+      boasVindas(j.nome || null);
+    }).catch(function () {});
+  }
+
+  // Botões: luz/tomada liga-desliga; ar liga-desliga e temperatura; persiana abre/fecha.
+  var OCULTOS = /_display$|^switch\.led_ar|^(sensor|binary_sensor|media_player|remote|number|select|alexa)\./;
+  function nomeDe(s) { return (s.attributes && s.attributes.friendly_name) || s.entity_id; }
+  function comando(entity, domain, service, data) {
+    return proxy({ acao: "servico", entity_id: entity, domain: domain, service: service, data: data || {} })
+      .then(function () { setTimeout(aparelhos, 800); }, function () {});
+  }
+  function botao(texto, ligado, acao) {
+    var b = document.createElement("button");
+    b.textContent = texto; if (ligado) b.className = "ligado";
+    b.onclick = acao; return b;
+  }
+  function aparelhos() {
+    proxy({ acao: "estados" }).then(function (j) {
+      var foco = document.activeElement && document.activeElement.getAttribute("data-k");
+      var caixa = el("botoes"); caixa.innerHTML = "";
+      (j.estados || []).filter(function (s) { return !OCULTOS.test(s.entity_id); })
+        .sort(function (a, b) { return nomeDe(a).localeCompare(nomeDe(b)); })
+        .forEach(function (s) {
+          var id = s.entity_id, dom = id.split(".")[0], nome = nomeDe(s), g = document.createElement("div"), bs = [];
+          g.className = "grupo";
+          if (dom === "climate") {
+            var t = s.attributes.temperature, ligado = s.state !== "off";
+            g.innerHTML = "<span>" + esc(nome) + (ligado && t != null ? " · " + t + "°" : "") + "</span>";
+            bs.push(botao(ligado ? "Ligado" : "Desligado", ligado, function () { comando(id, "climate", ligado ? "turn_off" : "turn_on"); }));
+            if (ligado && t != null) {
+              bs.push(botao("−", false, function () { comando(id, "climate", "set_temperature", { temperature: t - 1 }); }));
+              bs.push(botao("+", false, function () { comando(id, "climate", "set_temperature", { temperature: t + 1 }); }));
+            }
+          } else if (dom === "cover") {
+            g.innerHTML = "<span>" + esc(nome) + "</span>";
+            bs.push(botao("Abrir", s.state === "open", function () { comando(id, "cover", "open_cover"); }));
+            bs.push(botao("Fechar", s.state === "closed", function () { comando(id, "cover", "close_cover"); }));
+          } else if (/^(light|switch|fan|input_boolean)$/.test(dom)) {
+            var on = s.state === "on";
+            g.className = "grupo so";
+            bs.push(botao(nome + (on ? " · ligado" : ""), on, function () { comando(id, "homeassistant", "toggle"); }));
+          } else return;
+          bs.forEach(function (b, i) { b.setAttribute("data-k", id + i); g.appendChild(b); });
+          caixa.appendChild(g);
+        });
+      el("controles").style.display = caixa.children.length ? "block" : "none";
+      var volta = foco && caixa.querySelector('[data-k="' + foco + '"]');
+      if (volta) volta.focus();
+      else { var b0 = caixa.querySelector("button"); if (b0) b0.focus(); }
+    }).catch(function () {});
+  }
+
+  if (D.tv.email && D.tv.senha) {
+    visitante(); setInterval(visitante, 5 * 60000);
+    aparelhos(); setInterval(aparelhos, 15000);
+  }
+
+  // ---------- Controle remoto ----------
   document.addEventListener("keydown", function (e) {
-    if (e.keyCode === 10009) try { tizen.application.getCurrentApplication().exit(); } catch (err) {}
+    if (e.keyCode === 10009) { try { tizen.application.getCurrentApplication().exit(); } catch (err) {} return; }
+    var bs = Array.prototype.slice.call(document.querySelectorAll("#botoes button"));
+    if (!bs.length) return;
+    var i = bs.indexOf(document.activeElement);
+    if (e.keyCode === 37 || e.keyCode === 38) { bs[Math.max(0, i - 1)].focus(); e.preventDefault(); }
+    if (e.keyCode === 39 || e.keyCode === 40) { bs[Math.min(bs.length - 1, i + 1)].focus(); e.preventDefault(); }
   });
 </script>
 </body>
