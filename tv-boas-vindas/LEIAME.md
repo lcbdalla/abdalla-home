@@ -26,3 +26,6 @@ Mudou algo no dados.js? Botão direito em `empacotar.ps1` > "Executar com o Powe
 4. Na TV, o app aparece em Apps como **"Bem-vindo"**. Depois desligue o Modo Desenvolvedor (mesmo caminho, Off).
 
 O botão **VOLTAR** do controle fecha a tela de boas-vindas.
+
+Nenhum botão do quarto fica selecionado ao abrir: a 1ª seta seleciona o primeiro, e o OK aciona. OK segurado
+não repete, e o mesmo aparelho só aceita um comando a cada 2 s (assim nada "liga sozinho").

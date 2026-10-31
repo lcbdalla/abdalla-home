@@ -229,7 +229,10 @@ Deno.serve(async (req) => {
         } else if (g.tipo === "sensor") {
           const valor = Number(g.valor);
           if (!/^sensor\.[a-z0-9_]+$/.test(String(g.entity_id || "")) || !Number.isFinite(valor)) return json({ error: "Escolha o sensor e o valor." }, 400);
-          triggers = [{ trigger: "numeric_state", entity_id: g.entity_id, [g.comparacao === "abaixo" ? "below" : "above"]: valor }];
+          // Só dispara se o valor FICAR além do limite por 2 min (nuvem, farol ou a própria lâmpada
+          // não disparam) e no máximo 1 vez por hora (desligar a luz não religa logo em seguida).
+          triggers = [{ trigger: "numeric_state", entity_id: g.entity_id, [g.comparacao === "abaixo" ? "below" : "above"]: valor, for: { minutes: 2 } }];
+          conditions = [{ condition: "template", value_template: "{{ this.attributes.last_triggered is none or (now() - this.attributes.last_triggered).total_seconds() > 3600 }}" }];
         } else return json({ error: "Escolha quando a programação acontece." }, 400);
         const acoes = Array.isArray(s.acoes) ? s.acoes : [];
         if (!acoes.length) return json({ error: "Escolha pelo menos um aparelho." }, 400);

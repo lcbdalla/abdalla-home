@@ -2055,8 +2055,14 @@ const TV_SALA = { nome: "TV Sala", tv: "media_player.smarttv_4k_ffm", remote: "r
 // Pela rede (Samsung): o 1º pedido às vezes só acorda a placa de rede; repete a cada 4 s (até 4 vezes)
 // enquanto o HA não mostrar a TV ligada.
 const _estadoHA = { atual: {} }; // estados reais do HA (o Controle atualiza)
+// O IR de ligar é o mesmo botão de desligar, e a TV leva até ~30 s para aparecer ligada na rede:
+// um 2º "Ligar" nesse tempo a desligava. Então, depois do 1º, novos "Ligar" ficam parados por 30 s.
+const TV_LIGANDO_MS = 30000;
+const _tvLigando = {}; // id da TV -> hora do último "Ligar"
+const tvLigandoAgora = (cfg) => Date.now() - (_tvLigando[cfg.tv] || 0) < TV_LIGANDO_MS;
 function ligarTv(cfg, ent, enviar) {
-  if (tvLigada(ent)) return;
+  if (tvLigada(ent) || tvLigandoAgora(cfg)) return;
+  _tvLigando[cfg.tv] = Date.now();
   if (cfg.ir) { enviar("remote", "send_command", cfg.ir.entity, { device: cfg.ir.device, command: cfg.ir.command }); return; }
   const tentar = (n) => {
     if (n > 0 && tvLigada(_estadoHA.atual[cfg.tv])) return;
@@ -2105,6 +2111,10 @@ const TV_APPS = [
 const TV_VOL_MAX = 0.8; // ajuste se quiser liberar mais
 function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
   const ind = !ent || ["unavailable", "unknown"].includes(ent.state);
+  // "Ligando…" enquanto a TV não aparece ligada (até 30 s depois do toque); redesenha quando acaba.
+  const [, setTic] = useState(0);
+  const ligando = !tvLigada(ent) && tvLigandoAgora(cfg);
+  useEffect(() => { if (!ligando) return; const t = setTimeout(() => setTic((n) => n + 1), TV_LIGANDO_MS - (Date.now() - _tvLigando[cfg.tv]) + 50); return () => clearTimeout(t); }, [ligando]); // eslint-disable-line react-hooks/exhaustive-deps
   const toque = () => { try { navigator.vibrate?.(12); } catch { /* ok */ } };
   const tecla = (k) => {
     if (k === "MEDIA_PLAY_PAUSE" && cfg.playPausaMedia) { enviar("media_player", "media_play_pause", cfg.tv); return; }
@@ -2127,7 +2137,7 @@ function TvControleModal({ cfg, ent, entSom, enviar, onFechar, topo }) {
           {/* Mesmo botão liga e desliga: com a TV desligada ele liga (e o controle fica aberto). */}
           {tvLigada(ent)
             ? <BotaoAcao icon={Power} label="Desligar" cor={C.vermelho} onClick={() => { enviar("media_player", "turn_off", cfg.tv); onFechar(); }} />
-            : <BotaoAcao icon={Power} label="Ligar" cor={C.pasto} disabled={ind && !cfg.ir} onClick={() => { toque(); ligarTv(cfg, ent, enviar); }} />}
+            : <BotaoAcao icon={Power} label={ligando ? "Ligando…" : "Ligar"} cor={C.pasto} disabled={ligando || (ind && !cfg.ir)} onClick={() => { toque(); ligarTv(cfg, ent, enviar); setTic((n) => n + 1); }} />}
           <BotaoAcao icon={Undo2} label="Voltar" cor={C.cinza} onClick={() => tecla("BACK")} />
           <BotaoAcao icon={Home} label="Início" cor={C.cinza} onClick={() => tecla("HOME")} />
         </div>
@@ -4896,6 +4906,16 @@ function descreverQuando(g) {
   return `Quando ${g.nome_sensor || g.entity_id} ${g.comparacao === "abaixo" ? "ficar abaixo de" : "passar de"} ${numBR(g.valor)}${g.unidade ? " " + g.unidade : ""}`;
 }
 const descreverAcoes = (acoes) => (acoes || []).map((a) => `${(ACOES_PROG[a.tipo] || []).find(([k]) => k === a.acao)?.[1]?.replace(/ \(.*\)/, "") || a.acao} ${a.nome || a.entity_id}`).join(" · ");
+// Última vez que a programação rodou (o HA guarda): "Rodou hoje às 18:42" / "Rodou em 30/10 às 07:00".
+function rodouEm(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return "Ainda não rodou";
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
+  if (d.toDateString() === new Date().toDateString()) return `Rodou hoje às ${hora}`;
+  if (d.toDateString() === ontem.toDateString()) return `Rodou ontem às ${hora}`;
+  return `Rodou em ${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} às ${hora}`;
+}
 async function chamarProgramacao(body) {
   const { data, error } = await supabase.functions.invoke(PROXY_FN, { body: { acao: "programacao", ...body } });
   if (!error && !data?.error) return data;
@@ -4956,6 +4976,7 @@ function Programacoes({ equipamentos, ambientes, ents, pedirHA }) {
               <div style={{ fontSize: 14, fontWeight: 700, color: x.ativo ? C.terra : C.cinza }}>{x.spec?.nome || x.nome.replace(/^App · /, "")}</div>
               <div style={{ fontSize: 12.5, color: C.cinza }}>{descreverQuando(x.spec?.gatilho)}</div>
               <div style={{ fontSize: 12.5, color: C.cinza }}>{descreverAcoes(x.spec?.acoes)}</div>
+              <div style={{ fontSize: 12, color: x.ultima ? C.lago : C.cinzaClaro, fontWeight: 600 }}>{rodouEm(x.ultima)}</div>
             </div>
             <PillToggle on={x.ativo} cor={C.pasto} pequeno onClick={() => ativar(x)} />
             {x.spec && <button onClick={() => editar(x)} aria-label="Editar" style={{ padding: 6, color: C.cinza }}><Pencil size={16} /></button>}
@@ -4996,7 +5017,7 @@ function Programacoes({ equipamentos, ambientes, ents, pedirHA }) {
               <input type="number" inputMode="decimal" value={g.valor ?? ""} onChange={(e) => mudarG({ valor: e.target.value === "" ? "" : Number(e.target.value) })} placeholder="60000" style={{ ...campo, width: 120 }} />
               <span style={{ fontSize: 13, color: C.cinza }}>{sensorEscolhido?.unidade || g.unidade || ""}</span>
             </div>
-            <div style={{ fontSize: 12, color: C.cinza }}>Dispara na hora em que o valor cruza o limite (não repete enquanto continuar acima).</div>
+            <div style={{ fontSize: 12, color: C.cinza }}>Dispara quando o valor fica além do limite por 2 minutos seguidos, no máximo 1 vez por hora.</div>
           </>)}
           <div style={{ fontSize: 13, fontWeight: 700, color: C.cinza }}>O que fazer</div>
           {form.acoes.map((a, i) => { const ap = aparelhos.find((x) => x.id === a.entity_id); return (

@@ -167,7 +167,12 @@
   // Botões: luz/tomada liga-desliga; ar liga-desliga e temperatura; persiana abre/fecha.
   var OCULTOS = /_display$|^switch\.led_ar|^(sensor|binary_sensor|media_player|remote|number|select|alexa)\./;
   function nomeDe(s) { return (s.attributes && s.attributes.friendly_name) || s.entity_id; }
+  // Um comando por aparelho a cada 2 s: OK apertado duas vezes (ou segurado) não liga e desliga.
+  var ultimoCmd = {};
   function comando(entity, domain, service, data) {
+    var agora = Date.now();
+    if (agora - (ultimoCmd[entity] || 0) < 2000) return Promise.resolve();
+    ultimoCmd[entity] = agora;
     return proxy({ acao: "servico", entity_id: entity, domain: domain, service: service, data: data || {} })
       .then(function () { setTimeout(aparelhos, 800); }, function () {});
   }
@@ -207,9 +212,10 @@
           caixa.appendChild(g);
         });
       el("controles").style.display = caixa.children.length ? "block" : "none";
+      // Só volta o foco para onde a pessoa já estava. Nenhum aparelho fica selecionado sozinho
+      // (antes o 1º botão, um abajur, ficava pronto para o OK do controle e "ligava sozinho").
       var volta = foco && caixa.querySelector('[data-k="' + foco + '"]');
       if (volta) volta.focus();
-      else { var b0 = caixa.querySelector("button"); if (b0) b0.focus(); }
     }).catch(function () {});
   }
 
@@ -221,6 +227,7 @@
   // ---------- Controle remoto ----------
   document.addEventListener("keydown", function (e) {
     if (e.keyCode === 10009) { try { tizen.application.getCurrentApplication().exit(); } catch (err) {} return; }
+    if (e.keyCode === 13 && e.repeat) { e.preventDefault(); return; } // OK segurado não repete
     var bs = Array.prototype.slice.call(document.querySelectorAll("#botoes button"));
     if (!bs.length) return;
     var i = bs.indexOf(document.activeElement);
