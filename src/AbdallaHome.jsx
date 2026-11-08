@@ -3777,7 +3777,9 @@ function ligarAr(e, enviar) {
 // Ares que às vezes não desligam de primeira (Living, K7 da Churrasqueira e Varanda): ao desligar
 // pelo app, desliga → espera → liga → espera → desliga de novo. A espera (ms) é de cada ar: o do
 // Living demora mais para obedecer, então espera 2,5 s entre os comandos.
-const AR_DESLIGA_DUPLO = new Map([["climate.ac_living_ac", 2500], ["climate.midea_ac_150633095934489", 1000], ["climate.midea_ac_150633095631273", 1000]]);
+// Do Subsolo, igual ao Living: Bar, Estande de Tiro e Lareira (o da Pescaria não).
+const AR_DESLIGA_DUPLO = new Map([["climate.ac_living_ac", 2500], ["climate.midea_ac_150633095934489", 1000], ["climate.midea_ac_150633095631273", 1000],
+  ["climate.151732607838797_climate", 2500], ["climate.151732607838801_climate", 2500], ["climate.150633096214609_climate", 2500]]);
 function desligarAr(e, enviar) {
   novoToqueAr(e.id);
   enviar("climate", "turn_off", e.id);
