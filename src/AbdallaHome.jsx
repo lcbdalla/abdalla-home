@@ -4700,7 +4700,7 @@ function EquipCard({ e, enviar, expandido, onExpandir, editando }) {
 // Busca de aparelho novo: só os equipamentos da lista do painel LAB (src/catalogoLab.json),
 // agrupados pelo cômodo sugerido — o grupo do cômodo que está sendo montado vem primeiro.
 // Cada item já traz o nome e o tipo de controle da lista.
-function SeletorAparelho({ ents, areas, usados, comodo, onEscolher, onFechar }) {
+function SeletorAparelho({ ents, areas, usados, comodo, ambId, onEscolher, onTrazer, onFechar }) {
   const [busca, setBusca] = useState("");
   const [todos, setTodos] = useState(false); // também os aparelhos do HA que não estão na lista
   const q = norm(busca);
@@ -4720,6 +4720,10 @@ function SeletorAparelho({ ents, areas, usados, comodo, onEscolher, onFechar }) 
   const nomes = Object.keys(grupos).sort((a, b) =>
     (norm(b) === aqui) - (norm(a) === aqui) || fora(a) - fora(b) || (a === "") - (b === "") || a.localeCompare(b, "pt-BR"));
   const restam = CATALOGO_LAB.filter((x) => !usados.has(x.id)).length;
+  // Já cadastrados em OUTRO cômodo (só com algo digitado): dá para trazer para este.
+  const jaCadastrados = q && usados instanceof Map ? [...usados.entries()]
+    .filter(([id, u]) => u.ambId !== ambId && q.split(/\s+/).filter(Boolean).every((w) => norm(`${u.nome} ${id} ${id.replace(/[._]/g, " ")} ${u.ambNome}`).includes(w)))
+    .slice(0, 20) : [];
   return (
     <div style={{ border: `1px dashed ${LAGO}66`, borderRadius: 12, background: C.lagoClaro, padding: 10, marginTop: 8 }}>
       <div className="flex items-center gap-2 mb-2">
@@ -4733,7 +4737,23 @@ function SeletorAparelho({ ents, areas, usados, comodo, onEscolher, onFechar }) 
       </div>
       {todos && Object.keys(ents).length === 0 && <div style={{ color: C.cinza, fontSize: 12.5 }} className="pb-2 text-center">Os outros aparelhos só aparecem com o Controle conectado ao Home Assistant.</div>}
       {restam === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Todos os aparelhos da lista já foram adicionados.</div>}
-      {restam > 0 && itens.length === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Nada encontrado com “{busca}”.</div>}
+      {restam > 0 && itens.length === 0 && jaCadastrados.length === 0 && <div style={{ color: C.cinza, fontSize: 13 }} className="py-2 text-center">Nada encontrado com “{busca}”.</div>}
+      {jaCadastrados.length > 0 && (
+        <div className="mb-2">
+          <div style={{ padding: "4px 2px", fontSize: 12.5, fontWeight: 800, color: LAGO_ESC }}>Já cadastrados em outro cômodo</div>
+          {jaCadastrados.map(([id, u]) => (
+            <button key={id} onClick={() => onTrazer?.(u.rowId)} style={{ width: "100%", textAlign: "left", background: C.card, border: `1px solid ${C.linha}`, borderRadius: 10, padding: "8px 11px", marginBottom: 6, cursor: "pointer" }}>
+              <div className="flex items-center gap-2">
+                <ArrowLeftRight size={15} style={{ color: C.ambar, flexShrink: 0 }} />
+                <div className="min-w-0" style={{ flex: 1 }}>
+                  <div className="truncate" style={{ fontWeight: 600, fontSize: 14, color: C.terra }}>{u.nome}</div>
+                  <div className="truncate" style={{ fontSize: 11, color: C.cinzaClaro }}>Está em {u.ambNome} · toque para trazer para cá · {id}</div>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ maxHeight: 380, overflowY: "auto" }}>
         {nomes.map((nomeG) => (
           <div key={nomeG || "_"} className="mb-2">
@@ -4765,7 +4785,7 @@ function SeletorAparelho({ ents, areas, usados, comodo, onEscolher, onFechar }) 
     </div>
   );
 }
-function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onRenomearAmb, onExcluirAmb, onMoverAmb, onVisitanteAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip, onRotulo }) {
+function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onRenomearAmb, onExcluirAmb, onMoverAmb, onVisitanteAmb, onAddEquip, onTipoEquip, onNomeEquip, onDelEquip, onRotulo, onMoverEquip }) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(amb.nome);
   const [abrindoSel, setAbrindoSel] = useState(false);
@@ -4845,7 +4865,7 @@ function AmbienteGerenciar({ amb, pavimentos, itens, ents, areas, usados, onReno
         })}
 
         {abrindoSel
-          ? <SeletorAparelho ents={ents} areas={areas} usados={usados} comodo={amb.nome} onEscolher={(x) => { onAddEquip(amb.id, x.id, { nome: x.nome, tipo: x.tipo }); }} onFechar={() => setAbrindoSel(false)} />
+          ? <SeletorAparelho ents={ents} areas={areas} usados={usados} comodo={amb.nome} ambId={amb.id} onEscolher={(x) => { onAddEquip(amb.id, x.id, { nome: x.nome, tipo: x.tipo }); }} onTrazer={(rowId) => onMoverEquip?.(rowId, amb.id)} onFechar={() => setAbrindoSel(false)} />
           : <button onClick={() => setAbrindoSel(true)} style={{ marginTop: 2, background: C.pastoClaro, color: C.pastoEsc, border: `1px solid ${alfa(C.pasto, 20)}`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={15} /> Adicionar aparelho</button>}
       </div>)}
     </div>
@@ -4884,7 +4904,7 @@ function PavimentoGerenciar({ pav, pavimentos, ambientes, equipamentos, ents, ar
           <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
             itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
             onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb} onVisitanteAmb={cbs.onVisitanteAmb}
-            onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} onRotulo={cbs.onRotulo} />
+            onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} onRotulo={cbs.onRotulo} onMoverEquip={cbs.onMoverEquip} />
         ))}
         <div className="flex gap-2 mt-1">
           <input value={novoAmb} onChange={(e) => setNovoAmb(e.target.value)} placeholder="Novo cômodo (ex.: Sala TV)" style={inpControle} />
@@ -5085,7 +5105,9 @@ function SpotifyPessoas({ ents }) {
 }
 function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }) {
   const [novoPav, setNovoPav] = useState("");
-  const usados = new Set(equipamentos.map((q) => q.entity_id));
+  // Aparelho já cadastrado -> em qual cômodo está (a busca oferece "trazer para cá").
+  const usados = new Map(equipamentos.map((q) => [q.entity_id, { rowId: q.id, ambId: q.ambiente_id, ambNome: ambientes.find((a) => a.id === q.ambiente_id)?.nome || "outro cômodo",
+    nome: q.nome || ents[q.entity_id]?.attributes?.friendly_name || q.entity_id }]));
   const orfaos = ambientes.filter((a) => !a.pavimento_id || !pavimentos.some((p) => p.id === a.pavimento_id));
   return (
     <div>
@@ -5107,7 +5129,7 @@ function GerenciarView({ pavimentos, ambientes, equipamentos, ents, areas, cbs }
             <AmbienteGerenciar key={a.id} amb={a} pavimentos={pavimentos} ents={ents} areas={areas} usados={usados}
               itens={equipamentos.filter((q) => q.ambiente_id === a.id).sort((x, y) => x.ordem - y.ordem)}
               onRenomearAmb={cbs.onRenomearAmb} onExcluirAmb={cbs.onExcluirAmb} onMoverAmb={cbs.onMoverAmb} onVisitanteAmb={cbs.onVisitanteAmb}
-              onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} onRotulo={cbs.onRotulo} />
+              onAddEquip={cbs.onAddEquip} onTipoEquip={cbs.onTipoEquip} onNomeEquip={cbs.onNomeEquip} onDelEquip={cbs.onDelEquip} onRotulo={cbs.onRotulo} onMoverEquip={cbs.onMoverEquip} />
           ))}
         </div>
       )}
@@ -5846,6 +5868,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     onTipoEquip: (id, tipo) => salvar(supabase.from("controle_equipamentos").update({ tipo }).eq("id", id)),
     onNomeEquip: (id, nome) => salvar(supabase.from("controle_equipamentos").update({ nome: nome || null }).eq("id", id)),
     onDelEquip: (id) => salvar(supabase.from("controle_equipamentos").delete().eq("id", id)),
+    onMoverEquip: (id, ambienteId) => salvar(supabase.from("controle_equipamentos").update({ ambiente_id: ambienteId }).eq("id", id), "Aparelho trazido para este cômodo"),
     onReordenar: async (idsTela0) => {
       const expandir = (lista) => lista.flatMap((id) => gruposRef.current[id] || [id]);
       const idsTela = expandir(idsTela0);
