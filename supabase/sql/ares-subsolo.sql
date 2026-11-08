@@ -1,5 +1,5 @@
--- Os 5 ares Midea novos do Subsolo (midea_ac_lan) no Controle da Casa.
--- Cada ar vai para o cômodo DO SUBSOLO com o nome parecido (Pescaria, Bar, Estande, Lareira, Hall);
+-- Os 6 ares Midea novos do Subsolo (midea_ac_lan) no Controle da Casa.
+-- Cada ar vai para o cômodo DO SUBSOLO com o nome parecido (Pescaria, Bar, Estande, Lareira, Hall, Escritório);
 -- se não houver, vai para o primeiro cômodo do pavimento Subsolo.
 -- Rodar no Supabase > SQL Editor > New query > colar > Run. Pode rodar de novo sem duplicar.
 insert into public.controle_equipamentos (ambiente_id, entity_id, nome, tipo, ordem)
@@ -10,7 +10,8 @@ from (values
   ('climate.151732607838797_climate', 'Ar Bar',             '%bar%',      1),
   ('climate.151732607838801_climate', 'Ar Estande de Tiro', '%estande%',  2),
   ('climate.150633096214609_climate', 'Ar Lareira',         '%lareira%',  3),
-  ('climate.150633096230025_climate', 'Ar Hall de Entrada', '%hall%',     4)
+  ('climate.150633096230025_climate', 'Ar Hall de Entrada', '%hall%',     4),
+  ('climate.150633096214638_climate', 'Ar Escritório',      '%escritorio%', 5)
 ) as v(entidade, nome, padrao, k)
 join lateral (
   select am.id from public.ambientes am
@@ -24,5 +25,5 @@ on conflict (entity_id) do update set ambiente_id = excluded.ambiente_id, nome =
 
 select a.nome as ambiente, e.nome as aparelho, e.entity_id
 from public.controle_equipamentos e join public.ambientes a on a.id = e.ambiente_id
-where e.entity_id in ('climate.150633096196295_climate', 'climate.151732607838797_climate', 'climate.151732607838801_climate', 'climate.150633096214609_climate', 'climate.150633096230025_climate')
+where e.entity_id in ('climate.150633096196295_climate', 'climate.151732607838797_climate', 'climate.151732607838801_climate', 'climate.150633096214609_climate', 'climate.150633096230025_climate', 'climate.150633096214638_climate')
 order by a.nome, e.nome;
