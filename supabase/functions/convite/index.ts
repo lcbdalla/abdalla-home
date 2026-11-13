@@ -2,7 +2,8 @@
 // -----------------------------------------------------------------------------
 // Página do convidado (link do WhatsApp, sem login). Com o código do convite:
 //   "ver"   → diz se o convite está valendo, quem convidou e onde fica o portão;
-//   (também, sem convite: "clima_publico" = números da estação, para a TV do Quarto Visita)
+//   (também, sem convite: "clima_publico" = números da estação, para a TV do Quarto Visita;
+//    "cam_lista"/"cam_foto" = câmeras para o técnico, com o código e o prazo de acessos_cameras)
 //   "abrir" → confere horário (do início até 5 h depois), se ainda não foi usado e se o
 //             celular está a até 500 m do portão; abre o Portão Principal e, em segundo plano:
 //             quando o portão aparece aberto, destranca a porta da frente da Casa Alta; 45 s
@@ -61,6 +62,34 @@ Deno.serve(async (req) => {
     return data?.base_url && data?.token ? { base: String(data.base_url).replace(/\/+$/, ""), cab: { Authorization: "Bearer " + data.token } } : null;
   };
   // Clima da estação Ecowitt (GW3000C): só os números, só leitura.
+  // ---- Câmeras para o técnico (manutenção), com prazo: só leitura das imagens ----
+  if (body?.acao === "cam_lista" || body?.acao === "cam_foto") {
+    const tok = String(body.token || "");
+    if (!/^[A-Za-z0-9_-]{20,80}$/.test(tok)) return json({ error: "Link inválido." }, 404);
+    const { data: ac } = await admin.from("acessos_cameras").select("nome, ate, revogado_em").eq("token", tok).maybeSingle();
+    if (!ac) return json({ error: "Link inválido." }, 404);
+    if (ac.revogado_em || Date.parse(ac.ate) <= Date.now()) return json({ error: "Este acesso às câmeras terminou.", encerrado: true }, 403);
+    const ha = await haCfg();
+    if (!ha) return json({ error: "Sem configuração." }, 500);
+    if (body.acao === "cam_lista") {
+      const rs = await fetch(ha.base + "/api/states", { headers: ha.cab }).catch(() => null);
+      if (!rs || !rs.ok) return json({ error: "O sistema das câmeras não respondeu." }, 502);
+      const todos: any[] = await rs.json();
+      const cams = todos.filter((x) => String(x.entity_id).startsWith("camera."))
+        .map((x) => ({ id: x.entity_id, nome: x.attributes?.friendly_name || x.entity_id, fora: ["unavailable", "unknown"].includes(x.state) }));
+      return json({ nome: ac.nome || null, ate: ac.ate, cams });
+    }
+    const id = String(body.id || "");
+    if (!/^camera\.[a-z0-9_]+$/.test(id)) return json({ error: "Câmera inválida." }, 400);
+    const largura = Math.max(160, Math.min(1280, Number(body.largura) || 640));
+    const ri = await fetch(`${ha.base}/api/camera_proxy/${id}?width=${largura}`, { headers: ha.cab }).catch(() => null);
+    if (!ri || !ri.ok) return json({ error: "Câmera sem imagem agora." }, 502);
+    const bytes = new Uint8Array(await ri.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return json({ img: `data:${ri.headers.get("content-type") || "image/jpeg"};base64,${btoa(bin)}` });
+  }
+
   if (body?.acao === "clima_publico") {
     const ha = await haCfg();
     if (!ha) return json({ error: "Sem configuração." }, 500);

@@ -2263,7 +2263,144 @@ function MapaCameras({ cams, aberta, onEscolher, deitado }) {
     </div>
   );
 }
+/* ---- Acesso temporário às câmeras para o técnico (manutenção) ----
+   O admin cria um link com prazo; o técnico abre (#cameras=…), sem login, e vê todas as câmeras
+   (imagem atualizando ~1 vez por segundo, com zoom). A função pública confere código e prazo a cada
+   imagem; quando o prazo acaba (ou o admin encerra), o link para de funcionar. */
+const linkCamTec = (token) => `${window.location.origin}${window.location.pathname}#cameras=${token}`;
+const fmtPrazo = (iso) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+function AcessoTecnicoSheet({ onFechar }) {
+  const [nome, setNome] = useState(""), [horas, setHoras] = useState(4), [lista, setLista] = useState(null), [erro, setErro] = useState(""), [criado, setCriado] = useState(null), [ocupado, setOcupado] = useState(false);
+  const carregar = () => supabase.from("acessos_cameras").select("*").is("revogado_em", null).gt("ate", new Date().toISOString()).order("ate")
+    .then(({ data, error }) => { if (error) setErro(/acessos_cameras/.test(error.message) ? "Falta rodar o SQL acessos-cameras.sql no Supabase." : error.message); setLista(data || []); });
+  useEffect(() => { carregar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const criar = async () => {
+    setOcupado(true); setErro("");
+    const b = crypto.getRandomValues(new Uint8Array(24));
+    const token = btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const ate = new Date(Date.now() + horas * 3600000).toISOString();
+    const { data, error } = await supabase.from("acessos_cameras").insert({ token, nome: nome.trim() || null, ate }).select().single();
+    setOcupado(false);
+    if (error) { setErro(/acessos_cameras/.test(error.message) ? "Falta rodar o SQL acessos-cameras.sql no Supabase." : error.message); return; }
+    setCriado(data); carregar();
+  };
+  const encerrar = async (a) => {
+    if (!(await Dialog.confirm({ titulo: "Encerrar acesso", mensagem: `Encerrar agora o acesso${a.nome ? " de " + a.nome : ""}? O link para de funcionar.`, okLabel: "Encerrar", perigo: true }))) return;
+    await supabase.from("acessos_cameras").update({ revogado_em: new Date().toISOString() }).eq("id", a.id);
+    if (criado?.id === a.id) setCriado(null);
+    carregar();
+  };
+  const texto = (a) => `Acesso às câmeras do Rancho Abdalla${a.nome ? " para " + a.nome : ""} (manutenção), válido até ${fmtPrazo(a.ate)}:\n${linkCamTec(a.token)}`;
+  const verde = { width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 13, fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 };
+  const campo = { border: `1px solid ${C.linha}`, borderRadius: 10, padding: "10px 12px", fontSize: 16, background: C.card, color: C.terra, width: "100%", boxSizing: "border-box" };
+  return (
+    <Sheet titulo="Acesso para técnico" onFechar={onFechar}>
+      <div style={{ color: C.cinza, fontSize: 13.5, marginBottom: 10 }}>Gera um link para o técnico ver TODAS as câmeras pelo celular, sem login, por um tempo. Ele só vê as imagens (não mexe em nada da casa). Quando o prazo acaba, o link para de funcionar.</div>
+      {erro && <div style={{ color: C.vermelho, fontSize: 13.5, marginBottom: 8 }}>{erro}</div>}
+      {!criado ? (<>
+        <label style={{ fontSize: 13, fontWeight: 700, color: C.cinza }}>Nome do técnico (opcional)<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: João (câmeras)" style={{ ...campo, marginTop: 4 }} /></label>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.cinza, margin: "10px 0 6px" }}>Por quanto tempo</div>
+        <div className="flex flex-wrap gap-2" style={{ marginBottom: 12 }}>
+          {[[2, "2 horas"], [4, "4 horas"], [8, "8 horas"], [24, "1 dia"], [72, "3 dias"], [168, "7 dias"]].map(([h, t]) => (
+            <button key={h} onClick={() => setHoras(h)} style={{ borderRadius: 999, padding: "7px 14px", fontSize: 14, fontWeight: 700, background: horas === h ? C.pasto : C.card, color: horas === h ? "#fff" : C.terra, border: `1px solid ${horas === h ? C.pasto : C.linha}` }}>{t}</button>
+          ))}
+        </div>
+        <button onClick={criar} disabled={ocupado} style={{ ...verde, opacity: ocupado ? 0.6 : 1 }}>{ocupado ? "Criando…" : "Criar link"}</button>
+      </>) : (
+        <div className="flex flex-col" style={{ gap: 8 }}>
+          <div style={{ background: C.pastoClaro, borderRadius: 12, padding: 12, fontSize: 14, color: C.terra, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{texto(criado)}</div>
+          <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(texto(criado))}`, "_blank")} style={verde}><MessageCircle size={18} /> Enviar pelo WhatsApp</button>
+          <button onClick={() => { navigator.clipboard?.writeText(linkCamTec(criado.token)); }} style={{ color: C.cinza, fontWeight: 700, fontSize: 14, padding: 6 }}><Copy size={14} style={{ display: "inline", verticalAlign: -2 }} /> Copiar o link</button>
+          <button onClick={() => setCriado(null)} style={{ color: C.pasto, fontWeight: 700, fontSize: 14, padding: 6 }}>Criar outro</button>
+        </div>
+      )}
+      {lista && lista.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: C.cinza, textTransform: "uppercase", marginBottom: 4 }}>Acessos valendo</div>
+          {lista.map((a) => (
+            <div key={a.id} className="flex items-center gap-2" style={{ borderTop: `1px solid ${C.linha}`, padding: "8px 0" }}>
+              <div className="flex-1 min-w-0">
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.terra }}>{a.nome || "Técnico"}</div>
+                <div style={{ fontSize: 12.5, color: C.cinza }}>até {fmtPrazo(a.ate)}</div>
+              </div>
+              <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(texto(a))}`, "_blank")} aria-label="Enviar de novo" style={{ padding: 6, color: C.pasto }}><MessageCircle size={17} /></button>
+              <button onClick={() => encerrar(a)} aria-label="Encerrar acesso" style={{ padding: 6, color: C.vermelho }}><Trash2 size={17} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+// Tela do técnico (#cameras=…): lista todas as câmeras; tocar abre a imagem (~1 por segundo, com zoom).
+export function CamerasTecnicoPage({ token }) {
+  const [info, setInfo] = useState(null), [erro, setErro] = useState(""), [aberta, setAberta] = useState(null), [img, setImg] = useState(null), [aba, setAba] = useState("alta");
+  const chamar = async (body) => {
+    const { data, error } = await supabase.functions.invoke("dynamic-worker", { body: { token, ...body } });
+    if (!error && !data?.error) return data;
+    let msg = data?.error; if (!msg && error?.context) { try { msg = (await error.context.json())?.error; } catch { /* sem corpo */ } }
+    throw new Error(msg || "Não deu para abrir as câmeras agora.");
+  };
+  useEffect(() => { chamar({ acao: "cam_lista" }).then(setInfo).catch((e) => setErro(e.message)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Imagem da câmera aberta: pede a próxima quando a anterior chega (cerca de 1 por segundo).
+  useEffect(() => {
+    if (!aberta) return; let vivo = true; setImg(null);
+    const proxima = async () => {
+      if (!vivo) return;
+      try { const d = await chamar({ acao: "cam_foto", id: aberta, largura: 960 }); if (vivo) setImg(d.img); }
+      catch (e) { if (vivo && /terminou/.test(e.message)) { setErro(e.message); return; } }
+      if (vivo) setTimeout(proxima, 700);
+    };
+    proxima();
+    return () => { vivo = false; };
+  }, [aberta]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cams = (info?.cams || []).filter((c) => !CAMERAS_FORA.test(c.id)).map((c) => ({ ...c, nomeVis: nomeCamera(c.nome, c.id), g5: /g5/i.test(c.id + " " + c.nome), canal: canalDvr(c.id),
+    ordem: (() => { const i = CAMERAS_CASA_ALTA.findIndex(([n]) => n === numeroG5(c.nome)); return i < 0 ? 999 : i; })() }))
+    .sort((a, b) => a.ordem - b.ordem || a.nomeVis.localeCompare(b.nomeVis, "pt-BR", { numeric: true }));
+  const grupos = { alta: cams.filter((c) => c.g5), baixa: cams.filter((c) => !c.g5 && c.canal != null && c.canal <= 9), externa: cams.filter((c) => !c.g5 && (c.canal == null || c.canal > 9)) };
+  const cam = cams.find((c) => c.id === aberta);
+  return (
+    <div style={{ minHeight: "100dvh", background: C.bg, color: C.terra, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <div className="mx-auto" style={{ maxWidth: 520, padding: "0 12px 30px" }}>
+        <div style={{ background: C.cabecalho, color: "#fff", borderRadius: "0 0 20px 20px", padding: "18px 16px", margin: "0 -12px 12px" }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>Câmeras · Rancho Abdalla</div>
+          <div style={{ fontSize: 12.5, opacity: 0.85 }}>Acesso de manutenção{info?.nome ? ` · ${info.nome}` : ""}{info?.ate ? ` · até ${fmtPrazo(info.ate)}` : ""}</div>
+        </div>
+        {erro && <div style={{ color: C.vermelho, fontWeight: 700, textAlign: "center", padding: 16 }}>{erro}</div>}
+        {!info && !erro && <div style={{ color: C.cinza, textAlign: "center", padding: 16 }}>Carregando as câmeras…</div>}
+        {cam && !erro && (
+          <div style={{ position: "sticky", top: 0, zIndex: 3, background: C.bg, paddingBottom: 8 }}>
+            <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "16 / 9" }}>
+              {img ? <ZoomPinca><img src={img} alt={cam.nomeVis} draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} /></ZoomPinca>
+                : <div className="flex items-center justify-center" style={{ width: "100%", height: "100%", color: "#ffffffaa", fontSize: 13.5 }}>Carregando a câmera…</div>}
+              <span style={{ position: "absolute", left: 10, top: 10, background: "#0009", color: "#fff", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{cam.nomeVis}</span>
+            </div>
+            <button onClick={() => setAberta(null)} style={{ width: "100%", marginTop: 6, color: C.cinza, fontWeight: 700, fontSize: 13.5, padding: 6 }}>Fechar a câmera</button>
+          </div>
+        )}
+        {info && !erro && (<>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 10 }}>
+            {[["alta", "Casa Alta"], ["externa", "Área Externa"], ["baixa", "Casa Baixa"]].map(([k, t]) => (
+              <button key={k} onClick={() => setAba(k)} style={{ borderRadius: 12, padding: "9px 4px", fontSize: 13, fontWeight: 800, background: aba === k ? C.pasto : C.card, color: aba === k ? "#fff" : C.terra, border: `1px solid ${aba === k ? C.pasto : C.linha}` }}>{t} ({grupos[k].length})</button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {grupos[aba].map((c) => (
+              <button key={c.id} onClick={() => setAberta(c.id === aberta ? null : c.id)} disabled={c.fora} className="flex items-center gap-2"
+                style={{ minWidth: 0, textAlign: "left", background: c.id === aberta ? alfa(LAGO, 14) : C.card, border: `1px solid ${c.id === aberta ? LAGO : C.linha}`, borderRadius: 12, padding: 10, opacity: c.fora ? 0.5 : 1 }}>
+                <Cctv size={18} style={{ color: c.id === aberta ? LAGO : C.cinza, flexShrink: 0 }} />
+                <span className="flex-1 min-w-0 truncate" style={{ fontSize: 13.5, fontWeight: 700 }}>{c.nomeVis}</span>
+                {c.fora && <span style={{ fontSize: 11, color: C.cinzaClaro }}>sem sinal</span>}
+              </button>
+            ))}
+          </div>
+        </>)}
+      </div>
+    </div>
+  );
+}
 function CamerasModal({ pedirHA, assinarHA, baseUrl, direto, onFechar }) {
+  const [tecnico, setTecnico] = useState(false);
   const [aba, setAba] = useState("alta"); // alta | externa | baixa | todas
   const [lista, setLista] = useState(null), [erro, setErro] = useState(""), [aberta, setAberta] = useState(null);
   const [live, setLive] = useState(false); // vídeo ao vivo (HLS) em vez das fotos a 3 por segundo
@@ -2316,7 +2453,13 @@ function CamerasModal({ pedirHA, assinarHA, baseUrl, direto, onFechar }) {
           </div>
         </div>
       )}
+      {tecnico && <AcessoTecnicoSheet onFechar={() => setTecnico(false)} />}
       {lista && lista.length === 0 && <div style={{ color: C.cinza, fontSize: 14 }}>Nenhuma câmera encontrada no Home Assistant.</div>}
+      {direto && (
+        <button onClick={() => setTecnico(true)} className="flex items-center justify-center gap-2" style={{ width: "100%", marginBottom: 10, background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 10, fontWeight: 700, fontSize: 14 }}>
+          <Clock size={16} /> Acesso para técnico (link com prazo)
+        </button>
+      )}
       {/* Abas: Casa Alta (G5), Área Externa (mapa + canais 10–16 do DVR), Casa Baixa (canais 1–9), Todas. */}
       {lista && lista.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 12 }}>
