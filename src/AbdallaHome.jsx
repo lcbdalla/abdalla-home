@@ -3913,7 +3913,8 @@ function ligarAr(e, enviar) {
   const modo = (a.hvac_modes || []).includes(AR_PADRAO.modo) ? { hvac_mode: AR_PADRAO.modo } : {};
   enviar("climate", "set_temperature", e.id, { temperature: AR_PADRAO.temperatura, ...modo });
   if (!modo.hvac_mode) enviar("climate", "turn_on", e.id);
-  const auto = (a.fan_modes || []).find((f) => /^auto/i.test(f));
+  // Living: demora a obedecer; o comando de vento chegava antes de ele ligar e o desligava. Fica no vento que estava.
+  const auto = e.id !== "climate.ac_living_ac" && (a.fan_modes || []).find((f) => /^auto/i.test(f));
   // O vento só vai depois que o HA confirmar o ar LIGADO: alguns (Midea) mandam o estado inteiro
   // a cada comando — com o HA ainda achando "desligado", o comando de vento desligava o ar.
   if (auto) {
