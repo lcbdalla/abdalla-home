@@ -2271,7 +2271,7 @@ const linkCamTec = (token) => `${window.location.origin}${window.location.pathna
 const fmtPrazo = (iso) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 function AcessoTecnicoSheet({ onFechar }) {
   const [nome, setNome] = useState(""), [horas, setHoras] = useState(4), [lista, setLista] = useState(null), [erro, setErro] = useState(""), [criado, setCriado] = useState(null), [ocupado, setOcupado] = useState(false);
-  const carregar = () => supabase.from("acessos_cameras").select("*").is("revogado_em", null).gt("ate", new Date().toISOString()).order("ate")
+  const carregar = () => supabase.from("acessos_cameras").select("*").order("criado_em", { ascending: false }).limit(30)
     .then(({ data, error }) => { if (error) setErro(/acessos_cameras/.test(error.message) ? "Falta rodar o SQL acessos-cameras.sql no Supabase." : error.message); setLista(data || []); });
   useEffect(() => { carregar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const criar = async () => {
@@ -2316,17 +2316,24 @@ function AcessoTecnicoSheet({ onFechar }) {
       )}
       {lista && lista.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 800, color: C.cinza, textTransform: "uppercase", marginBottom: 4 }}>Acessos valendo</div>
-          {lista.map((a) => (
-            <div key={a.id} className="flex items-center gap-2" style={{ borderTop: `1px solid ${C.linha}`, padding: "8px 0" }}>
-              <div className="flex-1 min-w-0">
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.terra }}>{a.nome || "Técnico"}</div>
-                <div style={{ fontSize: 12.5, color: C.cinza }}>até {fmtPrazo(a.ate)}</div>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: C.cinza, textTransform: "uppercase", marginBottom: 4 }}>Histórico de acessos</div>
+          {lista.map((a) => {
+            const valendo = !a.revogado_em && Date.parse(a.ate) > Date.now();
+            const sit = valendo ? ["Valendo", C.pasto] : a.revogado_em ? [`Encerrado ${fmtPrazo(a.revogado_em)}`, C.vermelho] : ["Vencido", C.cinza];
+            return (
+              <div key={a.id} className="flex items-center gap-2" style={{ borderTop: `1px solid ${C.linha}`, padding: "8px 0", opacity: valendo ? 1 : 0.7 }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 700, color: C.terra }}>
+                    <span className="truncate">{a.nome || "Técnico"}</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: sit[1], flexShrink: 0 }}>{sit[0]}</span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: C.cinza }}>Criado {fmtPrazo(a.criado_em)} · vence {fmtPrazo(a.ate)}</div>
+                </div>
+                {valendo && <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(texto(a))}`, "_blank")} aria-label="Enviar de novo" style={{ padding: 6, color: C.pasto }}><MessageCircle size={17} /></button>}
+                {valendo && <button onClick={() => encerrar(a)} aria-label="Encerrar acesso" style={{ padding: 6, color: C.vermelho }}><Trash2 size={17} /></button>}
               </div>
-              <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(texto(a))}`, "_blank")} aria-label="Enviar de novo" style={{ padding: 6, color: C.pasto }}><MessageCircle size={17} /></button>
-              <button onClick={() => encerrar(a)} aria-label="Encerrar acesso" style={{ padding: 6, color: C.vermelho }}><Trash2 size={17} /></button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </Sheet>
@@ -2433,7 +2440,9 @@ function CamerasModal({ pedirHA, assinarHA, baseUrl, direto, onFechar }) {
     </div>
   );
   return (
-    <Sheet titulo="Câmeras" onFechar={onFechar} topo={0}>
+    <Sheet titulo="Câmeras" onFechar={onFechar} topo={0} acao={direto && (
+      <button onClick={() => setTecnico(true)} aria-label="Acesso para técnico" title="Acesso para técnico" style={{ background: C.card, borderRadius: 999, padding: 7, border: `1px solid ${C.linha}`, color: C.terra }}><Wrench size={18} /></button>
+    )}>
       {!direto && <div style={{ color: C.cinza, fontSize: 14 }}>As câmeras ficam disponíveis só para a família (conexão direta com a casa).</div>}
       {direto && erro && <div style={{ color: C.vermelho, fontSize: 13.5 }}>{erro}</div>}
       {direto && !lista && !erro && <div style={{ color: C.cinza, fontSize: 14 }}>Carregando as câmeras…</div>}
@@ -2455,11 +2464,6 @@ function CamerasModal({ pedirHA, assinarHA, baseUrl, direto, onFechar }) {
       )}
       {tecnico && <AcessoTecnicoSheet onFechar={() => setTecnico(false)} />}
       {lista && lista.length === 0 && <div style={{ color: C.cinza, fontSize: 14 }}>Nenhuma câmera encontrada no Home Assistant.</div>}
-      {direto && (
-        <button onClick={() => setTecnico(true)} className="flex items-center justify-center gap-2" style={{ width: "100%", marginBottom: 10, background: C.card, color: C.lago, border: `1px solid ${C.lago}`, borderRadius: 12, padding: 10, fontWeight: 700, fontSize: 14 }}>
-          <Clock size={16} /> Acesso para técnico (link com prazo)
-        </button>
-      )}
       {/* Abas: Casa Alta (G5), Área Externa (mapa + canais 10–16 do DVR), Casa Baixa (canais 1–9), Todas. */}
       {lista && lista.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 12 }}>
@@ -7267,14 +7271,14 @@ function useTravarRolagem() {
     return () => { if (--_travasRolagem === 0) { el.style.overflow = ""; document.body.style.overflow = ""; } };
   }, []);
 }
-function Sheet({ titulo, onFechar, children, topo }) {
+function Sheet({ titulo, onFechar, children, topo, acao }) {
   useTravarRolagem();
   const cheio = topo != null;
   return (
     <div data-sem-gesto style={{ position: "fixed", inset: 0, background: "#0006", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onFechar}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: C.bg, width: "100%", maxWidth: 460, borderTopLeftRadius: 22, borderTopRightRadius: 22,
         ...(cheio ? { height: `calc(100dvh - ${topo}px)`, display: "flex", flexDirection: "column", overflow: "hidden" } : { maxHeight: "92dvh", overflowY: "auto" }) }}>
-        <div style={{ position: "sticky", top: 0, background: C.bg, padding: "16px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2, flexShrink: 0 }}><div className="font-bold text-lg">{titulo}</div><button onClick={onFechar} style={{ background: C.card, borderRadius: 999, padding: 7, border: `1px solid ${C.linha}` }}><X size={18} /></button></div>
+        <div style={{ position: "sticky", top: 0, background: C.bg, padding: "16px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2, flexShrink: 0 }}><div className="font-bold text-lg">{titulo}</div><div className="flex items-center gap-2">{acao}<button onClick={onFechar} style={{ background: C.card, borderRadius: 999, padding: 7, border: `1px solid ${C.linha}` }}><X size={18} /></button></div></div>
         <div className="px-4 pb-6" style={cheio ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflowY: "auto" } : undefined}>{children}</div>
       </div>
     </div>
