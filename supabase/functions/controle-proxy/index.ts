@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
   if (!cfg?.base_url || !cfg?.token) return json({ error: "O controle da casa ainda não foi configurado." }, 500);
   const base = String(cfg.base_url).replace(/\/+$/, "");
   const cabecalho = { Authorization: "Bearer " + cfg.token, "Content-Type": "application/json" };
-  const { data: eqs } = await admin.from("controle_equipamentos").select("id, entity_id, ambiente_id");
+  const { data: eqs } = await admin.from("controle_equipamentos").select("id, entity_id, ambiente_id, nome");
   let lista = eqs || [];
   if (p.papel === "visitante") {
     // Visitante: só os cômodos com "Visitantes podem usar" ligado.
@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
         const a = { ...(s.attributes || {}) };
         delete a.access_token; // nunca expor tokens de câmera/mídia
         if (typeof a.entity_picture === "string" && a.entity_picture.includes("token=")) delete a.entity_picture;
-        return { entity_id: s.entity_id, state: s.state, attributes: a };
+        return { entity_id: s.entity_id, state: s.state, attributes: a, last_changed: s.last_changed };
       });
     return json({ estados });
   }
@@ -331,6 +331,18 @@ Deno.serve(async (req) => {
       return json({ error: "Visitante não pode usar fechadura, portão ou alarme." }, 403);
     }
 
+    // Cascata: depois de desligada, só liga de novo após 15 min (os canos ainda estão esvaziando; ligar
+    // antes dá tranco e queima o motor). Mesma regra do app.
+    const eqNome = (lista.find((q: { entity_id: string; nome?: string }) => q.entity_id === entity) as { nome?: string } | undefined)?.nome || "";
+    if ((service === "turn_on" || service === "toggle") && (entity === "switch.piscina_rele_3" || /cascata/i.test(eqNome))) {
+      const rc = await fetch(`${base}/api/states/${entity}`, { headers: cabecalho });
+      const sc = rc.ok ? await rc.json() : null;
+      const falta = sc?.state === "off" ? Date.parse(sc.last_changed) + 15 * 60000 - Date.now() : 0;
+      if (falta > 0) {
+        const seg = Math.ceil(falta / 1000);
+        return json({ error: `A cascata foi desligada há pouco e os canos ainda estão esvaziando. Ela poderá ser ligada de novo em ${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, "0")} min.` }, 409);
+      }
+    }
     const dados = (body.data && typeof body.data === "object" && !Array.isArray(body.data)) ? { ...body.data } : {};
     // Broadlink que veio junto com uma TV: pelo app, só o infravermelho de ligar essa TV.
     const ir = IR_LIGA_TV[entity];

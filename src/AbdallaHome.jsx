@@ -2590,6 +2590,15 @@ function AlarmeModal({ ents, enviar, souAdmin, onFechar }) {
   );
 }
 
+/* ---- CASCATA: depois de desligada, só liga de novo após 15 min ----
+   Os canos levam ~15 min para esvaziar; ligar com água no cano dá tranco e queima o motor. Vale para
+   todos (conta a partir da hora em que o HA registrou o desligamento). O intermediário confere também. */
+const CASCATA_ID = "switch.piscina_rele_3";
+const CASCATA_ESPERA_MS = 15 * 60000;
+const ehCascata = (id, nome) => id === CASCATA_ID || /cascata/i.test(nome || "");
+const faltaCascata = (v) => (v?.state === "off" && v.mudou ? Math.max(0, v.mudou + CASCATA_ESPERA_MS - Date.now()) : 0);
+const mmss = (ms) => { const t = Math.ceil(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+
 /* ---- Popup do PORTÃO (menu ⋮ do Controle) ---- */
 const PORTAO_ID = "cover.portao_garagem";
 // Câmeras do Frigate que mostram o portão, na ordem em que aparecem no popup (29 em cima, 28 embaixo).
@@ -5728,7 +5737,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         }
         renovou = false;
         const map = {};
-        (data?.estados || []).forEach((s) => { if (acompanhar(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
+        (data?.estados || []).forEach((s) => { if (acompanhar(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {}, mudou: Date.parse(s.last_changed) || null }; });
         setEnts(map); setStatus("ok"); setErro(""); guardarEnts(map);
       };
       const ciclo = async () => { if (!ativo) return; if (document.visibilityState === "visible") await buscar(); if (ativo) timer = setTimeout(ciclo, 3000); };
@@ -5776,7 +5785,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           }
           if (tipo === "states") {
             const map = {};
-            (m.result || []).forEach((s) => { if (acompanhar(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
+            (m.result || []).forEach((s) => { if (acompanhar(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {}, mudou: Date.parse(s.last_changed) || null }; });
             if (ativo) { setEnts(map); setStatus("ok"); guardarEnts(map); guardarIdsHA(map); }
             return;
           }
@@ -5826,11 +5835,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const cancelar = assinarHA({ type: "subscribe_entities", entity_ids: chavePedir.split(",") }, (ev) => {
       if (ev?.type === "error") { setErro("Falha ao ler estados: " + (ev.message || "")); setStatus("erro"); return; }
       const n = base ? { ...base } : {};
-      Object.entries(ev?.a || {}).forEach(([id, v]) => { if (acompanhar(id, v.a)) n[id] = { state: v.s, attributes: v.a || {} }; });
+      Object.entries(ev?.a || {}).forEach(([id, v]) => { if (acompanhar(id, v.a)) n[id] = { state: v.s, attributes: v.a || {}, mudou: v.lc ? v.lc * 1000 : null }; });
       Object.entries(ev?.c || {}).forEach(([id, d]) => {
         const v = n[id]; if (!v) return;
         const at = { ...v.attributes, ...(d["+"]?.a || {}) }; (d["-"]?.a || []).forEach((k) => { delete at[k]; });
-        n[id] = { state: d["+"]?.s ?? v.state, attributes: at };
+        n[id] = { state: d["+"]?.s ?? v.state, attributes: at, mudou: d["+"]?.lc ? d["+"].lc * 1000 : v.mudou };
       });
       (ev?.r || []).forEach((id) => { delete n[id]; });
       const primeiro = !base; base = n;
@@ -6044,6 +6053,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
 
   // ---- Envia um comando ao Home Assistant ----
   const enviar = (domain, service, entityId, serviceData) => {
+    const eq = equipamentos.find((q) => q.entity_id === entityId);
+    if ((service === "turn_on" || service === "toggle") && ehCascata(entityId, eq?.nome || ents[entityId]?.attributes?.friendly_name)) {
+      const falta = faltaCascata(ents[entityId]);
+      if (falta > 0) { setAviso({ erro: true, texto: `A cascata foi desligada há pouco e os canos ainda estão esvaziando. Ela poderá ser ligada de novo em ${mmss(falta)} min.` }); return; }
+    }
     preverToque(service, entityId, serviceData);
     if (usarProxy) {
       setAviso({ texto: "Comando enviado…" });
