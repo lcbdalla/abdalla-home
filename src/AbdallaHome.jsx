@@ -2597,7 +2597,8 @@ const CASCATA_ID = "switch.piscina_rele_3";
 const CASCATA_ESPERA_MS = 15 * 60000;
 const ehCascata = (id, nome) => id === CASCATA_ID || /cascata/i.test(nome || "");
 const faltaCascata = (v) => (v?.state === "off" && v.mudou ? Math.max(0, v.mudou + CASCATA_ESPERA_MS - Date.now()) : 0);
-const mmss = (ms) => { const t = Math.ceil(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+// "faltam 14 min (libera às 14:05)" — nada de "14:40", que parece horário.
+const faltaTexto = (ms) => { const min = Math.ceil(ms / 60000); const as = new Date(Date.now() + ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); return `${min === 1 ? "falta 1 minuto" : `faltam ${min} minutos`} (libera às ${as})`; };
 
 /* ---- Popup do PORTÃO (menu ⋮ do Controle) ---- */
 const PORTAO_ID = "cover.portao_garagem";
@@ -6056,7 +6057,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const eq = equipamentos.find((q) => q.entity_id === entityId);
     if ((service === "turn_on" || service === "toggle") && ehCascata(entityId, eq?.nome || ents[entityId]?.attributes?.friendly_name)) {
       const falta = faltaCascata(ents[entityId]);
-      if (falta > 0) { setAviso({ erro: true, texto: `A cascata foi desligada há pouco e os canos ainda estão esvaziando. Ela poderá ser ligada de novo em ${mmss(falta)} min.` }); return; }
+      if (falta > 0) { setAviso({ erro: true, texto: `A cascata foi desligada há pouco e os canos ainda estão esvaziando. Para ligar de novo, ${faltaTexto(falta)}.` }); return; }
     }
     preverToque(service, entityId, serviceData);
     if (usarProxy) {

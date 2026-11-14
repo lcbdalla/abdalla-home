@@ -339,8 +339,9 @@ Deno.serve(async (req) => {
       const sc = rc.ok ? await rc.json() : null;
       const falta = sc?.state === "off" ? Date.parse(sc.last_changed) + 15 * 60000 - Date.now() : 0;
       if (falta > 0) {
-        const seg = Math.ceil(falta / 1000);
-        return json({ error: `A cascata foi desligada há pouco e os canos ainda estão esvaziando. Ela poderá ser ligada de novo em ${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, "0")} min.` }, 409);
+        const min = Math.ceil(falta / 60000);
+        const as = new Date(Date.now() + falta).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Araguaina" });
+        return json({ error: `A cascata foi desligada há pouco e os canos ainda estão esvaziando. Para ligar de novo, ${min === 1 ? "falta 1 minuto" : `faltam ${min} minutos`} (libera às ${as}).` }, 409);
       }
     }
     const dados = (body.data && typeof body.data === "object" && !Array.isArray(body.data)) ? { ...body.data } : {};
