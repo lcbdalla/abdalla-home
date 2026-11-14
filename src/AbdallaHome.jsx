@@ -1951,6 +1951,12 @@ const LAREIRA = { sw: "switch.lareira", aquec: "select.lareira_aquecimento", tem
   corChama: "select.lareira_cor_da_chama", corCarvao: "select.lareira_cor_do_carvao", brilhoCarvao: "select.lareira_brilho_do_carvao" };
 const LAREIRA_IDS = Object.values(LAREIRA);
 const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || LAREIRA_IDS.includes(id) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || id === CAIXA_AGUA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+// Pedido ao HA na abertura (conexão direta): destes domínios, que têm MUITOS aparelhos na casa, só
+// entram os vinculados no app e os fixos do código (lareira, mesa, alarme, portão, LED do ar). Os demais
+// (TV, som, Spotify, fechadura, sensores especiais) entram todos. A lista completa só no Gerenciar.
+const SO_SE_USADO = new Set(["light", "switch", "cover", "fan", "climate", "input_boolean", "input_button"]);
+const precisaDoHA = (id, usados) => acompanhar(id, null) && (usados.has(id) || !SO_SE_USADO.has(id.split(".")[0]) || LAREIRA_IDS.includes(id)
+  || MESA_IDS.includes(id) || ehDoAlarme(id) || id === PORTAO_ID || Object.values(LED_POR_CHAVE).includes(id) || /^switch\..+_display$/.test(id));
 const HA_SHOW = new Set(["light", "switch", "climate", "fan", "media_player", "cover", "lock", "input_boolean", "input_button", "remote"]);
 const ABERTOS_TTL = 8 * 3600000; // 8h sem uso: o Controle volta a mostrar só os pavimentos
 const PROXY_FN = "controle-proxy"; // intermediário no servidor (supabase/functions/controle-proxy)
@@ -5531,6 +5537,12 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [otim, setOtim] = useState({}); // entity_id -> { patch, base (assinatura antes do toque), ate }
   const [areas, setAreas] = useState(null); // entity_id -> nome da área no Home Assistant
   const [tentativa, setTentativa] = useState(0);
+  // Todos os entity_id do HA (só os nomes), guardados no aparelho: servem para saber quem pedir.
+  const [idsHA, setIdsHA] = useState(() => { try { return JSON.parse(localStorage.getItem("controleIdsHA") || "null"); } catch { return null; } });
+  const guardarIdsHA = (map) => { const ids = Object.keys(map); setIdsHA(ids); try { localStorage.setItem("controleIdsHA", JSON.stringify(ids)); localStorage.setItem("controleIdsHAem", String(Date.now())); } catch { /* ok */ } };
+  const [wsPronto, setWsPronto] = useState(0); // muda a cada conexão direta autenticada (ou volta ao app)
+  const [configOk, setConfigOk] = useState(false); // aparelhos do Supabase já lidos
+  const [entsTodos, setEntsTodos] = useState(null); // lista completa do HA (só no Gerenciar)
   const [aviso, setAviso] = useState(null);
   // Erro some sozinho depois de 6 s (os avisos comuns já somem em 2 s).
   useEffect(() => { if (!aviso?.erro) return; const t = setTimeout(() => setAviso((a) => (a === aviso ? null : a)), 6000); return () => clearTimeout(t); }, [aviso]);
@@ -5675,7 +5687,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     if (!u.error) { setSessoes(Object.fromEntries((u.data || []).map((r) => [r.chave, r]))); setUsoAtivo(true); }
     if (!p.error) setPavimentos(p.data || []);
     if (!a.error) setAmbientes(a.data || []);
-    if (!e.error) setEquipamentos(e.data || []);
+    if (!e.error) { setEquipamentos(e.data || []); setConfigOk(true); }
   }, []);
 
   useEffect(() => {
@@ -5725,16 +5737,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       return () => { ativo = false; clearTimeout(timer); proxyRefresh.current = null; };
     }
     const pend = {}; // id da requisição -> tipo (para saber qual resposta é qual)
-    const reg = { areas: null, devices: null, entities: null };
-    // Monta o mapa entity_id -> nome da área (ambiente do HA), via os "registries".
-    const montarAreas = () => {
-      if (!reg.areas || !reg.entities) return;
-      const areaNome = {}; reg.areas.forEach((a) => { areaNome[a.area_id] = a.name; });
-      const devArea = {}; (reg.devices || []).forEach((d) => { if (d.area_id) devArea[d.id] = d.area_id; });
-      const map = {};
-      reg.entities.forEach((en) => { const aid = en.area_id || (en.device_id ? devArea[en.device_id] : null); if (aid && areaNome[aid]) map[en.entity_id] = areaNome[aid]; });
-      if (ativo) setAreas(map);
-    };
     (async () => {
       const { data, error } = await supabase.from("ha_config").select("base_url, token").eq("id", "default").maybeSingle();
       if (!ativo) return;
@@ -5751,8 +5753,10 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         if (m.type === "auth_invalid") { setErro("O token foi recusado pelo Home Assistant. Gere um novo e atualize no Supabase."); setStatus("erro"); try { ws.close(); } catch { /* ok */ } return; }
         if (m.type === "auth_ok") {
           conectou = true;
-          send({ tipo: "states", type: "get_states" });
-          send({ type: "subscribe_events", event_type: "state_changed" });
+          // 1ª vez neste aparelho: lista completa uma vez (para saber os nomes). Depois, só os usados.
+          let temIds = false; try { temIds = !!localStorage.getItem("controleIdsHA"); } catch { /* ok */ }
+          if (!temIds) send({ tipo: "states", type: "get_states" });
+          setWsPronto((n) => n + 1);
           return;
         }
         if (m.type === "event" && assinaturasRef.current[m.id]) { assinaturasRef.current[m.id](m.event); return; }
@@ -5773,18 +5777,9 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           if (tipo === "states") {
             const map = {};
             (m.result || []).forEach((s) => { if (acompanhar(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
-            if (ativo) { setEnts(map); setStatus("ok"); guardarEnts(map); }
-            // Áreas do HA (só para o Gerenciar): pedidas depois, para não atrasar a abertura da tela.
-            if (ativo && !reg.areas) {
-              send({ tipo: "areas", type: "config/area_registry/list" });
-              send({ tipo: "devices", type: "config/device_registry/list" });
-              send({ tipo: "entities", type: "config/entity_registry/list" });
-            }
+            if (ativo) { setEnts(map); setStatus("ok"); guardarEnts(map); guardarIdsHA(map); }
             return;
           }
-          if (tipo === "areas") { reg.areas = m.result || []; montarAreas(); return; }
-          if (tipo === "devices") { reg.devices = m.result || []; montarAreas(); return; }
-          if (tipo === "entities") { reg.entities = m.result || []; montarAreas(); return; }
           return;
         }
         if (m.type === "event" && m.event?.event_type === "state_changed") {
@@ -5812,11 +5807,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
       if (!ws || ws.readyState > 1) { setTentativa((t) => t + 1); return; }
       if (ws.readyState !== 1) return; // ainda conectando
       pedirHA({ type: "ping" }, 4000)
-        .then(() => reler && pedirHA({ type: "get_states" }, 15000).then((todos) => {
-          const map = {};
-          (todos || []).forEach((st) => { if (acompanhar(st.entity_id, st.attributes)) map[st.entity_id] = { state: st.state, attributes: st.attributes || {} }; });
-          setEnts(map); guardarEnts(map);
-        }))
+        .then(() => { if (reler) setWsPronto((n) => n + 1); })
         .catch(() => setTentativa((t) => t + 1)); // a troca de "tentativa" fecha a conexão velha e abre outra
     };
     const aoVoltar = () => conferir(true);
@@ -5824,6 +5815,57 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const t = setInterval(() => conferir(false), 45000);
     return () => { document.removeEventListener("visibilitychange", aoVoltar); clearInterval(t); };
   }, [usarProxy]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- Só os aparelhos do app: subscribe_entities com a lista (estado inicial + mudanças) ----
+  const usadosSet = new Set(equipamentos.map((q) => q.entity_id));
+  const idsPedir = configOk && idsHA ? [...new Set([...idsHA, ...usadosSet])].filter((id) => precisaDoHA(id, usadosSet)).sort() : null;
+  const chavePedir = idsPedir ? idsPedir.join(",") : "";
+  useEffect(() => {
+    if (usarProxy || !wsPronto || !chavePedir) return;
+    let base = null; // estado dos usados (formato do app)
+    const cancelar = assinarHA({ type: "subscribe_entities", entity_ids: chavePedir.split(",") }, (ev) => {
+      if (ev?.type === "error") { setErro("Falha ao ler estados: " + (ev.message || "")); setStatus("erro"); return; }
+      const n = base ? { ...base } : {};
+      Object.entries(ev?.a || {}).forEach(([id, v]) => { if (acompanhar(id, v.a)) n[id] = { state: v.s, attributes: v.a || {} }; });
+      Object.entries(ev?.c || {}).forEach(([id, d]) => {
+        const v = n[id]; if (!v) return;
+        const at = { ...v.attributes, ...(d["+"]?.a || {}) }; (d["-"]?.a || []).forEach((k) => { delete at[k]; });
+        n[id] = { state: d["+"]?.s ?? v.state, attributes: at };
+      });
+      (ev?.r || []).forEach((id) => { delete n[id]; });
+      const primeiro = !base; base = n;
+      setEnts(n);
+      if (primeiro) { setStatus("ok"); setErro(""); guardarEnts(n); }
+    });
+    return () => { cancelar?.(); };
+  }, [wsPronto, chavePedir, usarProxy]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Lista completa do HA: no Gerenciar (para vincular aparelho novo, com as áreas) e, por trás, 1x por dia
+  // (para conhecer aparelhos novos do HA). Nunca trava a abertura da tela.
+  useEffect(() => {
+    if (usarProxy || !wsPronto || status !== "ok") return;
+    let em = 0; try { em = Number(localStorage.getItem("controleIdsHAem")) || 0; } catch { /* ok */ }
+    const gerenciar = modo === "gerenciar";
+    if (!gerenciar && Date.now() - em < 24 * 3600e3) return;
+    if (gerenciar && entsTodos && areas) return;
+    let ativo = true;
+    if (!gerenciar || !entsTodos) pedirHA({ type: "get_states" }, 60000).then((todos) => {
+      if (!ativo) return;
+      const map = {};
+      (todos || []).forEach((st) => { if (acompanhar(st.entity_id, st.attributes)) map[st.entity_id] = { state: st.state, attributes: st.attributes || {} }; });
+      guardarIdsHA(map);
+      if (gerenciar) setEntsTodos(map);
+    }).catch(() => { /* tenta de novo na próxima */ });
+    if (gerenciar && !areas) Promise.all(["config/area_registry/list", "config/device_registry/list", "config/entity_registry/list"].map((type) => pedirHA({ type }, 60000)))
+      .then(([ar, dv, en]) => {
+        if (!ativo) return;
+        const areaNome = {}; (ar || []).forEach((a) => { areaNome[a.area_id] = a.name; });
+        const devArea = {}; (dv || []).forEach((d) => { if (d.area_id) devArea[d.id] = d.area_id; });
+        const map = {};
+        (en || []).forEach((x) => { const aid = x.area_id || (x.device_id ? devArea[x.device_id] : null); if (aid && areaNome[aid]) map[x.entity_id] = areaNome[aid]; });
+        setAreas(map);
+      }).catch(() => { /* sem áreas: a lista aparece sem o nome do cômodo */ });
+    return () => { ativo = false; };
+  }, [modo, wsPronto, status, usarProxy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Segurar e arrastar PAVIMENTOS para mudar a ordem (só gestor) ----
   // Segura ~0,5 s (até vibrar) no título do pavimento → ele flutua seguindo o dedo; os outros
@@ -6560,7 +6602,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           )}
 
           {modo === "gerenciar" && souGestor && (
-            <><SpotifyPessoas ents={ents} /><Programacoes equipamentos={equipamentos} ambientes={ambientes} ents={ents} pedirHA={pedirHA} /><GerenciarView pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={ents} areas={areas} cbs={cbs} /></>
+            <><SpotifyPessoas ents={ents} /><Programacoes equipamentos={equipamentos} ambientes={ambientes} ents={entsTodos ? { ...entsTodos, ...ents } : ents} pedirHA={pedirHA} /><GerenciarView pavimentos={pavimentos} ambientes={ambientes} equipamentos={equipamentos} ents={entsTodos ? { ...entsTodos, ...ents } : ents} areas={areas} cbs={cbs} /></>
           )}
 
           {modo === "usar" && status === "ok" && listaPav.length === 0 && (
