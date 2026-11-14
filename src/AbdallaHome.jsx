@@ -5521,7 +5521,12 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [expandidos, setExpandidos] = useState(() => new Set());
   const toggleExpand = (id) => setExpandidos((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [editando, setEditando] = useState(false);
-  const [ents, setEnts] = useState({});
+  // Último estado conhecido fica guardado no aparelho: a tela abre na hora com ele (marcado
+  // "Atualizando…") enquanto o Home Assistant responde, em vez de ficar parada em "Conectando…".
+  const [ents, setEnts] = useState(() => { try { return JSON.parse(localStorage.getItem("controleEnts") || "null") || {}; } catch { return {}; } });
+  const [temCache] = useState(() => Object.keys(ents).length > 0);
+  const telaOk = status === "ok" || (status === "carregando" && temCache);
+  const guardarEnts = (map) => { try { localStorage.setItem("controleEnts", JSON.stringify(map)); } catch { /* sem espaço: segue sem */ } };
   useEffect(() => { for (const [id, v] of Object.entries(ents)) if (v?.attributes?.friendly_name) NOMES_HA[id] = v.attributes.friendly_name; }, [ents]);
   const [otim, setOtim] = useState({}); // entity_id -> { patch, base (assinatura antes do toque), ate }
   const [areas, setAreas] = useState(null); // entity_id -> nome da área no Home Assistant
@@ -5712,7 +5717,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         renovou = false;
         const map = {};
         (data?.estados || []).forEach((s) => { if (acompanhar(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
-        setEnts(map); setStatus("ok"); setErro("");
+        setEnts(map); setStatus("ok"); setErro(""); guardarEnts(map);
       };
       const ciclo = async () => { if (!ativo) return; if (document.visibilityState === "visible") await buscar(); if (ativo) timer = setTimeout(ciclo, 3000); };
       proxyRefresh.current = buscar;
@@ -5747,9 +5752,6 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         if (m.type === "auth_ok") {
           conectou = true;
           send({ tipo: "states", type: "get_states" });
-          send({ tipo: "areas", type: "config/area_registry/list" });
-          send({ tipo: "devices", type: "config/device_registry/list" });
-          send({ tipo: "entities", type: "config/entity_registry/list" });
           send({ type: "subscribe_events", event_type: "state_changed" });
           return;
         }
@@ -5771,7 +5773,13 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
           if (tipo === "states") {
             const map = {};
             (m.result || []).forEach((s) => { if (acompanhar(s.entity_id, s.attributes)) map[s.entity_id] = { state: s.state, attributes: s.attributes || {} }; });
-            if (ativo) { setEnts(map); setStatus("ok"); }
+            if (ativo) { setEnts(map); setStatus("ok"); guardarEnts(map); }
+            // Áreas do HA (só para o Gerenciar): pedidas depois, para não atrasar a abertura da tela.
+            if (ativo && !reg.areas) {
+              send({ tipo: "areas", type: "config/area_registry/list" });
+              send({ tipo: "devices", type: "config/device_registry/list" });
+              send({ tipo: "entities", type: "config/entity_registry/list" });
+            }
             return;
           }
           if (tipo === "areas") { reg.areas = m.result || []; montarAreas(); return; }
@@ -5807,7 +5815,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         .then(() => reler && pedirHA({ type: "get_states" }, 15000).then((todos) => {
           const map = {};
           (todos || []).forEach((st) => { if (acompanhar(st.entity_id, st.attributes)) map[st.entity_id] = { state: st.state, attributes: st.attributes || {} }; });
-          setEnts(map);
+          setEnts(map); guardarEnts(map);
         }))
         .catch(() => setTentativa((t) => t + 1)); // a troca de "tentativa" fecha a conexão velha e abre outra
     };
@@ -6011,8 +6019,8 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== 1) {
       setOtim((o) => { const n = { ...o }; delete n[entityId]; return n; }); // não foi: mostra o estado real
-      setAviso({ erro: true, texto: "A conexão com a casa caiu. Reconectando… toque de novo em alguns segundos." });
-      if (!ws || ws.readyState > 1) setTentativa((t) => t + 1);
+      setAviso({ erro: true, texto: status === "carregando" ? "Ainda conectando à casa… toque de novo em alguns segundos." : "A conexão com a casa caiu. Reconectando… toque de novo em alguns segundos." });
+      if (status !== "carregando" && (!ws || ws.readyState > 1)) setTentativa((t) => t + 1);
       return;
     }
     const idCmd = idRef.current++;
@@ -6535,7 +6543,14 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
         </header>
 
         <main className="pt-3" style={{ paddingLeft: 8, paddingRight: 8 }}>
-          {status === "carregando" && <div className="text-center py-16" style={{ color: C.cinza }}>Conectando ao Home Assistant…</div>}
+          {status === "carregando" && !telaOk && <div className="text-center py-16" style={{ color: C.cinza }}>Conectando ao Home Assistant…</div>}
+          {status === "carregando" && telaOk && modo === "usar" && (
+            <div className="flex justify-center" style={{ position: "sticky", top: 6, zIndex: 20, marginBottom: 6, pointerEvents: "none" }}>
+              <span className="flex items-center gap-2" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 999, padding: "4px 12px", fontSize: 12.5, fontWeight: 700, color: C.cinza }}>
+                <span className="ah-pisca" style={{ width: 7, height: 7, borderRadius: 99, background: C.ambar }} /> Atualizando…
+              </span>
+            </div>
+          )}
           {status === "erro" && (
             <div style={{ background: C.vermelhoClaro, border: `1px solid ${alfa(C.vermelho, 33)}`, borderRadius: 14 }} className="p-4 mt-4">
               <div className="font-bold" style={{ color: C.vermelho }}>Não deu para conectar</div>
@@ -6554,14 +6569,14 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
               {souGestor && <div className="mt-3"><button onClick={() => setModo("gerenciar")} style={{ background: C.pasto, color: "#fff", borderRadius: 10, padding: "10px 18px", fontWeight: 700 }}>Organizar agora</button></div>}
             </div>
           )}
-          {modo === "usar" && status === "ok" && souGestor && listaPav.length > 0 && (
+          {modo === "usar" && telaOk && souGestor && listaPav.length > 0 && (
             editando ? (
               <div className="flex items-center justify-end mb-3" style={{ position: "sticky", top: 6, zIndex: 20 }}>
                 <button onClick={() => setEditando(false)} style={{ background: C.pasto, color: "#fff", borderRadius: 8, padding: "6px 16px", fontWeight: 700, fontSize: 13 }}>Concluir</button>
               </div>
             ) : null
           )}
-          {modo === "usar" && status === "ok" && (arrPav
+          {modo === "usar" && telaOk && (arrPav
             ? [...arrPav.ordem.map((id) => listaPav.find((x) => x.id === id)).filter(Boolean), ...listaPav.filter((x) => !arrPav.ordem.includes(x.id))]
             : listaPav).map((pav) => {
             const naMao = arrPav?.id === pav.id;
