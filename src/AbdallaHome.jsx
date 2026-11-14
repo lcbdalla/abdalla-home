@@ -4632,14 +4632,15 @@ function CartaoGrupoPersianas({ e, enviar, aberto, onAlternar, editando }) {
   const v = visualPorTipo(e);
   const abertas = e.membros.filter((m) => visualPorTipo(m).ativo).length;
   const vezRef = useRef(0); // um toque novo interrompe o "uma por vez" que ainda está mandando
-  // acao: "abrir" | "parar" | "fechar". Com a Persiana 0, um comando só move todas juntas e o app
-  // já mostra as de 1 a 11 abrindo/fechando. Sem ela, manda uma por vez.
+  // acao: "abrir" | "parar" | "fechar". Com a Persiana 0, um comando só move todas juntas; depois o
+  // mesmo comando vai também para cada uma (1, 2, 3…): elas não avisam o HA quando a 0 as move, e aí
+  // os outros celulares viam o estado antigo. Assim o HA fica certo para todos. Sem a 0, uma por vez.
   const acionar = async (acao) => {
     const svc = (m) => (acao === "parar" ? "stop_cover" : (acao === "abrir") !== ehInvertido(m) ? "open_cover" : "close_cover");
     if (e.mestre) {
       enviar("cover", svc(e.mestre), e.mestre.id);
       if (acao !== "parar") e.preverEstados?.(e.membros.map((m) => [m.id, svc(m) === "open_cover" ? "opening" : "closing", svc(m) === "open_cover" ? "open" : "closed"]));
-      return;
+      await new Promise((r) => setTimeout(r, 300));
     }
     const vez = ++vezRef.current;
     const lista = e.membros.filter((m) => m.disponivel);
