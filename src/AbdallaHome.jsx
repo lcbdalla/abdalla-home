@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  ListTodo, CalendarDays, ShoppingCart, Package, Users, Plus, Check,
+  ListTodo, CalendarDays, ShoppingCart, Package, Users, PersonStanding, Plus, Check,
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
   ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Cctv, ShieldCheck, Music, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
@@ -3497,11 +3497,13 @@ const achatar = (itens) => itens.flatMap((x) => (x.tipo === "grupoLuzes" ? x.mem
 const contarLigados = (itens) => { const d = achatar(itens).filter(ehDesligavel); return { on: d.filter(estaLigado).length, total: d.length }; };
 
 // Cabeçalho de pavimento/cômodo: [⏻ desligar tudo] · nome · ligados/total ⌄ (tocar abre/fecha).
-function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo, musica, iconeAmb, atalhos, temperatura }) {
+function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDesligarTudo, musica, iconeAmb, atalhos, temperatura, presenca }) {
   const { on, total } = contarLigados(itens);
   const aceso = on > 0;
   // Cômodo fechado com atalhos: cartão com o dobro da altura, nome em até 2 linhas e atalhos em 2 fileiras.
   const duplo = !grande && !aberto && atalhos?.length > 0;
+  // Cômodo ABERTO com atalhos: em cima só nome, temperatura e presença; embaixo atalhos e ligados/total.
+  const duasLinhas = !grande && aberto && atalhos?.length > 0;
   const toque = { background: "none", border: "none", cursor: "pointer", padding: 0, minHeight: grande ? 52 : duplo ? 88 : 44 };
   // Botão ⏻ "Desligar tudo": fica no lugar do ícone do pavimento / do pontinho do cômodo.
   // Aceso (âmbar, com brilho) = tem algo ligado; apagado (cinza) = nada ligado, não faz nada.
@@ -3509,9 +3511,7 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
   // No pavimento (grande) o fundo é verde: textos com as cores do nível (branco no modo claro).
   const corNome = grande ? "var(--c-nivelTexto)" : C.terra, corSub = grande ? "var(--c-nivelSub)" : C.cinza;
   const corAceso = grande ? "var(--c-nivelAceso)" : C.ambarTexto, corApagado = grande ? "var(--c-nivelSub)" : C.cinzaClaro;
-  return (
-    <div className="flex items-center" style={{ gap: grande ? 9 : 10 }}>
-      {total > 0 ? (
+  const iconeEl = total > 0 ? (
         <button onClick={() => aceso && onDesligarTudo(itens)} disabled={!aceso} aria-label={aceso ? `Desligar tudo em ${nome}` : `Nada ligado em ${nome}`}
           style={{ width: tam, height: tam, borderRadius: grande ? 11 : 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none",
             cursor: aceso ? "pointer" : "default", background: aceso ? alfa(C.ambar, 22) : alfa(C.cinzaClaro, 16), color: aceso ? (grande ? corAceso : C.ambar) : iconeAmb ? C.terra : corApagado,
@@ -3522,15 +3522,48 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
         <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: C.terra }}><iconeAmb.Icon size={16} strokeWidth={2.2} /></span>
       ) : grande ? (
         <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: alfa(C.cinzaClaro, 16), color: corApagado }}><Layers size={17} /></span>
-      ) : null}
+      ) : null;
+  const info = (
+    <span className="flex items-center" style={{ gap: 3, fontSize: 12.5, fontWeight: 600, color: corSub, marginTop: duasLinhas ? 0 : 3, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+      {temperatura != null && <><Thermometer size={14} />{Number(temperatura).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} °C</>}
+      {presenca != null && <PersonStanding size={15} strokeWidth={2.4} aria-label={presenca ? "Tem gente no ambiente" : "Ninguém no ambiente"}
+        style={{ marginLeft: temperatura != null ? 8 : 0, color: presenca ? C.pasto : C.cinzaClaro }} />}
+    </span>
+  );
+  const contador = (
+    <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 54, gap: 4 }}>
+      {total > 0 && (
+        <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+          <b style={{ color: aceso ? corAceso : corSub, fontWeight: 800 }}>{on}</b><span style={{ color: corApagado, fontWeight: 600 }}>/{total}</span>
+        </span>
+      )}
+      <ChevronDown size={18} style={{ color: corSub, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
+    </button>
+  );
+  if (duasLinhas) return (
+    <div className="flex flex-col" style={{ gap: 6 }}>
+      <div className="flex items-center" style={{ gap: 10 }}>
+        {iconeEl}
+        <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex items-center text-left" style={{ ...toque, gap: 10 }}>
+          <span className="truncate" style={{ fontWeight: 650, fontSize: 15, color: corNome, lineHeight: 1.2 }}>{nome}</span>
+          {(temperatura != null || presenca != null) && info}
+        </button>
+      </div>
+      <div className="flex items-center" style={{ gap: 6, paddingLeft: tam + 10 }}>
+        <div className="flex flex-wrap items-center justify-end flex-1 min-w-0" style={{ gap: 4 }}>
+          {atalhos.map((a) => <BolinhaArea key={a.key} tam={34} Icon={a.Icon} cor={a.cor} aceso={a.aceso} preenche={a.preenche} rot={a.rot} onClick={a.onClick} />)}
+        </div>
+        {contador}
+      </div>
+    </div>
+  );
+  return (
+    <div className="flex items-center" style={{ gap: grande ? 9 : 10 }}>
+      {iconeEl}
       <button onClick={onAlternar} aria-expanded={aberto} className="flex-1 min-w-0 flex flex-col justify-center text-left" style={toque}>
         <span className={duplo ? "" : "truncate"} style={{ fontWeight: grande ? 800 : 650, fontSize: grande ? 16.5 : 15, color: corNome, letterSpacing: grande ? "-0.01em" : 0, lineHeight: 1.2,
           ...(duplo ? { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "break-word" } : {}) }}>{nome}</span>
-        {temperatura != null && (
-          <span className="flex items-center" style={{ gap: 3, fontSize: 12.5, fontWeight: 600, color: corSub, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
-            <Thermometer size={14} />{Number(temperatura).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} °C
-          </span>
-        )}
+        {(temperatura != null || presenca != null) && !duasLinhas && info}
         {sub && (
           <span className="truncate" style={{ fontSize: 12, color: corSub, marginTop: 2 }}>
             {aceso ? <b style={{ color: corAceso, fontWeight: 700 }}>{on} {on === 1 ? "ligado" : "ligados"}</b> : sub}
@@ -3555,14 +3588,7 @@ function CabecalhoNivel({ nome, sub, grande, aberto, onAlternar, itens, onDeslig
           {musica.proxima && <BotaoMini Ic={SkipForward} rot="Próxima música" onClick={musica.proxima} sobreNivel={grande} />}
         </div>
       )}
-      <button onClick={onAlternar} aria-label={aberto ? "Fechar" : "Abrir"} className="flex items-center justify-end" style={{ ...toque, flexShrink: 0, width: 54, gap: 4 }}>
-        {total > 0 && (
-          <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-            <b style={{ color: aceso ? corAceso : corSub, fontWeight: 800 }}>{on}</b><span style={{ color: corApagado, fontWeight: 600 }}>/{total}</span>
-          </span>
-        )}
-        <ChevronDown size={18} style={{ color: corSub, flexShrink: 0, transform: aberto ? "none" : "rotate(-90deg)", transition: "transform .22s cubic-bezier(.25,1,.5,1)" }} />
-      </button>
+      {contador}
     </div>
   );
 }
@@ -6395,6 +6421,11 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
     const sen = todos.find((x) => x.tipo === "sensor" && /°c/i.test(x.attributes?.unit_of_measurement || "") && x.state !== "" && !isNaN(Number(x.state)));
     return sen ? Number(sen.state) : null;
   };
+  // Tem gente? Sensor de presença/ocupação/movimento vinculado ao cômodo (sem sensor = null, não mostra).
+  const presencaDe = (itens) => {
+    const s = achatar(itens).filter((x) => /^binary_sensor\./.test(x.id) && /occupancy|presence|motion/.test(x.attributes?.device_class || ""));
+    return s.length ? s.some((x) => x.state === "on") : null;
+  };
   const atalhosDe = (itens) => {
     const todos = achatar(itens);
     return TIPOS_ATALHO.map((t) => {
@@ -6567,7 +6598,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                         de aparelho; a música fica só no título do nível. */}
                     <CabecalhoNivel nome={semQuarto(c.nome)} aberto={abertoC} onAlternar={() => alternarAmb(c.id, pav.id)}
                       itens={c.itens} onDesligarTudo={(itens) => desligarTudo(itens, c.nome)}
-                      iconeAmb={iconeComodo(c.nome)} atalhos={atalhosDe(c.itens)} temperatura={temperaturaDe(c.itens)} />
+                      iconeAmb={iconeComodo(c.nome)} atalhos={atalhosDe(c.itens)} temperatura={temperaturaDe(c.itens)} presenca={presencaDe(c.itens)} />
                   </div>
                   {abertoC && (
                     <div style={{ borderTop: `1px solid ${C.linha}`, margin: "6px -12px 0", padding: "12px 12px 6px" }}>
