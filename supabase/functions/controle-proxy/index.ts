@@ -288,7 +288,7 @@ Deno.serve(async (req) => {
     if (!r.ok) return json({ error: `O Home Assistant não respondeu (${r.status}).` }, 502);
     const todos = await r.json();
     const estados = (Array.isArray(todos) ? todos : [])
-      .filter((s: any) => cadastrados.has(s.entity_id) || s.entity_id === p.spotify_entity || ehMeuSpotify(s, p.nome) || (podeAlarme && ALARME.test(s.entity_id)))
+      .filter((s: any) => cadastrados.has(s.entity_id) || s.entity_id === "input_datetime.cascata_desligou_em" || s.entity_id === p.spotify_entity || ehMeuSpotify(s, p.nome) || (podeAlarme && ALARME.test(s.entity_id)))
       .map((s: any) => {
         const a = { ...(s.attributes || {}) };
         delete a.access_token; // nunca expor tokens de câmera/mídia
@@ -337,7 +337,10 @@ Deno.serve(async (req) => {
     if ((service === "turn_on" || service === "toggle") && (entity === "switch.piscina_rele_3" || /cascata/i.test(eqNome))) {
       const rc = await fetch(`${base}/api/states/${entity}`, { headers: cabecalho });
       const sc = rc.ok ? await rc.json() : null;
-      const falta = sc?.state === "off" ? Date.parse(sc.last_changed) + 15 * 60000 - Date.now() : 0;
+      // Hora em que desligou: a guardada pelo HA (sobrevive a reinício); sem ela, a última mudança.
+      const rd = await fetch(`${base}/api/states/input_datetime.cascata_desligou_em`, { headers: cabecalho });
+      const desl = rd.ok ? Number((await rd.json())?.attributes?.timestamp) * 1000 : 0;
+      const falta = sc?.state === "off" ? (desl || Date.parse(sc.last_changed)) + 15 * 60000 - Date.now() : 0;
       if (falta > 0) {
         const min = Math.ceil(falta / 60000);
         const as = new Date(Date.now() + falta).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Araguaina" });

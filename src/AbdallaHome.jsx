@@ -1950,7 +1950,7 @@ const ehTomAAT = (id) => /^number\.aat_pmr7_zona_\d+_(graves|agudos|balanco)$/.t
 const LAREIRA = { sw: "switch.lareira", aquec: "select.lareira_aquecimento", temp: "number.lareira_temperatura", chama: "select.lareira_intensidade_da_chama",
   corChama: "select.lareira_cor_da_chama", corCarvao: "select.lareira_cor_do_carvao", brilhoCarvao: "select.lareira_brilho_do_carvao" };
 const LAREIRA_IDS = Object.values(LAREIRA);
-const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || LAREIRA_IDS.includes(id) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || id === CAIXA_AGUA.sensor || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || LAREIRA_IDS.includes(id) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || id === CAIXA_AGUA.sensor || id === CASCATA_DESLIGOU || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 // Pedido ao HA na abertura (conexão direta): destes domínios, que têm MUITOS aparelhos na casa, só
 // entram os vinculados no app e os fixos do código (lareira, mesa, alarme, portão, LED do ar). Os demais
 // (TV, som, Spotify, fechadura, sensores especiais) entram todos. A lista completa só no Gerenciar.
@@ -2595,8 +2595,14 @@ function AlarmeModal({ ents, enviar, souAdmin, onFechar }) {
    todos (conta a partir da hora em que o HA registrou o desligamento). O intermediário confere também. */
 const CASCATA_ID = "switch.piscina_rele_3";
 const CASCATA_ESPERA_MS = 15 * 60000;
+// Hora em que desligou, guardada pelo próprio HA (automação "Cascata trava de 15 min"; sobrevive a
+// reinício). Sem ela, vale a hora da última mudança do interruptor.
+const CASCATA_DESLIGOU = "input_datetime.cascata_desligou_em";
 const ehCascata = (id, nome) => id === CASCATA_ID || /cascata/i.test(nome || "");
-const faltaCascata = (v) => (v?.state === "off" && v.mudou ? Math.max(0, v.mudou + CASCATA_ESPERA_MS - Date.now()) : 0);
+const faltaCascata = (v, desl) => {
+  const t = Number(desl?.attributes?.timestamp) * 1000 || v?.mudou;
+  return v?.state === "off" && t ? Math.max(0, t + CASCATA_ESPERA_MS - Date.now()) : 0;
+};
 // "faltam 14 min (libera às 14:05)" — nada de "14:40", que parece horário.
 const faltaTexto = (ms) => { const min = Math.ceil(ms / 60000); const as = new Date(Date.now() + ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); return `${min === 1 ? "falta 1 minuto" : `faltam ${min} minutos`} (libera às ${as})`; };
 
@@ -5828,7 +5834,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
 
   // ---- Só os aparelhos do app: subscribe_entities com a lista (estado inicial + mudanças) ----
   const usadosSet = new Set(equipamentos.map((q) => q.entity_id));
-  const idsPedir = configOk && idsHA ? [...new Set([...idsHA, ...usadosSet])].filter((id) => precisaDoHA(id, usadosSet)).sort() : null;
+  const idsPedir = configOk && idsHA ? [...new Set([...idsHA, ...usadosSet, CASCATA_DESLIGOU])].filter((id) => precisaDoHA(id, usadosSet)).sort() : null;
   const chavePedir = idsPedir ? idsPedir.join(",") : "";
   useEffect(() => {
     if (usarProxy || !wsPronto || !chavePedir) return;
@@ -6056,7 +6062,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const enviar = (domain, service, entityId, serviceData) => {
     const eq = equipamentos.find((q) => q.entity_id === entityId);
     if ((service === "turn_on" || service === "toggle") && ehCascata(entityId, eq?.nome || ents[entityId]?.attributes?.friendly_name)) {
-      const falta = faltaCascata(ents[entityId]);
+      const falta = faltaCascata(ents[entityId], ents[CASCATA_DESLIGOU]);
       if (falta > 0) { setAviso({ erro: true, texto: `A cascata foi desligada há pouco e os canos ainda estão esvaziando. Para ligar de novo, ${faltaTexto(falta)}.` }); return; }
     }
     preverToque(service, entityId, serviceData);
