@@ -2660,7 +2660,8 @@ function CartaoRobo({ r, ents, enviar }) {
   const v = ents[r.id], st = v?.state;
   const sen = (x) => ents[roboSensor(r, x)];
   const bat = numHA(sen("battery_level_p_3_1")), prog = numHA(sen("cleaning_progress_p_2_89"));
-  const fault = sen("fault_p_2_3")?.state;
+  // só erro de verdade (alerta do HA: fault + robô em "error"); o fault sozinho traz códigos de aviso (ex.: 210030)
+  const fault = ents[roboAlerta(r, "com_erro")]?.state === "on" ? sen("fault_p_2_3")?.state : null;
   const limpando = st === "cleaning";
   const iniciar = async () => {
     if (!(await Dialog.confirm({ titulo: r.nome, mensagem: `${r.iniciarTxt} agora?`, okLabel: "Iniciar" }))) return;
