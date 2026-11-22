@@ -4,7 +4,7 @@ import {
   Camera, Bell, X, Trash2, Pencil, Info, MapPin, Fuel, Wrench, Wine,
   ShoppingBasket, Repeat, Clock, User, RefreshCw, Star, Smartphone, Tag, Lock, Search, ArrowDownToLine, ArrowUpFromLine, Mail, LogOut, KeyRound, BarChart3, ChevronLeft, ChevronRight, UserPlus, MessageCircle, Copy, Shuffle, CheckCircle2, MoreVertical, Images, Home, Moon, Sun, Power, Layers,
   ChevronDown, Lightbulb, Fan, Snowflake, Tv, Speaker, Volume2, VolumeX, CloudSun, CloudMoon, Cloud, Cloudy, CloudFog, CloudDrizzle, CloudRain, CloudRainWind, CloudLightning, Zap, Wind, SunMedium, Umbrella, WavesLadder, Funnel, Bubbles, Flame, Link2, Radio, SkipBack, SkipForward, Play, Pause, Droplets, Blinds, DoorOpen, DoorClosed, LockOpen, Gauge, ToyBrick, Cctv, ShieldCheck, Music, LayoutGrid, EyeOff, ArrowLeftRight, Undo2, Menu, ChevronUp, Rewind, FastForward, Thermometer, AirVent, CircleDot, Minus,
-  LampDesk, MonitorUp, Sofa, BedDouble, Bath, CookingPot, Refrigerator, WashingMachine, Armchair, Warehouse, Trees, Briefcase,
+  Bot, LampDesk, MonitorUp, Sofa, BedDouble, Bath, CookingPot, Refrigerator, WashingMachine, Armchair, Warehouse, Trees, Briefcase,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabaseClient";
@@ -1950,7 +1950,7 @@ const ehTomAAT = (id) => /^number\.aat_pmr7_zona_\d+_(graves|agudos|balanco)$/.t
 const LAREIRA = { sw: "switch.lareira", aquec: "select.lareira_aquecimento", temp: "number.lareira_temperatura", chama: "select.lareira_intensidade_da_chama",
   corChama: "select.lareira_cor_da_chama", corCarvao: "select.lareira_cor_do_carvao", brilhoCarvao: "select.lareira_brilho_do_carvao" };
 const LAREIRA_IDS = Object.values(LAREIRA);
-const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || LAREIRA_IDS.includes(id) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || id === CAIXA_AGUA.sensor || id === CASCATA_DESLIGOU || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
+const acompanhar = (id, attrs) => (HA_SHOW.has(id.split(".")[0]) || LAREIRA_IDS.includes(id) || ehTomAAT(id) || ehDoAlarme(id) || MESA_IDS.includes(id) || id === BATERIA_PORTA.sensor || id === CAIXA_AGUA.sensor || id === CASCATA_DESLIGOU || ROBO_IDS.has(id) || [...PORTAO_CAMERAS, ...PORTA_CAMERAS].some((c) => c.id === id)) && !ehGrupoLuz(id, attrs);
 // Pedido ao HA na abertura (conexão direta): destes domínios, que têm MUITOS aparelhos na casa, só
 // entram os vinculados no app e os fixos do código (lareira, mesa, alarme, portão, LED do ar). Os demais
 // (TV, som, Spotify, fechadura, sensores especiais) entram todos. A lista completa só no Gerenciar.
@@ -2605,6 +2605,137 @@ const faltaCascata = (v, desl) => {
 };
 // "faltam 14 min (libera às 14:05)" — nada de "14:40", que parece horário.
 const faltaTexto = (ms) => { const min = Math.ceil(ms / 60000); const as = new Date(Date.now() + ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); return `${min === 1 ? "falta 1 minuto" : `faltam ${min} minutos`} (libera às ${as})`; };
+
+/* ---- ROBÔS aspiradores (Xiaomi Vacuum 5 Pro, integração xiaomi_home) — menu ⋮ → Robôs ----
+   Tudo do lado do HA foi montado pela sessão HOME ASSISTANT: botões de limpeza, sensores e os
+   alertas (binary_sensor "on" = precisa de atenção). O app só lê e manda os comandos. */
+const ROBOS = [
+  { chave: "cozinha", nome: "Robô Cozinha", id: "vacuum.robo_cozinha", p: "xiaomi_us_1174134561_ov21gl",
+    iniciar: ["input_button", "press", "input_button.robo_cozinha_limpar_cozinha_e_living"], iniciarTxt: "Limpar Cozinha e Living" },
+  { chave: "varanda", nome: "Robô Varanda", id: "vacuum.robo_varanda", p: "xiaomi_us_1174138194_ov21gl",
+    iniciar: ["vacuum", "start", "vacuum.robo_varanda"], iniciarTxt: "Limpar a Varanda" },
+];
+// [nome, sufixo do % de vida, sufixo do que falta, unidade do que falta, alerta (binary_sensor)]
+const ROBO_PECAS = [
+  ["Escova principal", "brush_life_level_p_12_1", "brush_left_time_p_12_2", "h", "trocar_escova_principal"],
+  ["Escova lateral", "brush_life_level_p_13_1", "brush_left_time_p_13_2", "h", "trocar_escova_lateral"],
+  ["Filtro", "filter_life_level_p_14_1", "filter_left_time_p_14_2", "h", "trocar_filtro"],
+  ["Pano (mop)", "mop_life_level_p_9_1", "mop_left_time_p_9_2", "h", "trocar_pano_mop"],
+  ["Saco de pó", "dust_bag_life_level_p_19_1", "dust_bag_left_time_p_19_2", "", "trocar_saco_de_po"],
+  ["Detergente", "detergent_left_level_p_18_1", "detergent_left_time_p_18_4", "", "trocar_detergente"],
+];
+const ROBO_TANQUES = [["Água limpa", "water_tank_status_p_2_98", "Empty", "Vazio", "tanque_de_agua_limpa_vazio"], ["Água suja", "sewage_tank_status_p_2_97", "Full", "Cheio", "tanque_de_agua_suja_cheio"]];
+const ROBO_NOTURNA = "automation.robos_limpeza_noturna_automatica";
+const roboSensor = (r, suf) => `sensor.${r.p}_${suf}`;
+const roboAlerta = (r, suf) => `binary_sensor.robo_${r.chave}_${suf}`;
+const ROBO_STATUS = ["battery_level_p_3_1", "charging_state_p_3_2", "sweep_mop_status_p_2_96", "cleaning_progress_p_2_89", "fault_p_2_3"];
+const ROBO_IDS = new Set([ROBO_NOTURNA, ...ROBOS.flatMap((r) => [r.id,
+  ...ROBO_STATUS.map((x) => roboSensor(r, x)),
+  ...ROBO_PECAS.flatMap(([, v, f, , a]) => [roboSensor(r, v), roboSensor(r, f), roboAlerta(r, a)]),
+  ...ROBO_TANQUES.flatMap(([, x, , , a]) => [roboSensor(r, x), roboAlerta(r, a)]), roboAlerta(r, "com_erro")])]);
+const ROBO_ESTADO = { docked: "Na base", cleaning: "Limpando", returning: "Voltando à base", paused: "Pausado", idle: "Parado", error: "Com erro" };
+const ROBO_MODO = { Idle: "Parado", Sweeping: "Aspirando", Mopping: "Passando pano", "Sweeping and Mopping": "Aspirando e passando pano" };
+const corVida = (pc) => (pc == null ? C.cinza : pc > 40 ? C.pasto : pc >= 15 ? C.ambar : C.vermelho);
+const numHA = (v) => { const n = Number(v?.state); return v && Number.isFinite(n) ? n : null; };
+// Alertas ligados agora: [{ id, robo, item, detalhe, mudou }]
+function alertasRobos(ents) {
+  const out = [];
+  ROBOS.forEach((r) => {
+    ROBO_PECAS.forEach(([nome, vida, , , a]) => { const v = ents[roboAlerta(r, a)]; if (v?.state === "on") { const pc = numHA(ents[roboSensor(r, vida)]); out.push({ id: roboAlerta(r, a), robo: r.nome, item: nome, detalhe: pc != null ? `${pc}% de vida` : "trocar", mudou: v.mudou }); } });
+    ROBO_TANQUES.forEach(([nome, , , txt, a]) => { const v = ents[roboAlerta(r, a)]; if (v?.state === "on") out.push({ id: roboAlerta(r, a), robo: r.nome, item: `Tanque de ${nome.toLowerCase()}`, detalhe: txt.toLowerCase(), mudou: v.mudou }); });
+    const e = ents[roboAlerta(r, "com_erro")]; if (e?.state === "on") out.push({ id: roboAlerta(r, "com_erro"), robo: r.nome, item: "Robô com erro", detalhe: `código ${ents[roboSensor(r, "fault_p_2_3")]?.state ?? "?"}`, mudou: e.mudou });
+  });
+  return out;
+}
+
+function BarraVida({ pc }) {
+  return (
+    <div style={{ height: 7, borderRadius: 99, background: alfa(C.cinzaClaro, 30), overflow: "hidden" }}>
+      <div style={{ width: `${Math.max(0, Math.min(100, pc ?? 0))}%`, height: "100%", borderRadius: 99, background: corVida(pc), transition: "width .4s" }} />
+    </div>
+  );
+}
+
+function CartaoRobo({ r, ents, enviar }) {
+  const v = ents[r.id], st = v?.state;
+  const sen = (x) => ents[roboSensor(r, x)];
+  const bat = numHA(sen("battery_level_p_3_1")), prog = numHA(sen("cleaning_progress_p_2_89"));
+  const fault = sen("fault_p_2_3")?.state;
+  const limpando = st === "cleaning";
+  const iniciar = async () => {
+    if (!(await Dialog.confirm({ titulo: r.nome, mensagem: `${r.iniciarTxt} agora?`, okLabel: "Iniciar" }))) return;
+    enviar(...r.iniciar);
+  };
+  const btn = (bg, cor) => ({ flex: 1, background: bg, color: cor, borderRadius: 12, padding: "11px 6px", fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 });
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 16, padding: 12, marginBottom: 12 }}>
+      <div className="flex items-center gap-3">
+        <div style={{ width: 44, height: 44, borderRadius: 12, background: alfa(LAGO, limpando ? 26 : 14), color: LAGO, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Bot size={24} /></div>
+        <div className="flex-1 min-w-0">
+          <div style={{ fontWeight: 800, fontSize: 16, color: C.terra }}>{r.nome}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: st === "error" ? C.vermelho : limpando ? LAGO : C.cinza }}>
+            {!v ? "Sem sinal" : ROBO_ESTADO[st] || haEstado(st).texto}
+            {limpando && prog != null ? ` · ${prog}%` : ""}
+            {limpando && ROBO_MODO[sen("sweep_mop_status_p_2_96")?.state] ? ` · ${ROBO_MODO[sen("sweep_mop_status_p_2_96")?.state]}` : ""}
+          </div>
+        </div>
+        {bat != null && <div style={{ fontSize: 14, fontWeight: 800, color: corVida(bat), fontVariantNumeric: "tabular-nums" }}>🔋 {bat}%</div>}
+      </div>
+      {fault && fault !== "0" && <div style={{ marginTop: 8, fontSize: 13, color: C.vermelho, fontWeight: 700 }}>Falha no robô (código {fault})</div>}
+      <div className="flex gap-2" style={{ marginTop: 10 }}>
+        <button onClick={iniciar} disabled={!v} style={btn(C.pasto, "#fff")}><Play size={16} /> Iniciar</button>
+        <button onClick={() => enviar("vacuum", "stop", r.id)} disabled={!v} style={btn(alfa(C.cinza, 20), C.terra)}><Pause size={16} /> Parar</button>
+        <button onClick={() => enviar("vacuum", "return_to_base", r.id)} disabled={!v} style={btn(alfa(LAGO, 16), LAGO)}><Home size={16} /> Base</button>
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 800, color: C.cinza, textTransform: "uppercase", margin: "14px 0 6px" }}>Manutenção</div>
+      {ROBO_PECAS.map(([nome, vida, falta, un]) => {
+        const pc = numHA(sen(vida)), f = sen(falta)?.state;
+        return (
+          <div key={vida} style={{ marginBottom: 8 }}>
+            <div className="flex items-center justify-between" style={{ fontSize: 13.5, marginBottom: 3 }}>
+              <span style={{ fontWeight: 700, color: C.terra }}>{nome}</span>
+              <span style={{ color: C.cinza, fontVariantNumeric: "tabular-nums" }}>
+                <b style={{ color: corVida(pc) }}>{pc != null ? `${pc}%` : "—"}</b>
+                {f != null && !["unknown", "unavailable"].includes(f) ? ` · falta ${f}${un ? " " + un : ""}` : ""}
+              </span>
+            </div>
+            <BarraVida pc={pc} />
+          </div>
+        );
+      })}
+      <div className="flex gap-2" style={{ marginTop: 6 }}>
+        {ROBO_TANQUES.map(([nome, x, ruim, txt]) => {
+          const t = sen(x)?.state, mal = t === ruim;
+          return (
+            <div key={x} style={{ flex: 1, borderRadius: 10, padding: "7px 9px", background: mal ? alfa(C.vermelho, 14) : alfa(C.pasto, 10), fontSize: 13 }}>
+              <div style={{ color: C.cinza, fontWeight: 700 }}>{nome}</div>
+              <div style={{ fontWeight: 800, color: mal ? C.vermelho : C.pasto }}>{!t ? "—" : mal ? txt : "OK"}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RobosModal({ ents, enviar, onFechar }) {
+  const aut = ents[ROBO_NOTURNA];
+  return (
+    <Sheet titulo="Robôs" onFechar={onFechar}>
+      {aut && (
+        <div className="flex items-center gap-3" style={{ background: C.card, border: `1px solid ${C.linha}`, borderRadius: 14, padding: "10px 12px", marginBottom: 12 }}>
+          <Moon size={20} style={{ color: C.lago, flexShrink: 0 }} />
+          <div className="flex-1 min-w-0">
+            <div style={{ fontWeight: 800, fontSize: 14.5, color: C.terra }}>Limpeza noturna automática</div>
+            <div style={{ fontSize: 12.5, color: C.cinza }}>{aut.state === "on" ? "Ligada" : "Desligada"}</div>
+          </div>
+          <PillToggle on={aut.state === "on"} cor={LAGO} onClick={() => enviar("automation", aut.state === "on" ? "turn_off" : "turn_on", ROBO_NOTURNA)} />
+        </div>
+      )}
+      {ROBOS.map((r) => <CartaoRobo key={r.id} r={r} ents={ents} enviar={enviar} />)}
+    </Sheet>
+  );
+}
 
 /* ---- Popup do PORTÃO (menu ⋮ do Controle) ---- */
 const PORTAO_ID = "cover.portao_garagem";
@@ -5573,6 +5704,9 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
   const [modo, setModo] = useState("usar"); // usar | gerenciar
   const [menuAberto, setMenuAberto] = useState(false);
   const [portaoAberto, setPortaoAberto] = useState(false);
+  const [robosAberto, setRobosAberto] = useState(false);
+  // Alerta dos robôs: aparece 1x por ocorrência (id + hora em que o alerta ligou), guardado no aparelho.
+  const [robosVistos, setRobosVistos] = useState(() => { try { return JSON.parse(localStorage.getItem("robosAvisoVisto") || "[]"); } catch { return []; } });
   const [portaAberta, setPortaAberta] = useState(false); // popup da Porta Entrada
   const [tvAberta, setTvAberta] = useState(null); // TV com o controle remoto aberto
   const [alarmeAberto, setAlarmeAberto] = useState(false);
@@ -5834,7 +5968,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
 
   // ---- Só os aparelhos do app: subscribe_entities com a lista (estado inicial + mudanças) ----
   const usadosSet = new Set(equipamentos.map((q) => q.entity_id));
-  const idsPedir = configOk && idsHA ? [...new Set([...idsHA, ...usadosSet, CASCATA_DESLIGOU])].filter((id) => precisaDoHA(id, usadosSet)).sort() : null;
+  const idsPedir = configOk && idsHA ? [...new Set([...idsHA, ...usadosSet, CASCATA_DESLIGOU, ...ROBO_IDS])].filter((id) => precisaDoHA(id, usadosSet)).sort() : null;
   const chavePedir = idsPedir ? idsPedir.join(",") : "";
   useEffect(() => {
     if (usarProxy || !wsPronto || !chavePedir) return;
@@ -6560,6 +6694,28 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
             <button onClick={() => setAvisoBateria(null)} style={{ width: "100%", background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>Entendi</button>
           </Sheet>
         )}
+        {robosAberto && <RobosModal ents={entsVis} enviar={enviar} onFechar={() => setRobosAberto(false)} />}
+        {!usarProxy && status === "ok" && !robosAberto && (() => {
+          const novos = alertasRobos(ents).filter((a) => !robosVistos.includes(`${a.id}@${a.mudou}`));
+          if (!novos.length) return null;
+          const ok = () => { const n = [...robosVistos, ...novos.map((a) => `${a.id}@${a.mudou}`)].slice(-60); setRobosVistos(n); try { localStorage.setItem("robosAvisoVisto", JSON.stringify(n)); } catch { /* ok */ } };
+          return (
+            <Sheet titulo="Robôs precisam de atenção" onFechar={ok}>
+              <div className="text-center" style={{ padding: "4px 0 8px" }}>
+                <div style={{ width: 60, height: 60, borderRadius: 999, background: alfa(C.ambar, 16), color: C.ambar, display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Bot size={30} /></div>
+              </div>
+              {novos.map((a) => (
+                <div key={a.id} style={{ borderTop: `1px solid ${C.linha}`, padding: "9px 0", fontSize: 15 }}>
+                  <b style={{ color: C.terra }}>{a.robo}</b> · {a.item} <span style={{ color: C.vermelho, fontWeight: 700 }}>({a.detalhe})</span>
+                </div>
+              ))}
+              <div className="flex gap-2" style={{ marginTop: 10 }}>
+                <button onClick={ok} style={{ flex: 1, background: alfa(C.cinza, 20), color: C.terra, borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>Entendi</button>
+                <button onClick={() => { ok(); setRobosAberto(true); }} style={{ flex: 1, background: C.pasto, color: "#fff", borderRadius: 12, padding: 14, fontWeight: 700, fontSize: 16 }}>Abrir Robôs</button>
+              </div>
+            </Sheet>
+          );
+        })()}
         {portaAberta && <PortaModal ent={entsVis[PORTA_ID]} enviar={enviar} onFechar={() => setPortaAberta(false)} topo={topoPortao} cameras={camerasDe(PORTA_CAMERAS)} />}
         <InstalarPrompt />
         {/* Mesmo verde do cabeçalho do app de tarefas, em versão compacta. */}
@@ -6589,6 +6745,7 @@ function ControleApp({ eu, onVoltar, onSair, onEquipe, onSobre }) {
                   { key: "alarme", icon: ShieldCheck, cor: C.vermelho, txt: "Alarme", on: () => setAlarmeAberto(true) },
                   // Câmeras só na conexão direta (família): para os outros o botão nem aparece.
                   ...(!usarProxy ? [{ key: "cameras", icon: Cctv, cor: C.lago, txt: "Câmeras", on: () => setCamerasAberto(true) }] : []),
+                  ...(!usarProxy ? [{ key: "robos", icon: Bot, cor: C.lago, txt: "Robôs", on: () => setRobosAberto(true) }] : []),
                 ]),
                 ...(podePessoal && modo === "usar" ? [{ key: "dash", icon: LayoutGrid, cor: C.lago, txt: `Dashboard · ${painel ? painel.nome : "Padrão"}`, on: () => setPaineisAberto(true) }] : []),
                 ...(!eu?.podeMenuControle ? [] : [
